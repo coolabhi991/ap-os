@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import authRoutes from "./routes/auth.routes.js";
 
 const app = express();
 
@@ -11,8 +12,10 @@ app.get("/", (_req, res) => {
     success: true,
     application: "AP OS",
     version: "0.0.1",
-    message: "API is running successfully"
+    message: "API is running successfully",
   });
 });
+
+app.use("/api/v1/auth", authRoutes);
 
 export default app;
