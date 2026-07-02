@@ -1,6 +1,6 @@
 import jwt from "jsonwebtoken";
 
-const JWT_SECRET = process.env.JWT_SECRET || "apos-secret-key";
+const JWT_SECRET = process.env.JWT_SECRET || "ap_os_secret";
 
 export function generateToken(payload: object) {
   return jwt.sign(payload, JWT_SECRET, {

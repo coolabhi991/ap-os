@@ -1,5 +1,6 @@
 import bcrypt from "bcrypt";
 import prisma from "../config/prisma.js";
+import { generateToken } from "../config/jwt.js";
 
 interface RegisterUserInput {
   name: string;
@@ -42,7 +43,7 @@ export async function registerUser(data: RegisterUserInput) {
     email: user.email,
     role: user.role,
   };
-}import { generateToken } from "../config/jwt.js";
+}
 
 export async function loginUser(email: string, password: string) {
   const user = await prisma.user.findUnique({
@@ -76,4 +77,32 @@ export async function loginUser(email: string, password: string) {
       role: user.role,
     },
   };
+}
+
+export async function getProfile(userId: string) {
+  const user = await prisma.user.findUnique({
+    where: {
+      id: userId,
+    },
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      role: true,
+      active: true,
+      createdAt: true,
+      company: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+    },
+  });
+
+  if (!user) {
+    throw new Error("User not found");
+  }
+
+  return user;
 }

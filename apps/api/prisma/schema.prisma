@@ -16,7 +16,23 @@ enum UserRole {
 
 model Company {
   id        String   @id @default(cuid())
+
   name      String
+
+  gstNumber String?
+  panNumber String?
+
+  email     String?
+  phone     String?
+
+  address   String?
+  city      String?
+  state     String?
+  country   String?
+  pincode   String?
+
+  logo      String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
