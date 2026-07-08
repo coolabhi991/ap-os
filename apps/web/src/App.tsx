@@ -40,6 +40,14 @@ import AddMaterialReceipt from "./pages/material-receipts/AddMaterialReceipt";
 import EditMaterialReceipt from "./pages/material-receipts/EditMaterialReceipt";
 import ViewMaterialReceipt from "./pages/material-receipts/ViewMaterialReceipt";
 
+/* Material Issues */
+import MaterialIssues from "./pages/material-issues/MaterialIssues";
+import AddMaterialIssue from "./pages/material-issues/AddMaterialIssue";
+import EditMaterialIssue from "./pages/material-issues/EditMaterialIssue";
+import ViewMaterialIssue from "./pages/material-issues/ViewMaterialIssue";
+import MaterialIssuesDashboard from "./pages/material-issues/MaterialIssuesDashboard";
+import MaterialIssueReports from "./pages/material-issues/MaterialIssueReports";
+
 /* Inventory */
 import Inventory from "./pages/inventory/Inventory";
 import AddInventoryItem from "./pages/inventory/AddInventoryItem";
@@ -140,6 +148,14 @@ export default function App() {
       <Route path="/material-receipts/new" element={<AddMaterialReceipt />} />
       <Route path="/material-receipts/:id" element={<ViewMaterialReceipt />} />
       <Route path="/material-receipts/:id/edit" element={<EditMaterialReceipt />} />
+
+      {/* Material Issues */}
+      <Route path="/material-issues" element={<MaterialIssues />} />
+      <Route path="/material-issues/new" element={<AddMaterialIssue />} />
+      <Route path="/material-issues/dashboard" element={<MaterialIssuesDashboard />} />
+      <Route path="/material-issues/reports" element={<MaterialIssueReports />} />
+      <Route path="/material-issues/:id" element={<ViewMaterialIssue />} />
+      <Route path="/material-issues/:id/edit" element={<EditMaterialIssue />} />
 
       {/* Inventory */}
       <Route path="/inventory" element={<Inventory />} />

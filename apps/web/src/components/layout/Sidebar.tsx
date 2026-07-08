@@ -8,6 +8,7 @@ import {
   ClipboardList,
   Truck,
   Boxes,
+  PackageMinus,
   Wallet,
   Banknote,
   HandCoins,
@@ -66,6 +67,11 @@ const menus = [
     name: "Inventory",
     path: "/inventory",
     icon: Boxes,
+  },
+  {
+    name: "Material Issues",
+    path: "/material-issues",
+    icon: PackageMinus,
   },
   {
     name: "Vendor Bills",

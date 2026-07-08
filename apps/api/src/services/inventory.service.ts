@@ -612,3 +612,64 @@ export async function applyReceiptToInventory(
     },
   });
 }
+
+/**
+ * Applies a Material Issue's quantity to Inventory: validates sufficient available
+ * stock (current minus reserved), decrements currentStock, increments
+ * issuesQuantity, recomputes status, and writes an ISSUE stock ledger entry.
+ * Must be called from within an existing Prisma transaction. Throws if the issue
+ * would exceed available stock or result in negative stock.
+ */
+export async function applyIssueToInventory(
+  tx: Prisma.TransactionClient,
+  companyId: string,
+  params: {
+    inventoryId: string;
+    quantity: number;
+    referenceId: string;
+    referenceNumber: string;
+    movementDate: Date;
+  }
+) {
+  const inventory = await tx.inventory.findFirst({ where: { id: params.inventoryId, companyId } });
+  if (!inventory) throw new Error("Inventory item not found");
+
+  const availableStock = Number(inventory.currentStock) - Number(inventory.reservedStock);
+  if (params.quantity > availableStock) {
+    throw new Error(
+      `Cannot issue ${params.quantity} ${inventory.unit ?? "units"} of ${inventory.itemName} — only ${availableStock} available`
+    );
+  }
+
+  const newBalance = Number(inventory.currentStock) - params.quantity;
+  if (newBalance < 0) {
+    throw new Error("Issue would result in negative stock");
+  }
+
+  const status = computeInventoryStatus(newBalance, Number(inventory.reorderLevel), Number(inventory.minStock));
+
+  await tx.inventory.update({
+    where: { id: inventory.id },
+    data: {
+      issuesQuantity: { increment: params.quantity },
+      currentStock: newBalance,
+      lastIssueDate: params.movementDate,
+      status,
+    },
+  });
+
+  await tx.stockLedgerEntry.create({
+    data: {
+      companyId,
+      inventoryId: inventory.id,
+      projectId: inventory.projectId,
+      movementType: "ISSUE",
+      quantity: params.quantity,
+      balanceAfter: newBalance,
+      referenceType: "MaterialIssue",
+      referenceId: params.referenceId,
+      referenceNumber: params.referenceNumber,
+      movementDate: params.movementDate,
+    },
+  });
+}

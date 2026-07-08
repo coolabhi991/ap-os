@@ -19,6 +19,7 @@ import vendorBankAccountRoutes from "./routes/vendor-bank-account.routes.js";
 import companyBankAccountRoutes from "./routes/company-bank-account.routes.js";
 import expenseRoutes from "./routes/expense.routes.js";
 import expenseCategoryRoutes from "./routes/expense-category.routes.js";
+import materialIssueRoutes from "./routes/material-issue.routes.js";
 
 const app = express();
 
@@ -52,5 +53,6 @@ app.use("/api/v1/vendor-bank-accounts", vendorBankAccountRoutes);
 app.use("/api/v1/company-bank-accounts", companyBankAccountRoutes);
 app.use("/api/v1/expenses", expenseRoutes);
 app.use("/api/v1/expense-categories", expenseCategoryRoutes);
+app.use("/api/v1/material-issues", materialIssueRoutes);
 
 export default app;
