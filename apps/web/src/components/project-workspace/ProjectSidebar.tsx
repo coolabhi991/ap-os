@@ -1,78 +1,10 @@
-import {
-  LayoutDashboard,
-  Activity,
-  FolderOpen,
-  IndianRupee,
-  ClipboardList,
-  FileText,
-  Package,
-  Users,
-  CalendarDays,
-  Camera,
-  Sparkles,
-  Settings,
-} from "lucide-react";
+import { useWorkspace } from "./WorkspaceContext";
+import { getWorkspaceModules } from "./moduleRegistry";
 
-const menu = [
-  {
-    title: "Overview",
-    icon: LayoutDashboard,
-  },
-  {
-    title: "Activity",
-    icon: Activity,
-  },
-  {
-    title: "Documents",
-    icon: FolderOpen,
-  },
-  {
-    title: "Finance",
-    icon: IndianRupee,
-  },
-  {
-    title: "Site Diary",
-    icon: ClipboardList,
-  },
-  {
-    title: "BOQ",
-    icon: FileText,
-  },
-  {
-    title: "Materials",
-    icon: Package,
-  },
-  {
-    title: "Labour",
-    icon: Users,
-  },
-  {
-    title: "Timeline",
-    icon: CalendarDays,
-  },
-  {
-    title: "Photos",
-    icon: Camera,
-  },
-  {
-    title: "AP AI",
-    icon: Sparkles,
-  },
-  {
-    title: "Settings",
-    icon: Settings,
-  },
-];
+export default function ProjectSidebar() {
+  const { activeSection, setActiveSection } = useWorkspace();
+  const menu = getWorkspaceModules();
 
-interface ProjectSidebarProps {
-  activeSection: string;
-  onSectionChange: (section: string) => void;
-}
-
-export default function ProjectSidebar({
-  activeSection,
-  onSectionChange,
-}: ProjectSidebarProps) {
   return (
     <div className="w-full rounded-3xl border border-white/40 bg-white/70 p-4 shadow-xl backdrop-blur-xl xl:w-72">
       <div className="mb-6">
@@ -88,13 +20,12 @@ export default function ProjectSidebar({
       <div className="space-y-2">
         {menu.map((item) => {
           const Icon = item.icon;
-
-          const selected = activeSection === item.title;
+          const selected = activeSection === item.id;
 
           return (
             <button
-              key={item.title}
-              onClick={() => onSectionChange(item.title)}
+              key={item.id}
+              onClick={() => setActiveSection(item.id)}
               className={`flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left transition-all duration-200 ${
                 selected
                   ? "bg-amber-500 text-white shadow-lg"

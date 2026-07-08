@@ -1,151 +1,23 @@
-import {
-  Boxes,
-  PackageCheck,
-  PackageOpen,
-  ShoppingCart,
-  TrendingDown,
-  Truck,
-} from "lucide-react";
+import { Truck } from "lucide-react";
 import type { Project } from "../../services/projects";
 import Badge from "../ui/Badge";
 import Card from "../ui/Card";
-import PageHeader from "../ui/PageHeader";
 import Section from "../ui/Section";
-import StatCard from "../ui/StatCard";
 import Table from "../ui/Table";
+import { inventoryRows, materialsSummaryStats, movementRows, procurementRows } from "./data/materialsData";
+import WorkspaceModuleLayout from "./WorkspaceModuleLayout";
 
 interface MaterialsModuleProps {
   project: Project;
 }
 
-const summaryStats = [
-  {
-    title: "Stock Value",
-    value: "₹8.4 Cr",
-    subtitle: "Current inventory valuation",
-    icon: <Boxes size={20} />,
-    trend: "+3.1% vs last month",
-  },
-  {
-    title: "Items in Stock",
-    value: "126",
-    subtitle: "Active SKUs on site",
-    icon: <PackageOpen size={20} />,
-    trend: "Balanced availability",
-  },
-  {
-    title: "Low Stock Alerts",
-    value: "4",
-    subtitle: "Items needing replenishment",
-    icon: <TrendingDown size={20} />,
-    trend: "2 urgent",
-  },
-  {
-    title: "Pending POs",
-    value: "7",
-    subtitle: "Open purchase requests",
-    icon: <ShoppingCart size={20} />,
-    trend: "2 scheduled today",
-  },
-];
-
-const inventoryRows = [
-  {
-    item: "Steel Reinforcement",
-    category: "Structural",
-    stock: "184 MT",
-    status: "Healthy",
-    leadTime: "2 days",
-  },
-  {
-    item: "Cement",
-    category: "Bulk",
-    stock: "92 Bags",
-    status: "Low",
-    leadTime: "1 day",
-  },
-  {
-    item: "Pipes",
-    category: "MEP",
-    stock: "240 Units",
-    status: "Healthy",
-    leadTime: "3 days",
-  },
-  {
-    item: "Electrical Wires",
-    category: "Electrical",
-    stock: "38 Rolls",
-    status: "Critical",
-    leadTime: "4 days",
-  },
-];
-
-const procurementRows = [
-  {
-    po: "PO-204",
-    supplier: "Metro Supplies",
-    amount: "₹24 L",
-    eta: "09 Jul 2026",
-    status: "Scheduled",
-  },
-  {
-    po: "PO-203",
-    supplier: "BuildMart",
-    amount: "₹18 L",
-    eta: "11 Jul 2026",
-    status: "In Transit",
-  },
-  {
-    po: "PO-202",
-    supplier: "Fleet Rental Co.",
-    amount: "₹9 L",
-    eta: "12 Jul 2026",
-    status: "Pending",
-  },
-];
-
-const movementRows = [
-  {
-    date: "08 Jul",
-    action: "Issued to site",
-    item: "Cement",
-    quantity: "20 Bags",
-  },
-  {
-    date: "07 Jul",
-    action: "Received from vendor",
-    item: "Steel",
-    quantity: "12 MT",
-  },
-  {
-    date: "06 Jul",
-    action: "Transferred to storage",
-    item: "Pipes",
-    quantity: "60 Units",
-  },
-];
-
 export default function MaterialsModule({ project }: MaterialsModuleProps) {
   return (
-    <div className="flex-1 space-y-6">
-      <PageHeader
-        title="Materials"
-        subtitle={`${project.name} • Procurement and inventory oversight for the active site.`}
-      />
-
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {summaryStats.map((stat) => (
-          <StatCard
-            key={stat.title}
-            title={stat.title}
-            value={stat.value}
-            subtitle={stat.subtitle}
-            icon={stat.icon}
-            trend={stat.trend}
-          />
-        ))}
-      </div>
-
+    <WorkspaceModuleLayout
+      title="Materials"
+      subtitle={`${project.name} • Procurement and inventory oversight for the active site.`}
+      summaryStats={materialsSummaryStats}
+    >
       <Section title="Inventory Status" subtitle="Monitor stock health and replenishment needs across key materials.">
         <Card className="p-6">
           <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -239,6 +111,6 @@ export default function MaterialsModule({ project }: MaterialsModuleProps) {
           </div>
         </Card>
       </Section>
-    </div>
+    </WorkspaceModuleLayout>
   );
 }
