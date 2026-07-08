@@ -81,6 +81,22 @@ import ExpensesDashboard from "./pages/expenses/ExpensesDashboard";
 import ExpenseCategories from "./pages/expenses/ExpenseCategories";
 import ExpenseReports from "./pages/expenses/ExpenseReports";
 
+/* Labour Management */
+import LabourGroups from "./pages/labour/LabourGroups";
+import Labour from "./pages/labour/Labour";
+import AddLabour from "./pages/labour/AddLabour";
+import EditLabour from "./pages/labour/EditLabour";
+import ViewLabour from "./pages/labour/ViewLabour";
+import LabourContractors from "./pages/labour/LabourContractors";
+import MarkAttendance from "./pages/labour/MarkAttendance";
+import AttendanceRegister from "./pages/labour/AttendanceRegister";
+import Advances from "./pages/labour/Advances";
+import AddAdvance from "./pages/labour/AddAdvance";
+import Payments from "./pages/labour/Payments";
+import AddPayment from "./pages/labour/AddPayment";
+import LabourDashboard from "./pages/labour/LabourDashboard";
+import LabourReports from "./pages/labour/LabourReports";
+
 export default function App() {
   return (
     <Routes>
@@ -142,6 +158,22 @@ export default function App() {
       <Route path="/expenses/categories" element={<ExpenseCategories />} />
       <Route path="/expenses/:id" element={<ViewExpense />} />
       <Route path="/expenses/:id/edit" element={<EditExpense />} />
+
+      {/* Labour Management */}
+      <Route path="/labour" element={<Labour />} />
+      <Route path="/labour/new" element={<AddLabour />} />
+      <Route path="/labour/dashboard" element={<LabourDashboard />} />
+      <Route path="/labour/reports" element={<LabourReports />} />
+      <Route path="/labour/groups" element={<LabourGroups />} />
+      <Route path="/labour/contractors" element={<LabourContractors />} />
+      <Route path="/labour/attendance" element={<AttendanceRegister />} />
+      <Route path="/labour/attendance/mark" element={<MarkAttendance />} />
+      <Route path="/labour/advances" element={<Advances />} />
+      <Route path="/labour/advances/new" element={<AddAdvance />} />
+      <Route path="/labour/payments" element={<Payments />} />
+      <Route path="/labour/payments/new" element={<AddPayment />} />
+      <Route path="/labour/:id" element={<ViewLabour />} />
+      <Route path="/labour/:id/edit" element={<EditLabour />} />
 
       {/* Material Receipts */}
       <Route path="/material-receipts" element={<MaterialReceipts />} />

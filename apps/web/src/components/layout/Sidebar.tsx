@@ -44,8 +44,8 @@ const menus = [
     icon: Building2,
   },
   {
-    name: "Employees",
-    path: "#",
+    name: "Labour",
+    path: "/labour",
     icon: HardHat,
   },
   {

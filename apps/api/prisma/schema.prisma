@@ -160,6 +160,11 @@ model Company {
   bankAccounts         CompanyBankAccount[]
   vendorPayments       VendorPayment[]
   expenseCategories    ExpenseCategory[]
+  labourGroups         LabourGroup[]
+  labourWageRates      LabourWageRate[]
+  labourAttendances    LabourAttendance[]
+  labourAdvances       LabourAdvance[]
+  labourPayments       LabourPayment[]
 }
 
 model CompanyBankAccount {
@@ -180,6 +185,8 @@ model CompanyBankAccount {
 
   vendorPayments VendorPayment[]
   expenses       Expense[]
+  labourAdvances LabourAdvance[]
+  labourPayments LabourPayment[]
 
   @@index([companyId])
 }
@@ -209,8 +216,12 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  createdExpenses       Expense[]
-  createdMaterialIssues MaterialIssue[]
+  createdExpenses          Expense[]
+  createdMaterialIssues    MaterialIssue[]
+  createdLabours           Labour[]
+  createdLabourAttendances LabourAttendance[]
+  createdLabourAdvances    LabourAdvance[]
+  createdLabourPayments    LabourPayment[]
 }
 
 model Client {
@@ -289,6 +300,10 @@ model Project {
   documents            Document[]
   vendorBills          VendorBill[]
   vendorPayments       VendorPayment[]
+  labourGroups         LabourGroup[]
+  labourAttendances    LabourAttendance[]
+  labourAdvances       LabourAdvance[]
+  labourPayments       LabourPayment[]
 }
 
 model Vendor {
@@ -322,6 +337,7 @@ model Vendor {
   vendorBills          VendorBill[]
   bankAccounts         VendorBankAccount[]
   vendorPayments       VendorPayment[]
+  contractedLabour     Labour[]
 
   @@index([companyId])
   @@index([status])
@@ -578,28 +594,184 @@ model MaterialIssue {
   @@index([isDeleted])
 }
 
+/**
+ * Labour Master — a worker record. Daily attendance, wage rates, advances, and
+ * payments are all separate time-series tables referencing this one, rather than
+ * flat fields here, since each of those changes independently over time.
+ * "Labour Contractor" is deliberately NOT a separate entity — it's a Vendor with
+ * category "Labour", reused directly so contractor payments flow through the
+ * existing Vendor Bill / Vendor Payment pipeline without duplicating a contact.
+ */
 model Labour {
-  id               String           @id @default(cuid())
-  companyId        String
-  company          Company          @relation(fields: [companyId], references: [id])
-  projectId        String?
-  project          Project?         @relation(fields: [projectId], references: [id])
-  name             String
-  contractorName   String?
-  designation      String?
-  category         LabourCategory   @default(UNSKILLED)
-  shift            String?
-  dailyWage        Decimal?         @db.Decimal(12, 2)
-  overtimeRate     Decimal?         @db.Decimal(12, 2)
-  attendanceStatus AttendanceStatus @default(PRESENT)
-  status           String           @default("Active")
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
+  id           String         @id @default(cuid())
+  companyId    String
+  company      Company        @relation(fields: [companyId], references: [id])
+  projectId    String?
+  project      Project?       @relation(fields: [projectId], references: [id])
+  contractorId String?
+  contractor   Vendor?        @relation(fields: [contractorId], references: [id])
+  groupId      String?
+  group        LabourGroup?   @relation(fields: [groupId], references: [id])
+  name         String
+  phone        String?
+  designation  String?
+  category     LabourCategory @default(UNSKILLED)
+  status       String         @default("Active")
+  remarks      String?
+  createdById  String
+  createdBy    User           @relation(fields: [createdById], references: [id])
+  isDeleted    Boolean        @default(false)
+  deletedAt    DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  wageRates   LabourWageRate[]
+  attendances LabourAttendance[]
+  advances    LabourAdvance[]
+  payments    LabourPayment[]
 
   @@index([companyId])
   @@index([projectId])
+  @@index([contractorId])
+  @@index([groupId])
   @@index([category])
-  @@index([attendanceStatus])
+  @@index([isDeleted])
+}
+
+model LabourGroup {
+  id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id])
+  projectId   String?
+  project     Project? @relation(fields: [projectId], references: [id])
+  name        String
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  labours Labour[]
+
+  @@index([companyId])
+  @@index([projectId])
+}
+
+/**
+ * A new row is created whenever a worker's rate changes; the latest one with effectiveFrom <= a given date is "current" as of that date.
+ */
+model LabourWageRate {
+  id            String   @id @default(cuid())
+  companyId     String
+  company       Company  @relation(fields: [companyId], references: [id])
+  labourId      String
+  labour        Labour   @relation(fields: [labourId], references: [id])
+  dailyWage     Decimal  @db.Decimal(12, 2)
+  overtimeRate  Decimal  @default(0) @db.Decimal(12, 2)
+  effectiveFrom DateTime @default(now())
+  createdAt     DateTime @default(now())
+
+  @@index([companyId])
+  @@index([labourId])
+  @@index([effectiveFrom])
+}
+
+/**
+ * One row per worker per day. Wage amount is snapshotted at marking time from the rate in effect that day, so later rate changes never rewrite history.
+ */
+model LabourAttendance {
+  id                   String           @id @default(cuid())
+  companyId            String
+  company              Company          @relation(fields: [companyId], references: [id])
+  projectId            String
+  project              Project          @relation(fields: [projectId], references: [id])
+  labourId             String
+  labour               Labour           @relation(fields: [labourId], references: [id])
+  attendanceDate       DateTime         @default(now())
+  status               AttendanceStatus @default(PRESENT)
+  overtimeHours        Decimal          @default(0) @db.Decimal(6, 2)
+  dailyWageSnapshot    Decimal          @db.Decimal(12, 2)
+  overtimeRateSnapshot Decimal          @default(0) @db.Decimal(12, 2)
+  wageAmount           Decimal          @db.Decimal(12, 2)
+  remarks              String?
+  createdById          String
+  createdBy            User             @relation(fields: [createdById], references: [id])
+  isDeleted            Boolean          @default(false)
+  deletedAt            DateTime?
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
+
+  @@unique([labourId, attendanceDate])
+  @@index([companyId])
+  @@index([projectId])
+  @@index([labourId])
+  @@index([attendanceDate])
+  @@index([isDeleted])
+}
+
+/**
+ * A cash draw against future wages — never auto-linked to a Site Expense (it's recoverable, not spent).
+ */
+model LabourAdvance {
+  id                   String              @id @default(cuid())
+  companyId            String
+  company              Company             @relation(fields: [companyId], references: [id])
+  labourId             String
+  labour               Labour              @relation(fields: [labourId], references: [id])
+  projectId            String?
+  project              Project?            @relation(fields: [projectId], references: [id])
+  amount               Decimal             @db.Decimal(12, 2)
+  advanceDate          DateTime            @default(now())
+  mode                 String
+  companyBankAccountId String?
+  companyBankAccount   CompanyBankAccount? @relation(fields: [companyBankAccountId], references: [id])
+  remarks              String?
+  createdById          String
+  createdBy            User                @relation(fields: [createdById], references: [id])
+  isDeleted            Boolean             @default(false)
+  deletedAt            DateTime?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  @@index([companyId])
+  @@index([labourId])
+  @@index([projectId])
+  @@index([advanceDate])
+  @@index([isDeleted])
+}
+
+/**
+ * A wage settlement. Optionally linked to a Site Expense (opt-in via logAsExpense at creation) — never automatic.
+ */
+model LabourPayment {
+  id                   String              @id @default(cuid())
+  companyId            String
+  company              Company             @relation(fields: [companyId], references: [id])
+  labourId             String
+  labour               Labour              @relation(fields: [labourId], references: [id])
+  projectId            String?
+  project              Project?            @relation(fields: [projectId], references: [id])
+  amount               Decimal             @db.Decimal(12, 2)
+  paymentDate          DateTime            @default(now())
+  periodFrom           DateTime?
+  periodTo             DateTime?
+  mode                 String
+  companyBankAccountId String?
+  companyBankAccount   CompanyBankAccount? @relation(fields: [companyBankAccountId], references: [id])
+  expenseId            String?             @unique
+  expense              Expense?            @relation(fields: [expenseId], references: [id])
+  remarks              String?
+  createdById          String
+  createdBy            User                @relation(fields: [createdById], references: [id])
+  isDeleted            Boolean             @default(false)
+  deletedAt            DateTime?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  @@index([companyId])
+  @@index([labourId])
+  @@index([projectId])
+  @@index([paymentDate])
+  @@index([isDeleted])
 }
 
 model Equipment {
@@ -739,7 +911,8 @@ model Expense {
   createdAt            DateTime            @default(now())
   updatedAt            DateTime            @updatedAt
 
-  payments Payment[]
+  payments      Payment[]
+  labourPayment LabourPayment?
 
   @@index([companyId])
   @@index([projectId])

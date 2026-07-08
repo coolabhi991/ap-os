@@ -20,6 +20,13 @@ import companyBankAccountRoutes from "./routes/company-bank-account.routes.js";
 import expenseRoutes from "./routes/expense.routes.js";
 import expenseCategoryRoutes from "./routes/expense-category.routes.js";
 import materialIssueRoutes from "./routes/material-issue.routes.js";
+import labourGroupRoutes from "./routes/labour-group.routes.js";
+import labourRoutes from "./routes/labour.routes.js";
+import labourWageRateRoutes from "./routes/labour-wage-rate.routes.js";
+import labourAttendanceRoutes from "./routes/labour-attendance.routes.js";
+import labourAdvanceRoutes from "./routes/labour-advance.routes.js";
+import labourPaymentRoutes from "./routes/labour-payment.routes.js";
+import labourReportRoutes from "./routes/labour-report.routes.js";
 
 const app = express();
 
@@ -54,5 +61,15 @@ app.use("/api/v1/company-bank-accounts", companyBankAccountRoutes);
 app.use("/api/v1/expenses", expenseRoutes);
 app.use("/api/v1/expense-categories", expenseCategoryRoutes);
 app.use("/api/v1/material-issues", materialIssueRoutes);
+app.use("/api/v1/labour-groups", labourGroupRoutes);
+app.use("/api/v1/labour-wage-rates", labourWageRateRoutes);
+app.use("/api/v1/labour-attendance", labourAttendanceRoutes);
+app.use("/api/v1/labour-advances", labourAdvanceRoutes);
+app.use("/api/v1/labour-payments", labourPaymentRoutes);
+// Mounted before labourRoutes: labourReportRoutes defines /dashboard and /reports/*
+// on the same "/api/v1/labour" base, which must be matched before labourRoutes' /:id
+// catch-all would otherwise swallow them (e.g. "dashboard" treated as a labour id).
+app.use("/api/v1/labour", labourReportRoutes);
+app.use("/api/v1/labour", labourRoutes);
 
 export default app;
