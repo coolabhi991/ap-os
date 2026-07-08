@@ -1,22 +1,43 @@
 import bcrypt from "bcrypt";
+import { UserRole } from "@prisma/client";
 import prisma from "../config/prisma.js";
 
 interface CreateUserInput {
   name: string;
   email: string;
   password: string;
-  role: "ADMIN" | "MANAGER" | "ACCOUNTANT" | "ENGINEER";
+  role: UserRole;
   companyId: string;
 }
 
 interface UpdateUserInput {
   name: string;
   email: string;
-  role: "ADMIN" | "MANAGER" | "ACCOUNTANT" | "ENGINEER";
+  role: UserRole;
 }
 
 interface UpdateUserStatusInput {
   active: boolean;
+}
+
+async function ensureRole(companyId: string, roleName: UserRole) {
+  const existingRole = await prisma.role.findFirst({
+    where: {
+      companyId,
+      name: roleName,
+    },
+  });
+
+  if (existingRole) {
+    return existingRole;
+  }
+
+  return prisma.role.create({
+    data: {
+      companyId,
+      name: roleName,
+    },
+  });
 }
 
 export async function createUser(data: CreateUserInput) {
@@ -31,11 +52,15 @@ export async function createUser(data: CreateUserInput) {
   }
 
   const hashedPassword = await bcrypt.hash(data.password, 10);
+  const role = await ensureRole(data.companyId, data.role);
 
   const user = await prisma.user.create({
     data: {
-      ...data,
+      name: data.name,
+      email: data.email,
       password: hashedPassword,
+      companyId: data.companyId,
+      roleId: role.id,
     },
   });
 
@@ -43,25 +68,34 @@ export async function createUser(data: CreateUserInput) {
     id: user.id,
     name: user.name,
     email: user.email,
-    role: user.role,
+    role: role.name,
     active: user.active,
   };
 }
 
 export async function getUsers() {
-  return prisma.user.findMany({
+  const users = await prisma.user.findMany({
     select: {
       id: true,
       name: true,
       email: true,
-      role: true,
       active: true,
       createdAt: true,
+      role: {
+        select: {
+          name: true,
+        },
+      },
     },
     orderBy: {
       createdAt: "desc",
     },
   });
+
+  return users.map((user) => ({
+    ...user,
+    role: user.role.name,
+  }));
 }
 
 export async function getUserById(id: string) {
@@ -73,10 +107,14 @@ export async function getUserById(id: string) {
       id: true,
       name: true,
       email: true,
-      role: true,
       active: true,
       createdAt: true,
       updatedAt: true,
+      role: {
+        select: {
+          name: true,
+        },
+      },
     },
   });
 
@@ -84,13 +122,13 @@ export async function getUserById(id: string) {
     throw new Error("User not found");
   }
 
-  return user;
+  return {
+    ...user,
+    role: user.role.name,
+  };
 }
 
-export async function updateUser(
-  id: string,
-  data: UpdateUserInput
-) {
+export async function updateUser(id: string, data: UpdateUserInput) {
   const existingUser = await prisma.user.findUnique({
     where: {
       id,
@@ -101,26 +139,38 @@ export async function updateUser(
     throw new Error("User not found");
   }
 
-  return prisma.user.update({
+  const role = await ensureRole(existingUser.companyId, data.role);
+
+  const user = await prisma.user.update({
     where: {
       id,
     },
-    data,
+    data: {
+      name: data.name,
+      email: data.email,
+      roleId: role.id,
+    },
     select: {
       id: true,
       name: true,
       email: true,
-      role: true,
       active: true,
       updatedAt: true,
+      role: {
+        select: {
+          name: true,
+        },
+      },
     },
   });
+
+  return {
+    ...user,
+    role: user.role.name,
+  };
 }
 
-export async function updateUserStatus(
-  id: string,
-  data: UpdateUserStatusInput
-) {
+export async function updateUserStatus(id: string, data: UpdateUserStatusInput) {
   const existingUser = await prisma.user.findUnique({
     where: {
       id,
@@ -131,7 +181,7 @@ export async function updateUserStatus(
     throw new Error("User not found");
   }
 
-  return prisma.user.update({
+  const user = await prisma.user.update({
     where: {
       id,
     },
@@ -142,9 +192,18 @@ export async function updateUserStatus(
       id: true,
       name: true,
       email: true,
-      role: true,
       active: true,
       updatedAt: true,
+      role: {
+        select: {
+          name: true,
+        },
+      },
     },
   });
+
+  return {
+    ...user,
+    role: user.role.name,
+  };
 }

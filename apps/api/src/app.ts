@@ -5,6 +5,8 @@ import authRoutes from "./routes/auth.routes.js";
 import companyRoutes from "./routes/company.routes.js";
 import userRoutes from "./routes/user.routes.js";
 import dashboardRoutes from "./routes/dashboard.routes.js";
+import projectRoutes from "./routes/project.routes.js";
+import purchaseRoutes from "./routes/purchase.routes.js";
 
 const app = express();
 
@@ -24,5 +26,7 @@ app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/company", companyRoutes);
 app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/dashboard", dashboardRoutes);
+app.use("/api/v1/projects", projectRoutes);
+app.use("/api/v1/purchase", purchaseRoutes);
 
 export default app;

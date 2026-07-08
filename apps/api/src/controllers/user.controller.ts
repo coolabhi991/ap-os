@@ -42,7 +42,8 @@ export const list = async (_req: Request, res: Response) => {
 
 export const getById = async (req: Request, res: Response) => {
   try {
-    const user = await getUserById(req.params.id);
+    const userId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const user = await getUserById(userId);
 
     res.status(200).json({
       success: true,
@@ -58,7 +59,8 @@ export const getById = async (req: Request, res: Response) => {
 
 export const update = async (req: Request, res: Response) => {
   try {
-    const user = await updateUser(req.params.id, req.body);
+    const userId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const user = await updateUser(userId, req.body);
 
     res.status(200).json({
       success: true,
@@ -75,7 +77,8 @@ export const update = async (req: Request, res: Response) => {
 
 export const updateStatus = async (req: Request, res: Response) => {
   try {
-    const user = await updateUserStatus(req.params.id, req.body);
+    const userId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const user = await updateUserStatus(userId, req.body);
 
     res.status(200).json({
       success: true,

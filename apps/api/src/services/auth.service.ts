@@ -1,4 +1,5 @@
 import bcrypt from "bcrypt";
+import { UserRole } from "@prisma/client";
 import prisma from "../config/prisma.js";
 import { generateToken } from "../config/jwt.js";
 
@@ -6,6 +7,28 @@ interface RegisterUserInput {
   name: string;
   email: string;
   password: string;
+}
+
+type RoleName = UserRole;
+
+async function ensureRole(companyId: string, roleName: UserRole) {
+  const existingRole = await prisma.role.findFirst({
+    where: {
+      companyId,
+      name: roleName,
+    },
+  });
+
+  if (existingRole) {
+    return existingRole;
+  }
+
+  return prisma.role.create({
+    data: {
+      companyId,
+      name: roleName,
+    },
+  });
 }
 
 export async function registerUser(data: RegisterUserInput) {
@@ -27,13 +50,15 @@ export async function registerUser(data: RegisterUserInput) {
     },
   });
 
+  const role = await ensureRole(company.id, "ADMIN");
+
   const user = await prisma.user.create({
     data: {
       name: data.name,
       email: data.email,
       password: hashedPassword,
-      role: "ADMIN",
       companyId: company.id,
+      roleId: role.id,
     },
   });
 
@@ -41,7 +66,7 @@ export async function registerUser(data: RegisterUserInput) {
     id: user.id,
     name: user.name,
     email: user.email,
-    role: user.role,
+    role: role.name,
   };
 }
 
@@ -49,6 +74,9 @@ export async function loginUser(email: string, password: string) {
   const user = await prisma.user.findUnique({
     where: {
       email,
+    },
+    include: {
+      role: true,
     },
   });
 
@@ -65,7 +93,7 @@ export async function loginUser(email: string, password: string) {
   const token = generateToken({
     id: user.id,
     email: user.email,
-    role: user.role,
+    role: user.role.name,
   });
 
   return {
@@ -74,7 +102,7 @@ export async function loginUser(email: string, password: string) {
       id: user.id,
       name: user.name,
       email: user.email,
-      role: user.role,
+      role: user.role.name,
     },
   };
 }
@@ -88,9 +116,13 @@ export async function getProfile(userId: string) {
       id: true,
       name: true,
       email: true,
-      role: true,
       active: true,
       createdAt: true,
+      role: {
+        select: {
+          name: true,
+        },
+      },
       company: {
         select: {
           id: true,
@@ -104,5 +136,8 @@ export async function getProfile(userId: string) {
     throw new Error("User not found");
   }
 
-  return user;
+  return {
+    ...user,
+    role: user.role.name,
+  };
 }

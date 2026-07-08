@@ -19,6 +19,7 @@ import FinanceModule from "./FinanceModule";
 import LabourModule from "./LabourModule";
 import MaterialsModule from "./MaterialsModule";
 import RunningBillsModule from "./RunningBillsModule";
+import PurchaseWorkflow from "./purchase-workflow/PurchaseWorkflow";
 import VendorModule from "./VendorModule";
 
 export interface WorkspaceModuleDefinition {
@@ -161,6 +162,22 @@ const moduleDefinitions: WorkspaceModuleDefinition[] = [
         { label: "Active Workers", value: "84" },
         { label: "Attendance", value: "96%" },
         { label: "Overtime", value: "12 hrs" },
+      ],
+    },
+  },
+  {
+    id: "Purchase Workflow",
+    title: "Purchase Workflow",
+    icon: ClipboardList,
+    content: PurchaseWorkflow,
+    overview: {
+      title: "Purchase Management",
+      subtitle: "Run the full material procurement lifecycle from requisition to site issue.",
+      highlight: "The workflow covers requisition, ordering, receiving, inventory, and site issue stages.",
+      items: [
+        { label: "Flow Stages", value: "6" },
+        { label: "Active Requests", value: "3" },
+        { label: "Pending Receipts", value: "1" },
       ],
     },
   },
