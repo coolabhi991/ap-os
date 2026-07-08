@@ -16,6 +16,12 @@ import AddClient from "./pages/clients/AddClient";
 import EditClient from "./pages/clients/EditClient";
 import ViewClient from "./pages/clients/ViewClient";
 
+/* Vendors */
+import Vendors from "./pages/vendors/Vendors";
+import AddVendor from "./pages/vendors/AddVendor";
+import EditVendor from "./pages/vendors/EditVendor";
+import ViewVendor from "./pages/vendors/ViewVendor";
+
 export default function App() {
   return (
     <Routes>
@@ -40,6 +46,12 @@ export default function App() {
       <Route path="/clients/new" element={<AddClient />} />
       <Route path="/clients/:id" element={<ViewClient />} />
       <Route path="/clients/:id/edit" element={<EditClient />} />
+
+      {/* Vendors */}
+      <Route path="/vendors" element={<Vendors />} />
+      <Route path="/vendors/new" element={<AddVendor />} />
+      <Route path="/vendors/:id" element={<ViewVendor />} />
+      <Route path="/vendors/:id/edit" element={<EditVendor />} />
 
       {/* Default */}
       <Route path="*" element={<Navigate to="/" replace />} />

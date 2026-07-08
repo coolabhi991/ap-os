@@ -33,7 +33,7 @@ const menus = [
   },
   {
     name: "Vendors",
-    path: "#",
+    path: "/vendors",
     icon: Building2,
   },
   {
