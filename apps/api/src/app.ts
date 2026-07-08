@@ -14,6 +14,9 @@ import poRoutes from "./routes/purchase-order.routes.js";
 import mrRoutes from "./routes/material-receipt.routes.js";
 import inventoryRoutes from "./routes/inventory.routes.js";
 import vendorBillRoutes from "./routes/vendor-bill.routes.js";
+import vendorPaymentRoutes from "./routes/vendor-payment.routes.js";
+import vendorBankAccountRoutes from "./routes/vendor-bank-account.routes.js";
+import companyBankAccountRoutes from "./routes/company-bank-account.routes.js";
 
 const app = express();
 
@@ -42,5 +45,8 @@ app.use("/api/v1/purchase-orders", poRoutes);
 app.use("/api/v1/material-receipts", mrRoutes);
 app.use("/api/v1/inventory", inventoryRoutes);
 app.use("/api/v1/vendor-bills", vendorBillRoutes);
+app.use("/api/v1/vendor-payments", vendorPaymentRoutes);
+app.use("/api/v1/vendor-bank-accounts", vendorBankAccountRoutes);
+app.use("/api/v1/company-bank-accounts", companyBankAccountRoutes);
 
 export default app;

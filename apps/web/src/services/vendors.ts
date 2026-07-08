@@ -15,9 +15,6 @@ export interface Vendor {
   pincode: string;
   gst: string;
   pan: string;
-  bankName: string;
-  accountNumber: string;
-  ifscCode: string;
   notes: string;
   status: string;
   createdAt: string;
@@ -37,9 +34,6 @@ export interface VendorFormData {
   pincode: string;
   gst: string;
   pan: string;
-  bankName: string;
-  accountNumber: string;
-  ifscCode: string;
   notes: string;
   status: string;
 }

@@ -6,6 +6,11 @@ export interface VendorBillPayment {
   paymentDate: string;
   amount: string;
   mode: string;
+  referenceNumber: string;
+  attachmentFileName: string;
+  attachmentFileUrl: string;
+  companyBankAccount: { id: string; nickname: string | null; bankName: string; accountNumber: string } | null;
+  vendorBankAccount: { id: string; nickname: string | null; bankName: string; accountNumber: string } | null;
   remarks: string;
   status: string;
 }
@@ -82,7 +87,12 @@ export interface VendorBillListResponse {
 export interface RecordPaymentInput {
   amount: number;
   paymentDate?: string;
-  mode?: string;
+  mode: string;
+  companyBankAccountId?: string;
+  vendorBankAccountId?: string;
+  referenceNumber?: string;
+  attachmentFileName?: string;
+  attachmentFileUrl?: string;
   remarks?: string;
 }
 

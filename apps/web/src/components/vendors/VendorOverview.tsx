@@ -64,16 +64,6 @@ export default function VendorOverview({ vendor }: Props) {
           </div>
         </div>
 
-        {/* Bank */}
-        <div className="rounded-xl bg-white p-6 shadow-sm">
-          <h2 className="mb-5 text-xl font-bold">Bank Details</h2>
-          <div className="space-y-4">
-            <Row label="Bank Name" value={vendor.bankName} />
-            <Row label="Account Number" value={vendor.accountNumber} />
-            <Row label="IFSC Code" value={vendor.ifscCode} />
-          </div>
-        </div>
-
         {/* Notes */}
         {vendor.notes && (
           <div className="rounded-xl bg-white p-6 shadow-sm">

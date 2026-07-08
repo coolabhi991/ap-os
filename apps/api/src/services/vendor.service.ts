@@ -14,9 +14,6 @@ export interface VendorFormInput {
   pincode?: string;
   gst?: string;
   pan?: string;
-  bankName?: string;
-  accountNumber?: string;
-  ifscCode?: string;
   notes?: string;
   status?: string;
 }
@@ -46,9 +43,6 @@ type VendorRow = {
   pincode: string | null;
   gstNumber: string | null;
   panNumber: string | null;
-  bankName: string | null;
-  accountNumber: string | null;
-  ifscCode: string | null;
   notes: string | null;
   status: string;
   createdAt: Date;
@@ -72,9 +66,6 @@ function toVendorDTO(v: VendorRow) {
     pincode: v.pincode ?? "",
     gst: v.gstNumber ?? "",
     pan: v.panNumber ?? "",
-    bankName: v.bankName ?? "",
-    accountNumber: v.accountNumber ?? "",
-    ifscCode: v.ifscCode ?? "",
     notes: v.notes ?? "",
     status: v.status,
     createdAt: v.createdAt.toISOString(),
@@ -147,9 +138,6 @@ export async function createVendor(companyId: string, input: VendorFormInput) {
       pincode: input.pincode || null,
       gstNumber: input.gst || null,
       panNumber: input.pan || null,
-      bankName: input.bankName || null,
-      accountNumber: input.accountNumber || null,
-      ifscCode: input.ifscCode || null,
       notes: input.notes || null,
       status: input.status || "Active",
     },
@@ -182,9 +170,6 @@ export async function updateVendor(
       pincode: input.pincode || null,
       gstNumber: input.gst || null,
       panNumber: input.pan || null,
-      bankName: input.bankName || null,
-      accountNumber: input.accountNumber || null,
-      ifscCode: input.ifscCode || null,
       notes: input.notes || null,
       status: input.status || "Active",
     },

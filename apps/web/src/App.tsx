@@ -54,6 +54,16 @@ import EditVendorBill from "./pages/vendor-bills/EditVendorBill";
 import ViewVendorBill from "./pages/vendor-bills/ViewVendorBill";
 import VendorBillsDashboard from "./pages/vendor-bills/VendorBillsDashboard";
 
+/* Vendor Payments */
+import VendorPayments from "./pages/vendor-payments/VendorPayments";
+import AddVendorPayment from "./pages/vendor-payments/AddVendorPayment";
+import ViewVendorPayment from "./pages/vendor-payments/ViewVendorPayment";
+import VendorPaymentsDashboard from "./pages/vendor-payments/VendorPaymentsDashboard";
+import VendorLedger from "./pages/vendor-payments/VendorLedger";
+
+/* Company Bank Accounts */
+import CompanyBankAccounts from "./pages/company-bank-accounts/CompanyBankAccounts";
+
 export default function App() {
   return (
     <Routes>
@@ -96,6 +106,16 @@ export default function App() {
       <Route path="/purchase-orders/new" element={<AddPurchaseOrder />} />
       <Route path="/purchase-orders/:id" element={<ViewPurchaseOrder />} />
       <Route path="/purchase-orders/:id/edit" element={<EditPurchaseOrder />} />
+
+      {/* Vendor Payments */}
+      <Route path="/vendor-payments" element={<VendorPayments />} />
+      <Route path="/vendor-payments/new" element={<AddVendorPayment />} />
+      <Route path="/vendor-payments/dashboard" element={<VendorPaymentsDashboard />} />
+      <Route path="/vendor-payments/ledger" element={<VendorLedger />} />
+      <Route path="/vendor-payments/:id" element={<ViewVendorPayment />} />
+
+      {/* Company Bank Accounts */}
+      <Route path="/company-bank-accounts" element={<CompanyBankAccounts />} />
 
       {/* Material Receipts */}
       <Route path="/material-receipts" element={<MaterialReceipts />} />

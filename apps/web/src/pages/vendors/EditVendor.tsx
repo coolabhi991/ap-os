@@ -33,9 +33,6 @@ export default function EditVendor() {
           pincode: vendor.pincode,
           gst: vendor.gst,
           pan: vendor.pan,
-          bankName: vendor.bankName,
-          accountNumber: vendor.accountNumber,
-          ifscCode: vendor.ifscCode,
           notes: vendor.notes,
           status: vendor.status,
         });

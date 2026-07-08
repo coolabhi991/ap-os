@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 
 import Layout from "../../components/layout/Layout";
 import VendorOverview from "../../components/vendors/VendorOverview";
+import VendorBankAccountsPanel from "../../components/vendors/VendorBankAccountsPanel";
 import { getVendor } from "../../services/vendors";
 import type { Vendor } from "../../services/vendors";
 
@@ -43,7 +44,10 @@ export default function ViewVendor() {
 
   return (
     <Layout>
-      <VendorOverview vendor={vendor} />
+      <div className="space-y-6">
+        <VendorOverview vendor={vendor} />
+        <VendorBankAccountsPanel vendorId={vendor.id} />
+      </div>
     </Layout>
   );
 }

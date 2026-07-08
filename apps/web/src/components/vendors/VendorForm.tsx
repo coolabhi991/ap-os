@@ -21,9 +21,6 @@ export default function VendorForm({ initialData, onSubmit, saving = false }: Pr
     pincode: initialData?.pincode ?? "",
     gst: initialData?.gst ?? "",
     pan: initialData?.pan ?? "",
-    bankName: initialData?.bankName ?? "",
-    accountNumber: initialData?.accountNumber ?? "",
-    ifscCode: initialData?.ifscCode ?? "",
     notes: initialData?.notes ?? "",
     status: initialData?.status ?? "Active",
   });
@@ -116,15 +113,9 @@ export default function VendorForm({ initialData, onSubmit, saving = false }: Pr
         </div>
       </div>
 
-      {/* Bank */}
-      <div>
-        <h2 className="mb-4 text-lg font-semibold text-slate-700">Bank Details</h2>
-        <div className="grid gap-6 md:grid-cols-2">
-          {field("Bank Name", "bankName")}
-          {field("Account Number", "accountNumber")}
-          {field("IFSC Code", "ifscCode")}
-        </div>
-      </div>
+      <p className="text-sm text-slate-400">
+        Bank accounts are managed separately from the vendor&apos;s detail page after saving.
+      </p>
 
       {/* Notes */}
       <div>

@@ -1,6 +1,16 @@
 import prisma from "../config/prisma.js";
 import { Prisma, VendorBillStatus, PaymentStatus } from "@prisma/client";
 
+export const PAYMENT_MODES = ["CASH", "BANK", "CHEQUE", "UPI", "NEFT", "RTGS"];
+
+function parseMode(m: string): string {
+  const upper = m.trim().toUpperCase();
+  if (!PAYMENT_MODES.includes(upper)) {
+    throw new Error(`Invalid payment mode: ${m}. Must be one of ${PAYMENT_MODES.join(", ")}`);
+  }
+  return upper;
+}
+
 /**
  * Vendor Bill: the central payable record for the actual AP Construction
  * workflow — vendor delivers material on a phone order, we log a Material
@@ -50,7 +60,12 @@ export interface VendorBillListQuery {
 export interface RecordPaymentInput {
   amount: number;
   paymentDate?: string;
-  mode?: string;
+  mode: string;
+  companyBankAccountId?: string;
+  vendorBankAccountId?: string;
+  referenceNumber?: string;
+  attachmentFileName?: string;
+  attachmentFileUrl?: string;
   remarks?: string;
 }
 
@@ -93,7 +108,13 @@ const include = {
   project: { select: { id: true, name: true } },
   purchaseOrder: { select: { id: true, poNumber: true } },
   materialReceipt: { select: { id: true, receiptNumber: true } },
-  payments: { orderBy: { paymentDate: "desc" as const } },
+  payments: {
+    orderBy: { paymentDate: "desc" as const },
+    include: {
+      companyBankAccount: { select: { id: true, nickname: true, bankName: true, accountNumber: true } },
+      vendorBankAccount: { select: { id: true, nickname: true, bankName: true, accountNumber: true } },
+    },
+  },
 };
 
 type VendorBillRow = Prisma.VendorBillGetPayload<{ include: typeof include }>;
@@ -136,6 +157,11 @@ function toDTO(bill: VendorBillRow) {
       paymentDate: p.paymentDate.toISOString(),
       amount: p.amount.toString(),
       mode: p.mode ?? "",
+      referenceNumber: p.referenceNumber ?? "",
+      attachmentFileName: p.attachmentFileName ?? "",
+      attachmentFileUrl: p.attachmentFileUrl ?? "",
+      companyBankAccount: p.companyBankAccount,
+      vendorBankAccount: p.vendorBankAccount,
       remarks: p.remarks ?? "",
       status: p.status,
     })),
@@ -342,21 +368,48 @@ export async function recordVendorBillPayment(id: string, companyId: string, inp
     throw new Error(`Payment amount (${input.amount}) exceeds outstanding balance (${currentOutstanding})`);
   }
 
+  if (!input.mode?.trim()) throw new Error("Payment mode is required");
+  const mode = parseMode(input.mode);
+
+  let companyBankAccountId: string | null = null;
+  let vendorBankAccountId: string | null = null;
+
+  if (mode !== "CASH") {
+    if (!input.companyBankAccountId?.trim()) throw new Error("Company bank account is required for non-cash payments");
+    if (!input.vendorBankAccountId?.trim()) throw new Error("Vendor bank account is required for non-cash payments");
+
+    const companyAccount = await prisma.companyBankAccount.findFirst({ where: { id: input.companyBankAccountId, companyId } });
+    if (!companyAccount) throw new Error("Company bank account not found");
+
+    const vendorAccount = await prisma.vendorBankAccount.findFirst({
+      where: { id: input.vendorBankAccountId, companyId, vendorId: existing.vendorId },
+    });
+    if (!vendorAccount) throw new Error("Vendor bank account not found");
+
+    companyBankAccountId = companyAccount.id;
+    vendorBankAccountId = vendorAccount.id;
+  }
+
   const newPaidAmount = Number(existing.paidAmount) + input.amount;
   const newOutstanding = Number(existing.totalAmount) - newPaidAmount;
   const newStatus = deriveBillStatus(newPaidAmount, Number(existing.totalAmount));
 
   const bill = await prisma.$transaction(async (tx) => {
-    await tx.payment.create({
+    await tx.vendorPayment.create({
       data: {
         companyId,
         projectId: existing.projectId,
         vendorId: existing.vendorId,
         vendorBillId: id,
+        companyBankAccountId,
+        vendorBankAccountId,
         paymentNumber: autoPaymentNumber(),
         paymentDate: input.paymentDate ? new Date(input.paymentDate) : new Date(),
         amount: input.amount,
-        mode: input.mode || null,
+        mode,
+        referenceNumber: input.referenceNumber || null,
+        attachmentFileName: input.attachmentFileName || null,
+        attachmentFileUrl: input.attachmentFileUrl || null,
         remarks: input.remarks || null,
         status: "PAID" as PaymentStatus,
       },
@@ -397,7 +450,7 @@ export async function deleteVendorBill(id: string, companyId: string) {
   const existing = await prisma.vendorBill.findFirst({ where: { id, companyId } });
   if (!existing) throw new Error("Vendor Bill not found");
 
-  const paymentCount = await prisma.payment.count({ where: { vendorBillId: id } });
+  const paymentCount = await prisma.vendorPayment.count({ where: { vendorBillId: id } });
   if (paymentCount > 0) {
     throw new Error("Cannot delete a vendor bill that already has recorded payments. Cancel it instead.");
   }

@@ -9,6 +9,7 @@ import {
   Truck,
   Boxes,
   Wallet,
+  Banknote,
   Receipt,
   Landmark,
   BarChart3,
@@ -71,13 +72,18 @@ const menus = [
     icon: Wallet,
   },
   {
+    name: "Vendor Payments",
+    path: "/vendor-payments",
+    icon: Banknote,
+  },
+  {
     name: "Billing",
     path: "#",
     icon: Receipt,
   },
   {
-    name: "Accounts",
-    path: "#",
+    name: "Bank Accounts",
+    path: "/company-bank-accounts",
     icon: Landmark,
   },
   {

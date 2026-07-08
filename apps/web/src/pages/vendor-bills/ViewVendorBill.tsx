@@ -12,6 +12,11 @@ import {
   VENDOR_BILL_STATUS_COLORS,
 } from "../../services/vendor-bills";
 import type { VendorBill } from "../../services/vendor-bills";
+import { PAYMENT_MODE_OPTIONS, PAYMENT_MODE_LABELS } from "../../services/vendor-payments";
+import { getCompanyBankAccounts } from "../../services/company-bank-accounts";
+import type { CompanyBankAccount } from "../../services/company-bank-accounts";
+import { getVendorBankAccounts } from "../../services/vendor-bank-accounts";
+import type { VendorBankAccount } from "../../services/vendor-bank-accounts";
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
@@ -32,9 +37,16 @@ export default function ViewVendorBill() {
   const [showPayment, setShowPayment] = useState(false);
   const [amount, setAmount] = useState("");
   const [mode, setMode] = useState("");
+  const [referenceNumber, setReferenceNumber] = useState("");
   const [remarks, setRemarks] = useState("");
   const [recording, setRecording] = useState(false);
   const [paymentError, setPaymentError] = useState<string | null>(null);
+
+  const [companyAccounts, setCompanyAccounts] = useState<CompanyBankAccount[]>([]);
+  const [companyBankAccountId, setCompanyBankAccountId] = useState("");
+  const [vendorAccounts, setVendorAccounts] = useState<VendorBankAccount[]>([]);
+  const [vendorBankAccountId, setVendorBankAccountId] = useState("");
+  const isCash = mode === "CASH";
 
   const load = async () => {
     if (!id) return;
@@ -54,6 +66,27 @@ export default function ViewVendorBill() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
+  useEffect(() => {
+    if (!bill) return;
+    getCompanyBankAccounts()
+      .then((accounts) => {
+        const active = accounts.filter((a) => a.isActive);
+        setCompanyAccounts(active);
+        const primary = active.find((a) => a.isPrimary);
+        if (primary) setCompanyBankAccountId(primary.id);
+      })
+      .catch(() => {});
+    getVendorBankAccounts(bill.vendorId)
+      .then((accounts) => {
+        const active = accounts.filter((a) => a.isActive);
+        setVendorAccounts(active);
+        const primary = active.find((a) => a.isPrimary);
+        if (primary) setVendorBankAccountId(primary.id);
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [bill?.vendorId]);
+
   const handleRecordPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!id) return;
@@ -62,13 +95,33 @@ export default function ViewVendorBill() {
       setPaymentError("Enter a payment amount greater than zero.");
       return;
     }
+    if (!mode) {
+      setPaymentError("Select a payment mode.");
+      return;
+    }
+    if (!isCash && !companyBankAccountId) {
+      setPaymentError("Select the company bank account this payment was made from.");
+      return;
+    }
+    if (!isCash && !vendorBankAccountId) {
+      setPaymentError("Select the vendor bank account receiving this payment.");
+      return;
+    }
     try {
       setRecording(true);
       setPaymentError(null);
-      await recordVendorBillPayment(id, { amount: value, mode: mode || undefined, remarks: remarks || undefined });
+      await recordVendorBillPayment(id, {
+        amount: value,
+        mode,
+        companyBankAccountId: isCash ? undefined : companyBankAccountId,
+        vendorBankAccountId: isCash ? undefined : vendorBankAccountId,
+        referenceNumber: referenceNumber || undefined,
+        remarks: remarks || undefined,
+      });
       setShowPayment(false);
       setAmount("");
       setMode("");
+      setReferenceNumber("");
       setRemarks("");
       await load();
     } catch (err) {
@@ -170,22 +223,72 @@ export default function ViewVendorBill() {
                 />
               </div>
               <div>
-                <label className="mb-2 block text-sm font-medium">Mode</label>
-                <select value={mode} onChange={(e) => setMode(e.target.value)} className="w-full rounded-lg border p-3">
+                <label className="mb-2 block text-sm font-medium">Mode *</label>
+                <select value={mode} onChange={(e) => setMode(e.target.value)} required className="w-full rounded-lg border p-3">
                   <option value="">Select Mode</option>
-                  <option value="Cash">Cash</option>
-                  <option value="Bank Transfer">Bank Transfer</option>
-                  <option value="Cheque">Cheque</option>
-                  <option value="UPI">UPI</option>
+                  {PAYMENT_MODE_OPTIONS.map((m) => (
+                    <option key={m} value={m}>{PAYMENT_MODE_LABELS[m]}</option>
+                  ))}
                 </select>
               </div>
+              <div className="md:col-span-2">
+                <label className="mb-2 block text-sm font-medium">Reference / UTR / Cheque No.</label>
+                <input
+                  type="text"
+                  value={referenceNumber}
+                  onChange={(e) => setReferenceNumber(e.target.value)}
+                  placeholder="e.g. UTR or cheque number"
+                  className="w-full rounded-lg border p-3"
+                />
+              </div>
+
+              {!isCash && (
+                <>
+                  <div>
+                    <label className="mb-2 block text-sm font-medium">Pay From (Company Account) *</label>
+                    <select
+                      value={companyBankAccountId}
+                      onChange={(e) => setCompanyBankAccountId(e.target.value)}
+                      required
+                      className="w-full rounded-lg border p-3"
+                    >
+                      <option value="">Select Company Account</option>
+                      {companyAccounts.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.nickname || a.bankName} (••••{a.accountNumber.slice(-4)})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-medium">Pay To (Vendor Account) *</label>
+                    <select
+                      value={vendorBankAccountId}
+                      onChange={(e) => setVendorBankAccountId(e.target.value)}
+                      required
+                      className="w-full rounded-lg border p-3"
+                    >
+                      <option value="">Select Vendor Account</option>
+                      {vendorAccounts.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.nickname || a.bankName} (••••{a.accountNumber.slice(-4)})
+                        </option>
+                      ))}
+                    </select>
+                    {vendorAccounts.length === 0 && (
+                      <p className="mt-1 text-xs text-amber-600">No bank accounts on file for this vendor.</p>
+                    )}
+                  </div>
+                </>
+              )}
+
               <div className="md:col-span-2">
                 <label className="mb-2 block text-sm font-medium">Remarks</label>
                 <input
                   type="text"
                   value={remarks}
                   onChange={(e) => setRemarks(e.target.value)}
-                  placeholder="Reference / notes"
+                  placeholder="Notes"
                   className="w-full rounded-lg border p-3"
                 />
               </div>
