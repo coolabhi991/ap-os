@@ -10,6 +10,7 @@ import {
   Boxes,
   Wallet,
   Banknote,
+  HandCoins,
   Receipt,
   Landmark,
   BarChart3,
@@ -75,6 +76,11 @@ const menus = [
     name: "Vendor Payments",
     path: "/vendor-payments",
     icon: Banknote,
+  },
+  {
+    name: "Site Expenses",
+    path: "/expenses",
+    icon: HandCoins,
   },
   {
     name: "Billing",

@@ -64,6 +64,15 @@ import VendorLedger from "./pages/vendor-payments/VendorLedger";
 /* Company Bank Accounts */
 import CompanyBankAccounts from "./pages/company-bank-accounts/CompanyBankAccounts";
 
+/* Site Expenses */
+import Expenses from "./pages/expenses/Expenses";
+import AddExpense from "./pages/expenses/AddExpense";
+import EditExpense from "./pages/expenses/EditExpense";
+import ViewExpense from "./pages/expenses/ViewExpense";
+import ExpensesDashboard from "./pages/expenses/ExpensesDashboard";
+import ExpenseCategories from "./pages/expenses/ExpenseCategories";
+import ExpenseReports from "./pages/expenses/ExpenseReports";
+
 export default function App() {
   return (
     <Routes>
@@ -116,6 +125,15 @@ export default function App() {
 
       {/* Company Bank Accounts */}
       <Route path="/company-bank-accounts" element={<CompanyBankAccounts />} />
+
+      {/* Site Expenses */}
+      <Route path="/expenses" element={<Expenses />} />
+      <Route path="/expenses/new" element={<AddExpense />} />
+      <Route path="/expenses/dashboard" element={<ExpensesDashboard />} />
+      <Route path="/expenses/reports" element={<ExpenseReports />} />
+      <Route path="/expenses/categories" element={<ExpenseCategories />} />
+      <Route path="/expenses/:id" element={<ViewExpense />} />
+      <Route path="/expenses/:id/edit" element={<EditExpense />} />
 
       {/* Material Receipts */}
       <Route path="/material-receipts" element={<MaterialReceipts />} />

@@ -17,6 +17,8 @@ import vendorBillRoutes from "./routes/vendor-bill.routes.js";
 import vendorPaymentRoutes from "./routes/vendor-payment.routes.js";
 import vendorBankAccountRoutes from "./routes/vendor-bank-account.routes.js";
 import companyBankAccountRoutes from "./routes/company-bank-account.routes.js";
+import expenseRoutes from "./routes/expense.routes.js";
+import expenseCategoryRoutes from "./routes/expense-category.routes.js";
 
 const app = express();
 
@@ -48,5 +50,7 @@ app.use("/api/v1/vendor-bills", vendorBillRoutes);
 app.use("/api/v1/vendor-payments", vendorPaymentRoutes);
 app.use("/api/v1/vendor-bank-accounts", vendorBankAccountRoutes);
 app.use("/api/v1/company-bank-accounts", companyBankAccountRoutes);
+app.use("/api/v1/expenses", expenseRoutes);
+app.use("/api/v1/expense-categories", expenseCategoryRoutes);
 
 export default app;
