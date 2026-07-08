@@ -9,6 +9,8 @@ import {
   Landmark,
   BarChart3,
   Settings,
+  Sparkles,
+  ChevronRight,
 } from "lucide-react";
 
 import { NavLink } from "react-router-dom";
@@ -29,7 +31,6 @@ const menus = [
     path: "/clients",
     icon: Users,
   },
-
   {
     name: "Vendors",
     path: "#",
@@ -69,21 +70,57 @@ const menus = [
 
 export default function Sidebar() {
   return (
-    <aside className="flex min-h-screen w-64 flex-col bg-slate-900 text-white">
+    <aside className="m-4 flex h-[calc(100vh-32px)] w-[280px] flex-col rounded-[30px] border border-white/70 bg-white/70 backdrop-blur-3xl shadow-[0_12px_35px_rgba(15,23,42,.05)]">
 
-      <div className="border-b border-slate-700 p-6">
+      {/* ---------------------------------------------------------------- */}
+      {/* Logo */}
+      {/* ---------------------------------------------------------------- */}
 
-        <h1 className="text-3xl font-bold tracking-wide">
-          AP OS
-        </h1>
+      <div className="p-5">
 
-        <p className="mt-1 text-sm text-slate-400">
-          Construction ERP
+        <div className="rounded-[24px] border border-[#F1E2B0] bg-[#FCFAF4] p-4">
+
+          <div className="flex items-center gap-3">
+
+            {/* Reserved Logo */}
+
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-[#D8B44A] text-lg font-bold text-white shadow-sm">
+
+              AP
+
+            </div>
+
+            <div>
+
+              <h1 className="text-[22px] font-bold leading-tight text-slate-900">
+                AP Construction
+              </h1>
+
+              <p className="mt-1 text-sm text-slate-500">
+                Operating System
+              </p>
+
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+
+      {/* ---------------------------------------------------------------- */}
+      {/* Workspace */}
+      {/* ---------------------------------------------------------------- */}
+
+      <div className="px-5">
+
+        <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.35em] text-slate-400">
+          Workspace
         </p>
 
       </div>
 
-      <nav className="mt-6 flex-1 px-3">
+      <nav className="flex-1 px-4">
 
         {menus.map((menu) => {
           const Icon = menu.icon;
@@ -93,18 +130,34 @@ export default function Sidebar() {
               key={menu.name}
               to={menu.path}
               className={({ isActive }) =>
-                `mb-2 flex items-center gap-3 rounded-lg px-4 py-3 transition ${
+                `group mb-2 flex items-center justify-between rounded-2xl px-3 py-2.5 transition-all duration-200 ${
                   isActive
-                    ? "bg-blue-600 text-white"
-                    : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                    ? "border border-[#F2DFAB] bg-[#FCF8EC] shadow-sm"
+                    : "hover:bg-white hover:shadow-sm"
                 }`
               }
             >
-              <Icon size={20} />
+              <div className="flex items-center gap-3">
 
-              <span className="font-medium">
-                {menu.name}
-              </span>
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white">
+
+                  <Icon
+                    size={18}
+                    className="text-[#B98A1F]"
+                  />
+
+                </div>
+
+                <span className="text-[15px] font-medium text-slate-700">
+                  {menu.name}
+                </span>
+
+              </div>
+
+              <ChevronRight
+                size={15}
+                className="text-slate-300 transition group-hover:text-[#B98A1F]"
+              />
 
             </NavLink>
           );
@@ -112,8 +165,73 @@ export default function Sidebar() {
 
       </nav>
 
-      <div className="border-t border-slate-700 p-4 text-center text-xs text-slate-500">
-        AP OS v1.0
+      {/* ---------------------------------------------------------------- */}
+      {/* APCI */}
+      {/* ---------------------------------------------------------------- */}
+
+      <div className="p-4">
+
+        <div className="rounded-[24px] bg-[#243247] p-5 text-white shadow-lg">
+
+          <div className="flex items-center gap-3">
+
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#D8B44A]">
+
+              <Sparkles
+                size={18}
+                className="text-white"
+              />
+
+            </div>
+
+            <div>
+
+              <h3 className="font-semibold">
+                APCI
+              </h3>
+
+              <p className="text-xs text-slate-300">
+                Construction Intelligence
+              </p>
+
+            </div>
+
+          </div>
+
+          <div className="mt-4 rounded-xl bg-white/10 p-3">
+
+            <p className="text-sm">
+              Good Afternoon, Abhijit.
+            </p>
+
+            <p className="mt-2 text-xs leading-5 text-slate-300">
+              • 2 approvals pending
+              <br />
+              • ₹2.60 Cr receivable
+              <br />
+              • 1 meeting today
+            </p>
+
+          </div>
+
+        </div>
+
+      </div>
+
+      {/* ---------------------------------------------------------------- */}
+      {/* Footer */}
+      {/* ---------------------------------------------------------------- */}
+
+      <div className="pb-5 text-center">
+
+        <p className="text-[11px] tracking-[0.2em] text-slate-400">
+          AP CONSTRUCTION OS
+        </p>
+
+        <p className="mt-1 text-[11px] text-slate-400">
+          Version 1.0
+        </p>
+
       </div>
 
     </aside>

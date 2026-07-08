@@ -1,8 +1,6 @@
 import { useParams } from "react-router-dom";
-
 import Layout from "../../components/layout/Layout";
-import ProjectOverview from "../../components/projects/ProjectOverview";
-
+import ProjectWorkspace from "../../components/project-workspace/ProjectWorkspace";
 import { getProject } from "../../services/projects";
 
 export default function ViewProject() {
@@ -28,18 +26,7 @@ export default function ViewProject() {
 
   return (
     <Layout>
-      <ProjectOverview
-        name={project.name}
-        code={project.code}
-        client={project.client}
-        manager={project.manager}
-        status={project.status}
-        contractValue={Number(project.budget)}
-        spent={18.4}
-        progress={68}
-        startDate={project.startDate}
-        endDate={project.endDate}
-      />
+      <ProjectWorkspace project={project} />
     </Layout>
   );
 }

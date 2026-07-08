@@ -16,6 +16,9 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
+    /* TypeScript 6 Compatibility */
+    "ignoreDeprecations": "6.0",
+
     /* Path Alias */
     "baseUrl": ".",
     "paths": {
