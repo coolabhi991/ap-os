@@ -1,11 +1,22 @@
 import { Eye, Pencil, Trash2 } from "lucide-react";
 import type { Project } from "../../services/projects";
 
+function statusLabel(status: string) {
+  const map: Record<string, string> = {
+    PLANNING: "Planning",
+    ACTIVE: "Active",
+    ON_HOLD: "On Hold",
+    COMPLETED: "Completed",
+    CANCELLED: "Cancelled",
+  };
+  return map[status] ?? status;
+}
+
 interface Props {
   projects?: Project[];
-  onView: (id: number) => void;
-  onEdit: (id: number) => void;
-  onDelete: (id: number) => void;
+  onView: (id: string) => void;
+  onEdit: (id: string) => void;
+  onDelete: (id: string) => void;
 }
 
 export default function ProjectTable({
@@ -48,15 +59,15 @@ export default function ProjectTable({
                 </td>
 
                 <td className="px-6 py-4">
-                  {project.client}
+                  {project.client?.name ?? "—"}
                 </td>
 
                 <td className="px-6 py-4">
-                  {project.status}
+                  {statusLabel(project.status)}
                 </td>
 
                 <td className="px-6 py-4">
-                  ₹{project.budget} Cr
+                  ₹{project.contractValue} Cr
                 </td>
 
                 <td className="px-6 py-4">

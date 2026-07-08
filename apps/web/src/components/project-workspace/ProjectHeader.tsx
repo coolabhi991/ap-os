@@ -12,13 +12,23 @@ export default function ProjectHeader({
   status,
 }: ProjectHeaderProps) {
   const statusColor =
-    status === "Running"
+    status === "ACTIVE"
       ? "bg-emerald-500"
-      : status === "Completed"
+      : status === "COMPLETED"
       ? "bg-blue-500"
-      : status === "Planning"
+      : status === "PLANNING"
       ? "bg-amber-500"
+      : status === "ON_HOLD"
+      ? "bg-orange-400"
       : "bg-red-500";
+
+  const statusDisplay: Record<string, string> = {
+    PLANNING: "Planning",
+    ACTIVE: "Active",
+    ON_HOLD: "On Hold",
+    COMPLETED: "Completed",
+    CANCELLED: "Cancelled",
+  };
 
   return (
     <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
@@ -47,7 +57,7 @@ export default function ProjectHeader({
           <div className={`h-3 w-3 rounded-full ${statusColor}`} />
 
           <span className="font-medium">
-            {status}
+            {statusDisplay[status] ?? status}
           </span>
         </div>
       </div>

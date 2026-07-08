@@ -67,6 +67,7 @@ export async function registerUser(data: RegisterUserInput) {
     name: user.name,
     email: user.email,
     role: role.name,
+    companyId: company.id,
   };
 }
 
@@ -94,6 +95,7 @@ export async function loginUser(email: string, password: string) {
     id: user.id,
     email: user.email,
     role: user.role.name,
+    companyId: user.companyId,
   });
 
   return {
@@ -103,6 +105,7 @@ export async function loginUser(email: string, password: string) {
       name: user.name,
       email: user.email,
       role: user.role.name,
+      companyId: user.companyId,
     },
   };
 }

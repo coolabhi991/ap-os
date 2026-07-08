@@ -219,6 +219,7 @@ model Project {
   code                String?
   description         String?
   location            String?
+  manager             String?
   status              ProjectStatus @default(PLANNING)
   contractValue       Decimal @default(0) @db.Decimal(12, 2)
   progress            Int @default(0)

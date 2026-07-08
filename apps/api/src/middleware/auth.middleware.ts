@@ -2,7 +2,12 @@ import { Request, Response, NextFunction } from "express";
 import { verifyToken } from "../config/jwt.js";
 
 export interface AuthRequest extends Request {
-  user?: any;
+  user?: {
+    id: string;
+    email: string;
+    role: string;
+    companyId: string;
+  };
 }
 
 export function authMiddleware(
@@ -22,7 +27,7 @@ export function authMiddleware(
   const token = authHeader.replace("Bearer ", "");
 
   try {
-    const decoded = verifyToken(token);
+    const decoded = verifyToken(token) as { id: string; email: string; role: string; companyId: string };
 
     req.user = decoded;
 

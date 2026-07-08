@@ -1,38 +1,29 @@
     import { useState } from "react";
-
-    export interface ProjectFormData {
-    name: string;
-    code: string;
-    client: string;
-    projectType: string;
-    budget: string;
-    manager: string;
-    startDate: string;
-    endDate: string;
-    status: string;
-    description: string;
-    }
+import type { ProjectFormData } from "../../services/projects";
 
     interface Props {
     initialData?: Partial<ProjectFormData>;
     onSubmit: (data: ProjectFormData) => void;
+    saving?: boolean;
     }
 
     export default function ProjectForm({
     initialData,
     onSubmit,
+    saving = false,
     }: Props) {
     const [form, setForm] = useState<ProjectFormData>({
         name: initialData?.name ?? "",
         code: initialData?.code ?? "",
-        client: initialData?.client ?? "",
-        projectType: initialData?.projectType ?? "",
-        budget: initialData?.budget ?? "",
+        clientName: initialData?.clientName ?? "",
+        projectTypeName: initialData?.projectTypeName ?? "",
+        contractValue: initialData?.contractValue ?? "",
         manager: initialData?.manager ?? "",
         startDate: initialData?.startDate ?? "",
         endDate: initialData?.endDate ?? "",
-        status: initialData?.status ?? "Planning",
+        status: initialData?.status ?? "PLANNING",
         description: initialData?.description ?? "",
+        location: initialData?.location ?? "",
     });
 
     const handleChange = (
@@ -92,8 +83,8 @@
             </label>
 
             <input
-                name="client"
-                value={form.client}
+                name="clientName"
+                value={form.clientName}
                 onChange={handleChange}
                 className="w-full rounded-lg border p-3"
             />
@@ -105,8 +96,8 @@
             </label>
 
             <input
-                name="projectType"
-                value={form.projectType}
+                name="projectTypeName"
+                value={form.projectTypeName}
                 onChange={handleChange}
                 className="w-full rounded-lg border p-3"
             />
@@ -114,12 +105,12 @@
 
             <div>
             <label className="mb-2 block font-medium">
-                Budget
+                Contract Value (₹ Cr)
             </label>
 
             <input
-                name="budget"
-                value={form.budget}
+                name="contractValue"
+                value={form.contractValue}
                 onChange={handleChange}
                 className="w-full rounded-lg border p-3"
             />
@@ -179,10 +170,11 @@
             onChange={handleChange}
             className="w-full rounded-lg border p-3"
             >
-            <option>Planning</option>
-            <option>Running</option>
-            <option>On Hold</option>
-            <option>Completed</option>
+            <option value="PLANNING">Planning</option>
+            <option value="ACTIVE">Active</option>
+            <option value="ON_HOLD">On Hold</option>
+            <option value="COMPLETED">Completed</option>
+            <option value="CANCELLED">Cancelled</option>
             </select>
         </div>
 
@@ -211,9 +203,10 @@
 
             <button
             type="submit"
-            className="rounded-lg bg-blue-600 px-6 py-3 text-white hover:bg-blue-700"
+            disabled={saving}
+            className="rounded-lg bg-blue-600 px-6 py-3 text-white hover:bg-blue-700 disabled:opacity-60"
             >
-            Save Project
+            {saving ? "Saving..." : "Save Project"}
             </button>
 
         </div>

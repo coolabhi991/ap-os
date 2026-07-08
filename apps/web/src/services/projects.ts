@@ -1,103 +1,103 @@
+import api from "./api";
+
 export interface Project {
-  id: number;
+  id: string;
+  companyId: string;
+  clientId: string | null;
+  projectTypeId: string | null;
+  name: string;
+  code: string | null;
+  description: string | null;
+  location: string | null;
+  manager: string | null;
+  status: string;
+  contractValue: string; // Decimal serialized as string by Prisma
+  progress: number;
+  startDate: string | null;
+  endDate: string | null;
+  client: { id: string; name: string } | null;
+  projectType: { id: string; name: string } | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProjectListResponse {
+  success: boolean;
+  total: number;
+  page: number;
+  limit: number;
+  data: Project[];
+}
+
+export interface ProjectFormData {
   name: string;
   code: string;
-  client: string;
-  projectType: string;
-  budget: string;
+  clientName: string;
+  projectTypeName: string;
+  contractValue: string;
   manager: string;
   startDate: string;
   endDate: string;
   status: string;
   description: string;
+  location: string;
 }
 
-const STORAGE_KEY = "ap-os-projects";
-
-const defaultProjects: Project[] = [
-  {
-    id: 1,
-    name: "Water Supply Phase 3",
-    code: "WSP-001",
-    client: "NMC",
-    projectType: "Water Supply",
-    budget: "27",
-    manager: "Abhijit Patil",
-    startDate: "2026-01-01",
-    endDate: "2026-12-31",
-    status: "Running",
-    description: "Water Supply Project",
-  },
-  {
-    id: 2,
-    name: "Smart City Road",
-    code: "SCR-002",
-    client: "PWD",
-    projectType: "Road",
-    budget: "14",
-    manager: "Rahul Sharma",
-    startDate: "2026-02-01",
-    endDate: "2026-10-30",
-    status: "Planning",
-    description: "Road Construction",
-  },
-];
-
-function loadProjects(): Project[] {
-  const data = localStorage.getItem(STORAGE_KEY);
-
-  if (!data) {
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify(defaultProjects)
-    );
-    return defaultProjects;
-  }
-
-  return JSON.parse(data);
+export interface ProjectListQuery {
+  search?: string;
+  status?: string;
+  clientId?: string;
+  projectTypeId?: string;
+  page?: number;
+  limit?: number;
+  sortBy?: string;
+  sortOrder?: "asc" | "desc";
 }
 
-function saveProjects(projects: Project[]) {
-  localStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify(projects)
-  );
+export async function getProjects(query?: ProjectListQuery): Promise<ProjectListResponse> {
+  const response = await api.get<ProjectListResponse>("/projects", { params: query });
+  return response.data;
 }
 
-export function getProjects() {
-  return loadProjects();
+export async function getProject(id: string): Promise<Project> {
+  const response = await api.get<{ success: boolean; data: Project }>(`/projects/${id}`);
+  return response.data.data;
 }
 
-export function getProject(id: number) {
-  return loadProjects().find((p) => p.id === id);
-}
-
-export function createProject(project: Omit<Project, "id">) {
-  const projects = loadProjects();
-
-  projects.push({
-    id: Date.now(),
-    ...project,
+export async function createProject(data: ProjectFormData): Promise<Project> {
+  const response = await api.post<{ success: boolean; data: Project }>("/projects", {
+    name: data.name,
+    code: data.code || undefined,
+    clientName: data.clientName || undefined,
+    projectTypeName: data.projectTypeName || undefined,
+    contractValue: data.contractValue ? Number(data.contractValue) : 0,
+    manager: data.manager || undefined,
+    startDate: data.startDate || undefined,
+    endDate: data.endDate || undefined,
+    status: data.status || "PLANNING",
+    description: data.description || undefined,
+    location: data.location || undefined,
   });
-
-  saveProjects(projects);
+  return response.data.data;
 }
 
-export function updateProject(
-  id: number,
-  data: Omit<Project, "id">
-) {
-  const projects = loadProjects().map((p) =>
-    p.id === id ? { id, ...data } : p
-  );
-
-  saveProjects(projects);
+export async function updateProject(id: string, data: ProjectFormData): Promise<Project> {
+  const response = await api.put<{ success: boolean; data: Project }>(`/projects/${id}`, {
+    name: data.name,
+    code: data.code || undefined,
+    clientName: data.clientName || undefined,
+    projectTypeName: data.projectTypeName || undefined,
+    contractValue: data.contractValue ? Number(data.contractValue) : 0,
+    manager: data.manager || undefined,
+    startDate: data.startDate || undefined,
+    endDate: data.endDate || undefined,
+    status: data.status || "PLANNING",
+    description: data.description || undefined,
+    location: data.location || undefined,
+  });
+  return response.data.data;
 }
 
-export function deleteProject(id: number) {
-  const projects = loadProjects().filter(
-    (p) => p.id !== id
-  );
-
-  saveProjects(projects);
+export async function deleteProject(id: string): Promise<void> {
+  await api.delete(`/projects/${id}`);
 }

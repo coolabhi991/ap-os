@@ -15,17 +15,17 @@ export default function ProjectWorkspace({ project }: ProjectWorkspaceProps) {
       <div className="space-y-6">
         <ProjectHeader
           name={project.name}
-          code={project.code}
-          client={project.client}
+          code={project.code ?? ""}
+          client={project.client?.name ?? ""}
           status={project.status}
         />
 
         <ProjectStats
-          contractValue={Number(project.budget)}
-          progress={72}
-          manager={project.manager}
-          startDate={project.startDate}
-          endDate={project.endDate}
+          contractValue={Number(project.contractValue)}
+          progress={project.progress}
+          manager={project.manager ?? ""}
+          startDate={project.startDate?.slice(0, 10) ?? ""}
+          endDate={project.endDate?.slice(0, 10) ?? ""}
         />
 
         <div className="flex flex-col gap-6 xl:flex-row">
