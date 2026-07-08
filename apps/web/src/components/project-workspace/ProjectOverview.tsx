@@ -1,5 +1,7 @@
 import { FileText, IndianRupee, Package, Users, CalendarDays, Camera, Sparkles, ClipboardList, LayoutDashboard } from "lucide-react";
 import type { Project } from "../../services/projects";
+import FinanceModule from "./FinanceModule";
+import MaterialsModule from "./MaterialsModule";
 
 interface ProjectOverviewProps {
   project: Project;
@@ -134,6 +136,14 @@ export default function ProjectOverview({
   activeSection,
 }: ProjectOverviewProps) {
   const content = sectionContent[activeSection] ?? sectionContent.Overview;
+
+  if (activeSection === "Finance") {
+    return <FinanceModule project={project} />;
+  }
+
+  if (activeSection === "Materials") {
+    return <MaterialsModule project={project} />;
+  }
 
   return (
     <div className="flex-1 space-y-6">
