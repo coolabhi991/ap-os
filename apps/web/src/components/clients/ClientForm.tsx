@@ -1,30 +1,16 @@
 import { useState } from "react";
-
-export interface ClientFormData {
-  companyName: string;
-  clientCode: string;
-  contactPerson: string;
-  mobile: string;
-  email: string;
-  gst: string;
-  pan: string;
-  address: string;
-  city: string;
-  state: string;
-  pincode: string;
-  website: string;
-  status: string;
-  notes: string;
-}
+import type { ClientFormData } from "../../services/clients";
 
 interface Props {
   initialData?: Partial<ClientFormData>;
   onSubmit: (data: ClientFormData) => void;
+  saving?: boolean;
 }
 
 export default function ClientForm({
   initialData,
   onSubmit,
+  saving = false,
 }: Props) {
   const [form, setForm] = useState<ClientFormData>({
     companyName: initialData?.companyName ?? "",
@@ -254,9 +240,10 @@ export default function ClientForm({
 
         <button
           type="submit"
-          className="rounded-lg bg-blue-600 px-6 py-3 text-white hover:bg-blue-700"
+          disabled={saving}
+          className="rounded-lg bg-blue-600 px-6 py-3 text-white hover:bg-blue-700 disabled:opacity-60"
         >
-          Save Client
+          {saving ? "Saving..." : "Save Client"}
         </button>
       </div>
     </form>

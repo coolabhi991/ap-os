@@ -3,9 +3,9 @@ import type { Client } from "../../services/clients";
 
 interface Props {
   clients?: Client[];
-  onView: (id: number) => void;
-  onEdit: (id: number) => void;
-  onDelete: (id: number) => void;
+  onView: (id: string) => void;
+  onEdit: (id: string) => void;
+  onDelete: (id: string) => void;
 }
 
 export default function ClientTable({

@@ -1,35 +1,41 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import Layout from "../../components/layout/Layout";
 import ClientForm from "../../components/clients/ClientForm";
+import type { ClientFormData } from "../../services/clients";
 
 import { createClient } from "../../services/clients";
 
 export default function AddClient() {
   const navigate = useNavigate();
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = (data: any) => {
-    createClient(data);
-
-    navigate("/clients");
+  const handleSubmit = async (data: ClientFormData) => {
+    try {
+      setSaving(true);
+      setError(null);
+      await createClient(data);
+      navigate("/clients");
+    } catch {
+      setError("Failed to create client. Please try again.");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
     <Layout>
       <div className="space-y-6">
-
         <div>
-          <h1 className="text-3xl font-bold text-slate-900">
-            Add Client
-          </h1>
-
-          <p className="mt-2 text-slate-500">
-            Create a new client.
-          </p>
+          <h1 className="text-3xl font-bold text-slate-900">Add Client</h1>
+          <p className="mt-2 text-slate-500">Create a new client.</p>
         </div>
-
-        <ClientForm onSubmit={handleSubmit} />
-
+        {error && (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-6 py-4 text-red-700">{error}</div>
+        )}
+        <ClientForm onSubmit={handleSubmit} saving={saving} />
       </div>
     </Layout>
   );

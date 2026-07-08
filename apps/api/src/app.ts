@@ -7,6 +7,7 @@ import userRoutes from "./routes/user.routes.js";
 import dashboardRoutes from "./routes/dashboard.routes.js";
 import projectRoutes from "./routes/project.routes.js";
 import purchaseRoutes from "./routes/purchase.routes.js";
+import clientRoutes from "./routes/client.routes.js";
 
 const app = express();
 
@@ -28,5 +29,6 @@ app.use("/api/v1/users", userRoutes);
 app.use("/api/v1/dashboard", dashboardRoutes);
 app.use("/api/v1/projects", projectRoutes);
 app.use("/api/v1/purchase", purchaseRoutes);
+app.use("/api/v1/clients", clientRoutes);
 
 export default app;
