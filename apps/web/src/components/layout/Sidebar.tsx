@@ -5,6 +5,10 @@ import {
   Building2,
   HardHat,
   ShoppingCart,
+  ClipboardList,
+  Truck,
+  Boxes,
+  Wallet,
   Receipt,
   Landmark,
   BarChart3,
@@ -42,9 +46,29 @@ const menus = [
     icon: HardHat,
   },
   {
-    name: "Purchase",
-    path: "#",
+    name: "Requisitions",
+    path: "/purchase-requisitions",
     icon: ShoppingCart,
+  },
+  {
+    name: "Purchase Orders",
+    path: "/purchase-orders",
+    icon: ClipboardList,
+  },
+  {
+    name: "Material Receipts",
+    path: "/material-receipts",
+    icon: Truck,
+  },
+  {
+    name: "Inventory",
+    path: "/inventory",
+    icon: Boxes,
+  },
+  {
+    name: "Vendor Bills",
+    path: "/vendor-bills",
+    icon: Wallet,
   },
   {
     name: "Billing",

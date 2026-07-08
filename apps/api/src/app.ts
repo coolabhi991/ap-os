@@ -9,6 +9,11 @@ import projectRoutes from "./routes/project.routes.js";
 import purchaseRoutes from "./routes/purchase.routes.js";
 import clientRoutes from "./routes/client.routes.js";
 import vendorRoutes from "./routes/vendor.routes.js";
+import prRoutes from "./routes/purchase-requisition.routes.js";
+import poRoutes from "./routes/purchase-order.routes.js";
+import mrRoutes from "./routes/material-receipt.routes.js";
+import inventoryRoutes from "./routes/inventory.routes.js";
+import vendorBillRoutes from "./routes/vendor-bill.routes.js";
 
 const app = express();
 
@@ -32,5 +37,10 @@ app.use("/api/v1/projects", projectRoutes);
 app.use("/api/v1/purchase", purchaseRoutes);
 app.use("/api/v1/clients", clientRoutes);
 app.use("/api/v1/vendors", vendorRoutes);
+app.use("/api/v1/purchase-requisitions", prRoutes);
+app.use("/api/v1/purchase-orders", poRoutes);
+app.use("/api/v1/material-receipts", mrRoutes);
+app.use("/api/v1/inventory", inventoryRoutes);
+app.use("/api/v1/vendor-bills", vendorBillRoutes);
 
 export default app;
