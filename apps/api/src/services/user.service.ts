@@ -41,9 +41,11 @@ async function ensureRole(companyId: string, roleName: UserRole) {
 }
 
 export async function createUser(data: CreateUserInput) {
+  const email = data.email.trim().toLowerCase();
+
   const existingUser = await prisma.user.findUnique({
     where: {
-      email: data.email,
+      email,
     },
   });
 
@@ -57,7 +59,7 @@ export async function createUser(data: CreateUserInput) {
   const user = await prisma.user.create({
     data: {
       name: data.name,
-      email: data.email,
+      email,
       password: hashedPassword,
       companyId: data.companyId,
       roleId: role.id,
@@ -147,7 +149,7 @@ export async function updateUser(id: string, data: UpdateUserInput) {
     },
     data: {
       name: data.name,
-      email: data.email,
+      email: data.email.trim().toLowerCase(),
       roleId: role.id,
     },
     select: {

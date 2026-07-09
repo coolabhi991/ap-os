@@ -56,6 +56,11 @@ export default function ExpensesDashboard() {
                 title="Cash vs Company Bank"
                 value={`₹${summary.byPaymentMode.find((m) => m.mode === "CASH")?.amount ?? "0"} / ₹${summary.byPaymentMode.find((m) => m.mode === "COMPANY_BANK")?.amount ?? "0"}`}
               />
+              <StatCard
+                title="Machinery Cost"
+                value={`₹${summary.machineryCost.amount}`}
+                subtitle={`${summary.machineryCost.hours} hrs across ${summary.machineryCost.count} expenses`}
+              />
             </div>
 
             <div className="space-y-4">

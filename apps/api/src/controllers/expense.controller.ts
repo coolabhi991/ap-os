@@ -11,6 +11,11 @@ import {
   getCategoryExpenseSummary,
   getMonthlyExpenseSummary,
   getVendorCreditSummary,
+  getMachineryCostByProjectReport,
+  getMachineryCostBySiteReport,
+  getVendorWiseMachineryCostReport,
+  getMonthlyMachineryCostReport,
+  getMachineHoursByTypeReport,
   exportExpensesToCSV,
 } from "../services/expense.service.js";
 
@@ -143,6 +148,56 @@ export const getVendorCreditSummaryHandler = async (req: AuthRequest, res: Respo
     res.status(200).json({ success: true, data });
   } catch (error) {
     res.status(500).json({ success: false, message: error instanceof Error ? error.message : "Failed to load vendor credit summary" });
+  }
+};
+
+export const getMachineryCostByProjectReportHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const companyId = req.user!.companyId;
+    const data = await getMachineryCostByProjectReport(companyId, parseDateQuery(req));
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error instanceof Error ? error.message : "Failed to load machinery cost by project report" });
+  }
+};
+
+export const getMachineryCostBySiteReportHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const companyId = req.user!.companyId;
+    const data = await getMachineryCostBySiteReport(companyId, parseDateQuery(req));
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error instanceof Error ? error.message : "Failed to load machinery cost by site report" });
+  }
+};
+
+export const getVendorWiseMachineryCostReportHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const companyId = req.user!.companyId;
+    const data = await getVendorWiseMachineryCostReport(companyId, parseDateQuery(req));
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error instanceof Error ? error.message : "Failed to load vendor-wise machinery cost report" });
+  }
+};
+
+export const getMonthlyMachineryCostReportHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const companyId = req.user!.companyId;
+    const data = await getMonthlyMachineryCostReport(companyId, parseDateQuery(req));
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error instanceof Error ? error.message : "Failed to load monthly machinery cost report" });
+  }
+};
+
+export const getMachineHoursByTypeReportHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const companyId = req.user!.companyId;
+    const data = await getMachineHoursByTypeReport(companyId, parseDateQuery(req));
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error instanceof Error ? error.message : "Failed to load machine hours report" });
   }
 };
 

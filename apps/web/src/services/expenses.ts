@@ -19,6 +19,9 @@ export interface Expense {
   attachmentFileName: string;
   attachmentFileUrl: string;
   remarks: string;
+  machineType: string;
+  machineHours: string;
+  machineRatePerHour: string;
   createdById: string;
   createdBy: { id: string; name: string } | null;
   isDeleted: boolean;
@@ -38,6 +41,9 @@ export interface ExpenseFormData {
   attachmentFileName: string;
   attachmentFileUrl: string;
   remarks: string;
+  machineType: string;
+  machineHours: number;
+  machineRatePerHour: number;
 }
 
 export interface ExpenseListQuery {
@@ -71,6 +77,7 @@ export interface ExpenseDashboardSummary {
   byCategory: Array<{ categoryId: string; categoryName: string; amount: string; count: number }>;
   byPaymentMode: Array<{ mode: string; amount: string; count: number }>;
   outstandingVendorCredit: { amount: string; count: number };
+  machineryCost: { amount: string; hours: string; count: number };
   recentExpenses: Expense[];
 }
 
@@ -101,6 +108,43 @@ export interface VendorCreditSummaryRow {
   count: number;
 }
 
+export interface MachineryCostByProjectRow {
+  projectId: string;
+  projectName: string;
+  totalAmount: string;
+  totalHours: string;
+  count: number;
+}
+
+export interface MachineryCostBySiteRow {
+  site: string;
+  totalAmount: string;
+  totalHours: string;
+  count: number;
+}
+
+export interface VendorWiseMachineryCostRow {
+  vendorId: string;
+  vendorName: string;
+  totalAmount: string;
+  totalHours: string;
+  count: number;
+}
+
+export interface MonthlyMachineryCostRow {
+  month: string;
+  totalAmount: string;
+  totalHours: string;
+  count: number;
+}
+
+export interface MachineHoursByTypeRow {
+  machineType: string;
+  totalHours: string;
+  totalAmount: string;
+  count: number;
+}
+
 export const PAYMENT_MODE_OPTIONS = ["CASH", "COMPANY_BANK", "CREDIT_CARD", "VENDOR_CREDIT"];
 
 export const PAYMENT_MODE_LABELS: Record<string, string> = {
@@ -116,6 +160,42 @@ export const PAYMENT_MODE_COLORS: Record<string, string> = {
   CREDIT_CARD: "bg-purple-100 text-purple-700",
   VENDOR_CREDIT: "bg-amber-100 text-amber-700",
 };
+
+/** The one ExpenseCategory name that triggers the machinery-specific form fields. */
+export const MACHINERY_CATEGORY_NAME = "machinery";
+
+export const MACHINE_TYPE_OPTIONS = [
+  "JCB",
+  "EXCAVATOR",
+  "HYDRA",
+  "CRANE",
+  "ROLLER",
+  "POCLAIN",
+  "DUMPER",
+  "TRACTOR",
+  "GENERATOR",
+  "COMPRESSOR",
+  "OTHER",
+];
+
+export const MACHINE_TYPE_LABELS: Record<string, string> = {
+  JCB: "JCB",
+  EXCAVATOR: "Excavator",
+  HYDRA: "Hydra",
+  CRANE: "Crane",
+  ROLLER: "Roller",
+  POCLAIN: "Poclain",
+  DUMPER: "Dumper",
+  TRACTOR: "Tractor",
+  GENERATOR: "Generator",
+  COMPRESSOR: "Compressor",
+  OTHER: "Other",
+};
+
+/** True when a category name (from ExpenseCategory.name) is the Machinery category — used to conditionally show machinery fields. */
+export function isMachineryCategory(categoryName: string | undefined | null): boolean {
+  return (categoryName ?? "").trim().toLowerCase() === MACHINERY_CATEGORY_NAME;
+}
 
 export async function getExpenses(query?: ExpenseListQuery): Promise<ExpenseListResponse> {
   const response = await api.get<ExpenseListResponse>("/expenses", { params: query });
@@ -163,6 +243,31 @@ export async function getMonthlyExpenseSummary(query?: { fromDate?: string; toDa
 
 export async function getVendorCreditSummary(query?: { fromDate?: string; toDate?: string }): Promise<VendorCreditSummaryRow[]> {
   const response = await api.get<{ success: boolean; data: VendorCreditSummaryRow[] }>("/expenses/reports/vendor-credit-summary", { params: query });
+  return response.data.data;
+}
+
+export async function getMachineryCostByProjectReport(query?: { fromDate?: string; toDate?: string }): Promise<MachineryCostByProjectRow[]> {
+  const response = await api.get<{ success: boolean; data: MachineryCostByProjectRow[] }>("/expenses/reports/machinery-cost-by-project", { params: query });
+  return response.data.data;
+}
+
+export async function getMachineryCostBySiteReport(query?: { fromDate?: string; toDate?: string }): Promise<MachineryCostBySiteRow[]> {
+  const response = await api.get<{ success: boolean; data: MachineryCostBySiteRow[] }>("/expenses/reports/machinery-cost-by-site", { params: query });
+  return response.data.data;
+}
+
+export async function getVendorWiseMachineryCostReport(query?: { fromDate?: string; toDate?: string }): Promise<VendorWiseMachineryCostRow[]> {
+  const response = await api.get<{ success: boolean; data: VendorWiseMachineryCostRow[] }>("/expenses/reports/machinery-cost-by-vendor", { params: query });
+  return response.data.data;
+}
+
+export async function getMonthlyMachineryCostReport(query?: { fromDate?: string; toDate?: string }): Promise<MonthlyMachineryCostRow[]> {
+  const response = await api.get<{ success: boolean; data: MonthlyMachineryCostRow[] }>("/expenses/reports/machinery-cost-monthly", { params: query });
+  return response.data.data;
+}
+
+export async function getMachineHoursByTypeReport(query?: { fromDate?: string; toDate?: string }): Promise<MachineHoursByTypeRow[]> {
+  const response = await api.get<{ success: boolean; data: MachineHoursByTypeRow[] }>("/expenses/reports/machine-hours-by-type", { params: query });
   return response.data.data;
 }
 

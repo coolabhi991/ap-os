@@ -1,6 +1,12 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { ExpenseFormData } from "../../services/expenses";
-import { PAYMENT_MODE_OPTIONS, PAYMENT_MODE_LABELS } from "../../services/expenses";
+import {
+  PAYMENT_MODE_OPTIONS,
+  PAYMENT_MODE_LABELS,
+  MACHINE_TYPE_OPTIONS,
+  MACHINE_TYPE_LABELS,
+  isMachineryCategory,
+} from "../../services/expenses";
 import type { CompanyBankAccount } from "../../services/company-bank-accounts";
 
 interface Option {
@@ -39,6 +45,9 @@ export default function ExpenseForm({
     attachmentFileName: initialData?.attachmentFileName ?? "",
     attachmentFileUrl: initialData?.attachmentFileUrl ?? "",
     remarks: initialData?.remarks ?? "",
+    machineType: initialData?.machineType ?? "",
+    machineHours: initialData?.machineHours ?? 0,
+    machineRatePerHour: initialData?.machineRatePerHour ?? 0,
   });
   const [error, setError] = useState<string | null>(null);
 
@@ -47,15 +56,31 @@ export default function ExpenseForm({
 
   const isCompanyBank = form.paymentMode === "COMPANY_BANK";
   const isVendorCredit = form.paymentMode === "VENDOR_CREDIT";
+  const selectedCategoryName = useMemo(() => categories.find((c) => c.id === form.categoryId)?.name, [categories, form.categoryId]);
+  const isMachinery = isMachineryCategory(selectedCategoryName);
+
+  // Total Amount is always auto-calculated from Hours × Rate Per Hour for Machinery expenses.
+  useEffect(() => {
+    if (isMachinery) {
+      set("amount", Math.round(form.machineHours * form.machineRatePerHour * 100) / 100);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMachinery, form.machineHours, form.machineRatePerHour]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.projectId) return setError("Select a project.");
     if (!form.categoryId) return setError("Select a category.");
-    if (!form.amount || form.amount <= 0) return setError("Enter an amount greater than zero.");
     if (!form.paymentMode) return setError("Select a payment mode.");
     if (isCompanyBank && !form.companyBankAccountId) return setError("Select the company bank account this expense was paid from.");
     if (isVendorCredit && !form.vendorId) return setError("Vendor is required for Vendor Credit expenses.");
+    if (isMachinery) {
+      if (!form.machineType) return setError("Select a machine type.");
+      if (!form.machineHours || form.machineHours <= 0) return setError("Enter hours greater than zero.");
+      if (!form.machineRatePerHour || form.machineRatePerHour <= 0) return setError("Enter a rate per hour greater than zero.");
+    } else if (!form.amount || form.amount <= 0) {
+      return setError("Enter an amount greater than zero.");
+    }
     setError(null);
     onSubmit(form);
   };
@@ -91,18 +116,20 @@ export default function ExpenseForm({
             <input type="date" value={form.expenseDate} onChange={(e) => set("expenseDate", e.target.value)} className="w-full rounded-lg border p-3" />
           </div>
 
-          <div>
-            <label className="mb-2 block font-medium">Amount *</label>
-            <input
-              type="number"
-              min={0}
-              step="0.01"
-              value={form.amount}
-              onChange={(e) => set("amount", parseFloat(e.target.value) || 0)}
-              required
-              className="w-full rounded-lg border p-3"
-            />
-          </div>
+          {!isMachinery && (
+            <div>
+              <label className="mb-2 block font-medium">Amount *</label>
+              <input
+                type="number"
+                min={0}
+                step="0.01"
+                value={form.amount}
+                onChange={(e) => set("amount", parseFloat(e.target.value) || 0)}
+                required
+                className="w-full rounded-lg border p-3"
+              />
+            </div>
+          )}
 
           <div>
             <label className="mb-2 block font-medium">
@@ -114,6 +141,51 @@ export default function ExpenseForm({
               {vendors.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
             </select>
           </div>
+
+          {isMachinery && (
+            <>
+              <div>
+                <label className="mb-2 block font-medium">Machine Type *</label>
+                <select value={form.machineType} onChange={(e) => set("machineType", e.target.value)} required className="w-full rounded-lg border p-3">
+                  <option value="">Select Machine Type</option>
+                  {MACHINE_TYPE_OPTIONS.map((t) => (
+                    <option key={t} value={t}>{MACHINE_TYPE_LABELS[t]}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-2 block font-medium">Hours *</label>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={form.machineHours}
+                  onChange={(e) => set("machineHours", parseFloat(e.target.value) || 0)}
+                  required
+                  className="w-full rounded-lg border p-3"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block font-medium">Rate Per Hour *</label>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={form.machineRatePerHour}
+                  onChange={(e) => set("machineRatePerHour", parseFloat(e.target.value) || 0)}
+                  required
+                  className="w-full rounded-lg border p-3"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block font-medium">Total Amount (auto-calculated)</label>
+                <input type="text" value={form.amount.toFixed(2)} readOnly disabled className="w-full rounded-lg border bg-slate-50 p-3 text-slate-600" />
+              </div>
+            </>
+          )}
 
           <div>
             <label className="mb-2 block font-medium">Payment Mode *</label>

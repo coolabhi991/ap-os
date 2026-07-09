@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
 import Layout from "../../components/layout/Layout";
-import { getExpense, PAYMENT_MODE_LABELS, PAYMENT_MODE_COLORS } from "../../services/expenses";
+import { getExpense, PAYMENT_MODE_LABELS, PAYMENT_MODE_COLORS, MACHINE_TYPE_LABELS, isMachineryCategory } from "../../services/expenses";
 import type { Expense } from "../../services/expenses";
 
 function Row({ label, value }: { label: string; value: string }) {
@@ -42,6 +42,7 @@ export default function ViewExpense() {
   }
 
   const isImageAttachment = /\.(png|jpe?g|gif|webp)$/i.test(expense.attachmentFileName || expense.attachmentFileUrl || "");
+  const isMachinery = isMachineryCategory(expense.category?.name) || !!expense.machineType;
 
   return (
     <Layout>
@@ -87,6 +88,18 @@ export default function ViewExpense() {
               <Row label="Remarks" value={expense.remarks} />
             </div>
           </div>
+
+          {isMachinery && (
+            <div className="rounded-xl bg-white p-6 shadow-sm">
+              <h2 className="mb-5 text-xl font-bold">Machinery Details</h2>
+              <div className="space-y-4">
+                <Row label="Machine Type" value={MACHINE_TYPE_LABELS[expense.machineType] ?? expense.machineType} />
+                <Row label="Hours" value={expense.machineHours} />
+                <Row label="Rate Per Hour" value={expense.machineRatePerHour ? `₹${Number(expense.machineRatePerHour).toLocaleString("en-IN")}` : ""} />
+                <Row label="Total Amount" value={`₹${Number(expense.amount).toLocaleString("en-IN")}`} />
+              </div>
+            </div>
+          )}
 
           <div className="rounded-xl bg-white p-6 shadow-sm">
             <h2 className="mb-5 text-xl font-bold">Audit Information</h2>
