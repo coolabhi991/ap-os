@@ -1,6 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { MaterialIssueFormData, MaterialIssue } from "../../services/material-issues";
 import type { InventoryItem } from "../../services/inventory";
+import { getSubWorks } from "../../services/sub-works";
+import type { SubWork } from "../../services/sub-works";
 
 interface Option {
   id: string;
@@ -29,6 +31,7 @@ export default function MaterialIssueForm({
   const [form, setForm] = useState<MaterialIssueFormData>({
     projectId: initialData?.projectId ?? "",
     inventoryId: initialData?.inventoryId ?? "",
+    subWorkId: initialData?.subWorkId ?? "",
     quantity: initialData?.quantity ?? 0,
     issuedDate: initialData?.issuedDate ?? new Date().toISOString().slice(0, 10),
     purpose: initialData?.purpose ?? "",
@@ -44,6 +47,18 @@ export default function MaterialIssueForm({
     setForm((f) => ({ ...f, [key]: value }));
 
   const selectedMaterial = useMemo(() => materials.find((m) => m.id === form.inventoryId) ?? null, [materials, form.inventoryId]);
+
+  const [subWorks, setSubWorks] = useState<SubWork[]>([]);
+  useEffect(() => {
+    if (!form.projectId) {
+      setSubWorks([]);
+      return;
+    }
+    getSubWorks(form.projectId)
+      .then(setSubWorks)
+      .catch(() => setSubWorks([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.projectId]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -70,9 +85,22 @@ export default function MaterialIssueForm({
             <>
               <div>
                 <label className="mb-2 block font-medium">Project *</label>
-                <select value={form.projectId} onChange={(e) => set("projectId", e.target.value)} required className="w-full rounded-lg border p-3">
+                <select
+                  value={form.projectId}
+                  onChange={(e) => setForm((f) => ({ ...f, projectId: e.target.value, subWorkId: "" }))}
+                  required
+                  className="w-full rounded-lg border p-3"
+                >
                   <option value="">Select Project</option>
                   {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-2 block font-medium">Sub Work <span className="font-normal text-slate-400">(optional)</span></label>
+                <select value={form.subWorkId} onChange={(e) => set("subWorkId", e.target.value)} disabled={!form.projectId} className="w-full rounded-lg border p-3 disabled:bg-slate-50">
+                  <option value="">No Sub Work</option>
+                  {subWorks.map((sw) => <option key={sw.id} value={sw.id}>{sw.name}</option>)}
                 </select>
               </div>
 

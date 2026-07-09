@@ -18,6 +18,8 @@ export interface MaterialIssue {
   project: { id: string; name: string } | null;
   inventoryId: string;
   inventory: MaterialIssueInventoryRef | null;
+  subWorkId: string;
+  subWork: { id: string; name: string } | null;
   issueNumber: string;
   issuedDate: string;
   itemName: string;
@@ -40,6 +42,7 @@ export interface MaterialIssue {
 export interface MaterialIssueFormData {
   projectId: string;
   inventoryId: string;
+  subWorkId: string;
   quantity: number;
   issuedDate: string;
   purpose: string;

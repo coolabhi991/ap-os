@@ -7,6 +7,8 @@ export interface LabourAttendance {
   project: { id: string; name: string } | null;
   labourId: string;
   labour: { id: string; name: string; category: string; contractorId: string | null; groupId: string | null } | null;
+  subWorkId: string;
+  subWork: { id: string; name: string } | null;
   attendanceDate: string;
   status: "PRESENT" | "ABSENT" | "HALF_DAY" | "ON_LEAVE";
   overtimeHours: string;
@@ -35,6 +37,7 @@ export interface MarkAttendanceInput extends AttendanceEntryInput {
 
 export interface BulkMarkAttendanceInput {
   projectId: string;
+  subWorkId?: string;
   attendanceDate: string;
   entries: AttendanceEntryInput[];
 }

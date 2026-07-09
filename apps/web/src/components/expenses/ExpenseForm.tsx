@@ -8,6 +8,8 @@ import {
   isMachineryCategory,
 } from "../../services/expenses";
 import type { CompanyBankAccount } from "../../services/company-bank-accounts";
+import { getSubWorks } from "../../services/sub-works";
+import type { SubWork } from "../../services/sub-works";
 
 interface Option {
   id: string;
@@ -37,6 +39,7 @@ export default function ExpenseForm({
     projectId: initialData?.projectId ?? "",
     categoryId: initialData?.categoryId ?? "",
     vendorId: initialData?.vendorId ?? "",
+    subWorkId: initialData?.subWorkId ?? "",
     expenseDate: initialData?.expenseDate ?? new Date().toISOString().slice(0, 10),
     description: initialData?.description ?? "",
     amount: initialData?.amount ?? 0,
@@ -58,6 +61,18 @@ export default function ExpenseForm({
   const isVendorCredit = form.paymentMode === "VENDOR_CREDIT";
   const selectedCategoryName = useMemo(() => categories.find((c) => c.id === form.categoryId)?.name, [categories, form.categoryId]);
   const isMachinery = isMachineryCategory(selectedCategoryName);
+
+  const [subWorks, setSubWorks] = useState<SubWork[]>([]);
+  useEffect(() => {
+    if (!form.projectId) {
+      setSubWorks([]);
+      return;
+    }
+    getSubWorks(form.projectId)
+      .then(setSubWorks)
+      .catch(() => setSubWorks([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.projectId]);
 
   // Total Amount is always auto-calculated from Hours × Rate Per Hour for Machinery expenses.
   useEffect(() => {
@@ -94,7 +109,12 @@ export default function ExpenseForm({
         <div className="grid gap-6 md:grid-cols-2">
           <div>
             <label className="mb-2 block font-medium">Project *</label>
-            <select value={form.projectId} onChange={(e) => set("projectId", e.target.value)} required className="w-full rounded-lg border p-3">
+            <select
+              value={form.projectId}
+              onChange={(e) => setForm((f) => ({ ...f, projectId: e.target.value, subWorkId: "" }))}
+              required
+              className="w-full rounded-lg border p-3"
+            >
               <option value="">Select Project</option>
               {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
@@ -109,6 +129,14 @@ export default function ExpenseForm({
             {categories.length === 0 && (
               <p className="mt-1 text-sm text-amber-600">No expense categories yet — add one under Manage Categories.</p>
             )}
+          </div>
+
+          <div>
+            <label className="mb-2 block font-medium">Sub Work <span className="font-normal text-slate-400">(optional)</span></label>
+            <select value={form.subWorkId} onChange={(e) => set("subWorkId", e.target.value)} disabled={!form.projectId} className="w-full rounded-lg border p-3 disabled:bg-slate-50">
+              <option value="">No Sub Work</option>
+              {subWorks.map((sw) => <option key={sw.id} value={sw.id}>{sw.name}</option>)}
+            </select>
           </div>
 
           <div>

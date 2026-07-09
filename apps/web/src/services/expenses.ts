@@ -9,6 +9,8 @@ export interface Expense {
   category: { id: string; name: string } | null;
   vendorId: string;
   vendor: { id: string; name: string } | null;
+  subWorkId: string;
+  subWork: { id: string; name: string } | null;
   expenseNumber: string;
   expenseDate: string;
   description: string;
@@ -33,6 +35,7 @@ export interface ExpenseFormData {
   projectId: string;
   categoryId: string;
   vendorId: string;
+  subWorkId: string;
   expenseDate: string;
   description: string;
   amount: number;

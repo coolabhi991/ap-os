@@ -27,6 +27,9 @@ import labourAttendanceRoutes from "./routes/labour-attendance.routes.js";
 import labourAdvanceRoutes from "./routes/labour-advance.routes.js";
 import labourPaymentRoutes from "./routes/labour-payment.routes.js";
 import labourReportRoutes from "./routes/labour-report.routes.js";
+import subWorkRoutes from "./routes/sub-work.routes.js";
+import projectControlCenterRoutes from "./routes/project-control-center.routes.js";
+import documentRoutes from "./routes/document.routes.js";
 
 const app = express();
 
@@ -71,5 +74,8 @@ app.use("/api/v1/labour-payments", labourPaymentRoutes);
 // catch-all would otherwise swallow them (e.g. "dashboard" treated as a labour id).
 app.use("/api/v1/labour", labourReportRoutes);
 app.use("/api/v1/labour", labourRoutes);
+app.use("/api/v1/sub-works", subWorkRoutes);
+app.use("/api/v1/project-control-center", projectControlCenterRoutes);
+app.use("/api/v1/documents", documentRoutes);
 
 export default app;

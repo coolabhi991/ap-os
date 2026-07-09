@@ -1,5 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { VendorBillFormData } from "../../services/vendor-bills";
+import { getSubWorks } from "../../services/sub-works";
+import type { SubWork } from "../../services/sub-works";
 
 interface Option {
   id: string;
@@ -21,6 +23,7 @@ interface FormState {
   projectId: string;
   purchaseOrderId: string;
   materialReceiptId: string;
+  subWorkId: string;
   billNumber: string;
   billDate: string;
   dueDate: string;
@@ -59,6 +62,7 @@ export default function VendorBillForm({
     projectId: initialData?.projectId ?? "",
     purchaseOrderId: initialData?.purchaseOrderId ?? "",
     materialReceiptId: initialData?.materialReceiptId ?? "",
+    subWorkId: initialData?.subWorkId ?? "",
     billNumber: initialData?.billNumber ?? "",
     billDate: initialData?.billDate ?? new Date().toISOString().slice(0, 10),
     dueDate: initialData?.dueDate ?? "",
@@ -74,8 +78,24 @@ export default function VendorBillForm({
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => {
+    if (e.target.name === "projectId") {
+      setForm({ ...form, projectId: e.target.value, subWorkId: "" });
+      return;
+    }
     setForm({ ...form, [e.target.name]: e.target.value });
   };
+
+  const [subWorks, setSubWorks] = useState<SubWork[]>([]);
+  useEffect(() => {
+    if (!form.projectId) {
+      setSubWorks([]);
+      return;
+    }
+    getSubWorks(form.projectId)
+      .then(setSubWorks)
+      .catch(() => setSubWorks([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.projectId]);
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -84,6 +104,7 @@ export default function VendorBillForm({
       projectId: form.projectId,
       purchaseOrderId: form.purchaseOrderId,
       materialReceiptId: form.materialReceiptId,
+      subWorkId: form.subWorkId,
       billNumber: form.billNumber,
       billDate: form.billDate,
       dueDate: form.dueDate,
@@ -123,6 +144,16 @@ export default function VendorBillForm({
                 <option key={p.id} value={p.id}>
                   {p.name}
                 </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-2 block font-medium">Sub Work <span className="font-normal text-slate-400">(optional)</span></label>
+            <select name="subWorkId" value={form.subWorkId} onChange={handleChange} disabled={!form.projectId} className="w-full rounded-lg border p-3 disabled:bg-slate-50">
+              <option value="">No Sub Work</option>
+              {subWorks.map((sw) => (
+                <option key={sw.id} value={sw.id}>{sw.name}</option>
               ))}
             </select>
           </div>

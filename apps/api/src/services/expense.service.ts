@@ -24,6 +24,7 @@ export interface ExpenseFormInput {
   projectId: string;
   categoryId: string;
   vendorId?: string;
+  subWorkId?: string;
   expenseDate?: string;
   description?: string;
   amount: number;
@@ -81,6 +82,7 @@ const include = {
   project: { select: { id: true, name: true } },
   category: { select: { id: true, name: true } },
   vendor: { select: { id: true, name: true } },
+  subWork: { select: { id: true, name: true } },
   companyBankAccount: { select: { id: true, nickname: true, bankName: true, accountNumber: true } },
   createdBy: { select: { id: true, name: true } },
 };
@@ -97,6 +99,8 @@ function toDTO(e: ExpenseRow) {
     category: e.category,
     vendorId: e.vendorId ?? "",
     vendor: e.vendor,
+    subWorkId: e.subWorkId ?? "",
+    subWork: e.subWork,
     expenseNumber: e.expenseNumber,
     expenseDate: e.expenseDate.toISOString().slice(0, 10),
     description: e.description ?? "",
@@ -150,6 +154,13 @@ async function validateAndNormalize(companyId: string, input: ExpenseFormInput) 
     companyBankAccountId = account.id;
   }
 
+  let subWorkId: string | null = null;
+  if (input.subWorkId?.trim()) {
+    const subWork = await prisma.subWork.findFirst({ where: { id: input.subWorkId, companyId, projectId: input.projectId } });
+    if (!subWork) throw new Error("Sub Work not found");
+    subWorkId = subWork.id;
+  }
+
   // Machinery: Machine Type, Hours, and Rate Per Hour are required, and the total
   // amount is always auto-calculated from them — never taken from client input.
   const isMachinery = category.name.trim().toLowerCase() === MACHINERY_CATEGORY_NAME;
@@ -173,7 +184,7 @@ async function validateAndNormalize(companyId: string, input: ExpenseFormInput) 
     throw new Error("Amount must be greater than zero");
   }
 
-  return { paymentMode, vendorId, companyBankAccountId, machineType, machineHours, machineRatePerHour, amount };
+  return { paymentMode, vendorId, companyBankAccountId, subWorkId, machineType, machineHours, machineRatePerHour, amount };
 }
 
 export async function listExpenses(companyId: string, query: ExpenseListQuery) {
@@ -238,7 +249,7 @@ export async function getExpenseById(id: string, companyId: string) {
 }
 
 export async function createExpense(companyId: string, createdById: string, input: ExpenseFormInput) {
-  const { paymentMode, vendorId, companyBankAccountId, machineType, machineHours, machineRatePerHour, amount } =
+  const { paymentMode, vendorId, companyBankAccountId, subWorkId, machineType, machineHours, machineRatePerHour, amount } =
     await validateAndNormalize(companyId, input);
 
   const expense = await prisma.expense.create({
@@ -247,6 +258,7 @@ export async function createExpense(companyId: string, createdById: string, inpu
       projectId: input.projectId,
       categoryId: input.categoryId,
       vendorId,
+      subWorkId,
       expenseNumber: autoNumber(),
       expenseDate: input.expenseDate ? new Date(input.expenseDate) : new Date(),
       description: input.description || null,
@@ -271,7 +283,7 @@ export async function updateExpense(id: string, companyId: string, input: Expens
   const existing = await prisma.expense.findFirst({ where: { id, companyId, isDeleted: false } });
   if (!existing) throw new Error("Expense not found");
 
-  const { paymentMode, vendorId, companyBankAccountId, machineType, machineHours, machineRatePerHour, amount } =
+  const { paymentMode, vendorId, companyBankAccountId, subWorkId, machineType, machineHours, machineRatePerHour, amount } =
     await validateAndNormalize(companyId, input);
 
   const expense = await prisma.expense.update({
@@ -280,6 +292,7 @@ export async function updateExpense(id: string, companyId: string, input: Expens
       projectId: input.projectId,
       categoryId: input.categoryId,
       vendorId,
+      subWorkId,
       expenseDate: input.expenseDate ? new Date(input.expenseDate) : existing.expenseDate,
       description: input.description || null,
       amount,

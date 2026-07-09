@@ -25,11 +25,13 @@ export interface AttendanceEntryInput {
 
 export interface MarkAttendanceInput extends AttendanceEntryInput {
   projectId: string;
+  subWorkId?: string;
   attendanceDate?: string;
 }
 
 export interface BulkMarkAttendanceInput {
   projectId: string;
+  subWorkId?: string;
   attendanceDate?: string;
   entries: AttendanceEntryInput[];
 }
@@ -57,6 +59,7 @@ export interface LabourAttendanceListQuery {
 const include = {
   project: { select: { id: true, name: true } },
   labour: { select: { id: true, name: true, category: true, contractorId: true, groupId: true } },
+  subWork: { select: { id: true, name: true } },
   createdBy: { select: { id: true, name: true } },
 };
 
@@ -70,6 +73,8 @@ function toDTO(a: AttendanceRow) {
     project: a.project,
     labourId: a.labourId,
     labour: a.labour,
+    subWorkId: a.subWorkId ?? "",
+    subWork: a.subWork,
     attendanceDate: a.attendanceDate.toISOString().slice(0, 10),
     status: a.status,
     overtimeHours: a.overtimeHours.toString(),
@@ -89,6 +94,7 @@ async function markOne(
   companyId: string,
   createdById: string,
   projectId: string,
+  subWorkId: string | null,
   attendanceDate: Date,
   entry: AttendanceEntryInput
 ) {
@@ -113,6 +119,7 @@ async function markOne(
     data: {
       companyId,
       projectId,
+      subWorkId,
       labourId: entry.labourId,
       attendanceDate,
       status,
@@ -127,23 +134,32 @@ async function markOne(
   });
 }
 
+async function resolveSubWorkId(companyId: string, projectId: string, subWorkId: string | undefined): Promise<string | null> {
+  if (!subWorkId?.trim()) return null;
+  const subWork = await prisma.subWork.findFirst({ where: { id: subWorkId, companyId, projectId } });
+  if (!subWork) throw new Error("Sub Work not found");
+  return subWork.id;
+}
+
 export async function markAttendance(companyId: string, createdById: string, input: MarkAttendanceInput) {
   if (!input.projectId?.trim()) throw new Error("Project is required");
   const project = await prisma.project.findFirst({ where: { id: input.projectId, companyId } });
   if (!project) throw new Error("Project not found");
 
+  const subWorkId = await resolveSubWorkId(companyId, input.projectId, input.subWorkId);
   const attendanceDate = input.attendanceDate ? new Date(input.attendanceDate) : new Date();
-  const record = await markOne(companyId, createdById, input.projectId, attendanceDate, input);
+  const record = await markOne(companyId, createdById, input.projectId, subWorkId, attendanceDate, input);
   return toDTO(record);
 }
 
-/** Marks attendance for multiple workers on the same date/project in one call. Entries that fail (already marked, no wage rate) are skipped, not fatal to the batch. */
+/** Marks attendance for multiple workers on the same date/project (and optionally the same Sub Work) in one call. Entries that fail (already marked, no wage rate) are skipped, not fatal to the batch. */
 export async function bulkMarkAttendance(companyId: string, createdById: string, input: BulkMarkAttendanceInput) {
   if (!input.projectId?.trim()) throw new Error("Project is required");
   const project = await prisma.project.findFirst({ where: { id: input.projectId, companyId } });
   if (!project) throw new Error("Project not found");
   if (!input.entries?.length) throw new Error("At least one attendance entry is required");
 
+  const subWorkId = await resolveSubWorkId(companyId, input.projectId, input.subWorkId);
   const attendanceDate = input.attendanceDate ? new Date(input.attendanceDate) : new Date();
 
   const created: ReturnType<typeof toDTO>[] = [];
@@ -151,7 +167,7 @@ export async function bulkMarkAttendance(companyId: string, createdById: string,
 
   for (const entry of input.entries) {
     try {
-      const record = await markOne(companyId, createdById, input.projectId, attendanceDate, entry);
+      const record = await markOne(companyId, createdById, input.projectId, subWorkId, attendanceDate, entry);
       created.push(toDTO(record));
     } catch (error) {
       skipped.push({ labourId: entry.labourId, reason: error instanceof Error ? error.message : "Failed to mark attendance" });

@@ -22,6 +22,14 @@ enum ProjectStatus {
   CANCELLED
 }
 
+enum SubWorkStatus {
+  PLANNED
+  IN_PROGRESS
+  COMPLETED
+  ON_HOLD
+  CANCELLED
+}
+
 enum ProcurementStatus {
   DRAFT
   PENDING_APPROVAL
@@ -165,6 +173,7 @@ model Company {
   labourAttendances    LabourAttendance[]
   labourAdvances       LabourAdvance[]
   labourPayments       LabourPayment[]
+  subWorks             SubWork[]
 }
 
 model CompanyBankAccount {
@@ -304,6 +313,46 @@ model Project {
   labourAttendances    LabourAttendance[]
   labourAdvances       LabourAdvance[]
   labourPayments       LabourPayment[]
+  subWorks             SubWork[]
+}
+
+/**
+ * A project's own breakdown of work (e.g. "Foundation", "Superstructure", "Plumbing") —
+ * never hardcoded, since every project defines its own set. Each Sub Work carries its
+ * own budget; actual cost is never stored here — it's always computed on demand from
+ * the existing cost-bearing modules (Expense, VendorBill, LabourAttendance, MaterialIssue)
+ * tagged with this subWorkId, via project-control-center.service.ts. This avoids a second,
+ * duplicate ledger of financial data.
+ */
+model SubWork {
+  id           String        @id @default(cuid())
+  companyId    String
+  company      Company       @relation(fields: [companyId], references: [id])
+  projectId    String
+  project      Project       @relation(fields: [projectId], references: [id])
+  name              String
+  budgetAmount      Decimal       @default(0) @db.Decimal(14, 2)
+  startDate         DateTime?
+  endDate           DateTime?
+  status            SubWorkStatus @default(PLANNED)
+  remarks           String?
+  sortOrder         Int           @default(0)
+  // Physical Progress is entered manually by the engineer — it is NEVER derived from cost.
+  // Financial Progress (Actual Cost / Budget) is always computed on demand in
+  // project-control-center.service.ts and intentionally not stored here.
+  physicalProgress  Int           @default(0)
+  progressUpdatedAt DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  materialIssues    MaterialIssue[]
+  expenses          Expense[]
+  vendorBills       VendorBill[]
+  labourAttendances LabourAttendance[]
+
+  @@index([companyId])
+  @@index([projectId])
+  @@index([status])
 }
 
 model Vendor {
@@ -568,6 +617,8 @@ model MaterialIssue {
   project            Project   @relation(fields: [projectId], references: [id])
   inventoryId        String
   inventory          Inventory @relation(fields: [inventoryId], references: [id])
+  subWorkId          String?
+  subWork            SubWork?  @relation(fields: [subWorkId], references: [id])
   issueNumber        String    @unique
   issuedDate         DateTime  @default(now())
   itemName           String
@@ -590,6 +641,7 @@ model MaterialIssue {
   @@index([companyId])
   @@index([projectId])
   @@index([inventoryId])
+  @@index([subWorkId])
   @@index([issuedDate])
   @@index([isDeleted])
 }
@@ -686,6 +738,8 @@ model LabourAttendance {
   project              Project          @relation(fields: [projectId], references: [id])
   labourId             String
   labour               Labour           @relation(fields: [labourId], references: [id])
+  subWorkId            String?
+  subWork              SubWork?         @relation(fields: [subWorkId], references: [id])
   attendanceDate       DateTime         @default(now())
   status               AttendanceStatus @default(PRESENT)
   overtimeHours        Decimal          @default(0) @db.Decimal(6, 2)
@@ -704,6 +758,7 @@ model LabourAttendance {
   @@index([companyId])
   @@index([projectId])
   @@index([labourId])
+  @@index([subWorkId])
   @@index([attendanceDate])
   @@index([isDeleted])
 }
@@ -894,6 +949,8 @@ model Expense {
   category             ExpenseCategory     @relation(fields: [categoryId], references: [id])
   vendorId             String?
   vendor               Vendor?             @relation(fields: [vendorId], references: [id])
+  subWorkId            String?
+  subWork              SubWork?            @relation(fields: [subWorkId], references: [id])
   expenseNumber        String              @unique
   expenseDate          DateTime            @default(now())
   description          String?
@@ -924,6 +981,7 @@ model Expense {
   @@index([projectId])
   @@index([categoryId])
   @@index([vendorId])
+  @@index([subWorkId])
   @@index([companyBankAccountId])
   @@index([paymentMode])
   @@index([expenseDate])
@@ -973,6 +1031,8 @@ model VendorBill {
   purchaseOrder      PurchaseOrder?   @relation(fields: [purchaseOrderId], references: [id])
   materialReceiptId  String?
   materialReceipt    MaterialReceipt? @relation(fields: [materialReceiptId], references: [id])
+  subWorkId          String?
+  subWork            SubWork?         @relation(fields: [subWorkId], references: [id])
   billNumber         String           @unique
   billDate           DateTime         @default(now())
   dueDate            DateTime?
@@ -996,6 +1056,7 @@ model VendorBill {
   @@index([projectId])
   @@index([purchaseOrderId])
   @@index([materialReceiptId])
+  @@index([subWorkId])
   @@index([status])
   @@index([dueDate])
 }

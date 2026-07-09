@@ -31,6 +31,7 @@ export interface VendorBillFormInput {
   projectId?: string;
   purchaseOrderId?: string;
   materialReceiptId?: string;
+  subWorkId?: string;
   billNumber?: string;
   billDate?: string;
   dueDate?: string;
@@ -108,6 +109,7 @@ const include = {
   project: { select: { id: true, name: true } },
   purchaseOrder: { select: { id: true, poNumber: true } },
   materialReceipt: { select: { id: true, receiptNumber: true } },
+  subWork: { select: { id: true, name: true } },
   payments: {
     orderBy: { paymentDate: "desc" as const },
     include: {
@@ -137,6 +139,8 @@ function toDTO(bill: VendorBillRow) {
     purchaseOrder: bill.purchaseOrder,
     materialReceiptId: bill.materialReceiptId ?? "",
     materialReceipt: bill.materialReceipt,
+    subWorkId: bill.subWorkId ?? "",
+    subWork: bill.subWork,
     billNumber: bill.billNumber,
     billDate: bill.billDate.toISOString().slice(0, 10),
     dueDate: bill.dueDate?.toISOString().slice(0, 10) ?? "",
@@ -249,6 +253,14 @@ export async function createVendorBill(companyId: string, input: VendorBillFormI
     if (!mr) throw new Error("Material Receipt not found");
   }
 
+  let subWorkId: string | null = null;
+  if (input.subWorkId) {
+    if (!input.projectId) throw new Error("A Sub Work can only be set when a Project is also selected");
+    const subWork = await prisma.subWork.findFirst({ where: { id: input.subWorkId, companyId, projectId: input.projectId } });
+    if (!subWork) throw new Error("Sub Work not found");
+    subWorkId = subWork.id;
+  }
+
   const billAmount = input.billAmount ?? 0;
   const taxableAmount = input.taxableAmount ?? billAmount;
   const gstAmount = input.gstAmount ?? 0;
@@ -262,6 +274,7 @@ export async function createVendorBill(companyId: string, input: VendorBillFormI
       projectId: input.projectId || null,
       purchaseOrderId: input.purchaseOrderId || null,
       materialReceiptId: input.materialReceiptId || null,
+      subWorkId,
       billNumber: input.billNumber?.trim() || autoBillNumber(),
       billDate: input.billDate ? new Date(input.billDate) : new Date(),
       dueDate: input.dueDate ? new Date(input.dueDate) : null,
@@ -310,6 +323,19 @@ export async function updateVendorBill(id: string, companyId: string, input: Ven
     if (!mr) throw new Error("Material Receipt not found");
   }
 
+  const effectiveProjectId = input.projectId || existing.projectId;
+  let subWorkId: string | null = existing.subWorkId;
+  if (input.subWorkId !== undefined) {
+    if (input.subWorkId) {
+      if (!effectiveProjectId) throw new Error("A Sub Work can only be set when a Project is also selected");
+      const subWork = await prisma.subWork.findFirst({ where: { id: input.subWorkId, companyId, projectId: effectiveProjectId } });
+      if (!subWork) throw new Error("Sub Work not found");
+      subWorkId = subWork.id;
+    } else {
+      subWorkId = null;
+    }
+  }
+
   const billAmount = input.billAmount ?? Number(existing.billAmount);
   const taxableAmount = input.taxableAmount ?? Number(existing.taxableAmount);
   const gstAmount = input.gstAmount ?? Number(existing.gstAmount);
@@ -332,6 +358,7 @@ export async function updateVendorBill(id: string, companyId: string, input: Ven
       projectId: input.projectId || null,
       purchaseOrderId: input.purchaseOrderId || null,
       materialReceiptId: input.materialReceiptId || null,
+      subWorkId,
       billDate: input.billDate ? new Date(input.billDate) : undefined,
       dueDate: input.dueDate ? new Date(input.dueDate) : null,
       billAmount,

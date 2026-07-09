@@ -8,7 +8,6 @@ import Projects from "./pages/projects/Projects";
 import AddProject from "./pages/projects/AddProject";
 import EditProject from "./pages/projects/EditProject";
 import ViewProject from "./pages/projects/ViewProject";
-import Documents from "./pages/projects/Documents";
 
 /* Clients */
 import Clients from "./pages/clients/Clients";
@@ -111,10 +110,6 @@ export default function App() {
       <Route path="/projects/new" element={<AddProject />} />
       <Route path="/projects/:id" element={<ViewProject />} />
       <Route path="/projects/:id/edit" element={<EditProject />} />
-      <Route
-        path="/projects/:id/documents"
-        element={<Documents />}
-      />
 
       {/* Clients */}
       <Route path="/clients" element={<Clients />} />

@@ -5,6 +5,7 @@ import { applyIssueToInventory, getStockLedger } from "./inventory.service.js";
 export interface MaterialIssueFormInput {
   projectId: string;
   inventoryId: string;
+  subWorkId?: string;
   quantity: number;
   issuedDate?: string;
   purpose?: string;
@@ -48,6 +49,7 @@ function autoNumber(): string {
 const include = {
   project: { select: { id: true, name: true } },
   inventory: { select: { id: true, itemCode: true, itemName: true, unit: true, warehouse: true, currentStock: true, reservedStock: true } },
+  subWork: { select: { id: true, name: true } },
   createdBy: { select: { id: true, name: true } },
 };
 
@@ -72,6 +74,8 @@ function toDTO(m: MaterialIssueRow) {
           availableStock: m.inventory.currentStock.minus(m.inventory.reservedStock).toString(),
         }
       : null,
+    subWorkId: m.subWorkId ?? "",
+    subWork: m.subWork,
     issueNumber: m.issueNumber,
     issuedDate: m.issuedDate.toISOString().slice(0, 10),
     itemName: m.itemName,
@@ -154,6 +158,13 @@ export async function createMaterialIssue(companyId: string, createdById: string
 
   if (!input.quantity || input.quantity <= 0) throw new Error("Issue quantity must be greater than zero");
 
+  let subWorkId: string | null = null;
+  if (input.subWorkId?.trim()) {
+    const subWork = await prisma.subWork.findFirst({ where: { id: input.subWorkId, companyId, projectId: input.projectId } });
+    if (!subWork) throw new Error("Sub Work not found");
+    subWorkId = subWork.id;
+  }
+
   const issueNumber = autoNumber();
   const issuedDate = input.issuedDate ? new Date(input.issuedDate) : new Date();
 
@@ -163,6 +174,7 @@ export async function createMaterialIssue(companyId: string, createdById: string
         companyId,
         projectId: input.projectId,
         inventoryId: input.inventoryId,
+        subWorkId,
         issueNumber,
         issuedDate,
         itemName: inventory.itemName,

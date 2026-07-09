@@ -8,6 +8,8 @@ import type { Labour } from "../../services/labour";
 import { getProjects } from "../../services/projects";
 import { getLabourGroups } from "../../services/labour-groups";
 import type { LabourGroup } from "../../services/labour-groups";
+import { getSubWorks } from "../../services/sub-works";
+import type { SubWork } from "../../services/sub-works";
 
 interface RowState {
   labourId: string;
@@ -20,6 +22,8 @@ export default function MarkAttendance() {
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
   const [groups, setGroups] = useState<LabourGroup[]>([]);
   const [projectId, setProjectId] = useState("");
+  const [subWorkId, setSubWorkId] = useState("");
+  const [subWorks, setSubWorks] = useState<SubWork[]>([]);
   const [groupId, setGroupId] = useState("");
   const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().slice(0, 10));
   const [labourers, setLabourers] = useState<Labour[]>([]);
@@ -33,6 +37,15 @@ export default function MarkAttendance() {
     getProjects({ limit: 100 }).then((r) => setProjects(r.data)).catch(() => {});
     getLabourGroups(false).then(setGroups).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    setSubWorkId("");
+    if (!projectId) {
+      setSubWorks([]);
+      return;
+    }
+    getSubWorks(projectId).then(setSubWorks).catch(() => setSubWorks([]));
+  }, [projectId]);
 
   useEffect(() => {
     setLoadingLabour(true);
@@ -64,7 +77,7 @@ export default function MarkAttendance() {
       setError(null);
       setResult(null);
       const entries = Object.values(rows).map((r) => ({ labourId: r.labourId, status: r.status, overtimeHours: r.overtimeHours }));
-      const response = await bulkMarkAttendance({ projectId, attendanceDate, entries });
+      const response = await bulkMarkAttendance({ projectId, subWorkId: subWorkId || undefined, attendanceDate, entries });
       setResult({ createdCount: response.created.length, skipped: response.skipped });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to mark attendance.");
@@ -94,12 +107,19 @@ export default function MarkAttendance() {
             </div>
           )}
 
-          <div className="grid gap-6 rounded-xl bg-white p-6 shadow-sm md:grid-cols-3">
+          <div className="grid gap-6 rounded-xl bg-white p-6 shadow-sm md:grid-cols-4">
             <div>
               <label className="mb-2 block font-medium">Project *</label>
               <select value={projectId} onChange={(e) => setProjectId(e.target.value)} required className="w-full rounded-lg border p-3">
                 <option value="">Select Project</option>
                 {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="mb-2 block font-medium">Sub Work <span className="font-normal text-slate-400">(optional)</span></label>
+              <select value={subWorkId} onChange={(e) => setSubWorkId(e.target.value)} disabled={!projectId} className="w-full rounded-lg border p-3 disabled:bg-slate-50">
+                <option value="">No Sub Work</option>
+                {subWorks.map((sw) => <option key={sw.id} value={sw.id}>{sw.name}</option>)}
               </select>
             </div>
             <div>

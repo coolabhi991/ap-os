@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import Layout from "../../components/layout/Layout";
-import ProjectWorkspace from "../../components/project-workspace/ProjectWorkspace";
+import ProjectControlCenter from "../../components/project-control-center/ProjectControlCenter";
 import { getProject } from "../../services/projects";
 import type { Project } from "../../services/projects";
 
@@ -23,7 +23,7 @@ export default function ViewProject() {
     return (
       <Layout>
         <div className="rounded-xl bg-white p-8 text-center text-slate-500 shadow-sm">
-          Loading project workspace...
+          Loading project control center...
         </div>
       </Layout>
     );
@@ -42,7 +42,7 @@ export default function ViewProject() {
 
   return (
     <Layout>
-      <ProjectWorkspace project={project} />
+      <ProjectControlCenter project={project} />
     </Layout>
   );
 }

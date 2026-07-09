@@ -26,6 +26,8 @@ export interface VendorBill {
   purchaseOrder: { id: string; poNumber: string } | null;
   materialReceiptId: string;
   materialReceipt: { id: string; receiptNumber: string } | null;
+  subWorkId: string;
+  subWork: { id: string; name: string } | null;
   billNumber: string;
   billDate: string;
   dueDate: string;
@@ -50,6 +52,7 @@ export interface VendorBillFormData {
   projectId: string;
   purchaseOrderId: string;
   materialReceiptId: string;
+  subWorkId: string;
   billNumber: string;
   billDate: string;
   dueDate: string;
