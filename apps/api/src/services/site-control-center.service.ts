@@ -402,3 +402,41 @@ export async function exportSiteCostBySubWorkToCSV(siteId: string, companyId: st
 
   return [headers.join(","), ...csvRows].join("\n");
 }
+
+const WALLET_INFLOW_TYPES = ["RUNNING_BILL_RECEIPT"] as const;
+const WALLET_OUTFLOW_TYPES = ["SITE_EXPENSE", "LABOUR"] as const;
+
+/**
+ * Site Wallet — the net cash position a Site has moved through the bank, computed purely from
+ * TransactionAllocation rows tagged with this Site's id (never stored). Inflow = money credited
+ * to the site's work (Running Bill Receipts allocated here); Outflow = money spent on the site's
+ * behalf (Site Expense and Labour allocations). Every other allocation type is out of scope for
+ * a Site's wallet by definition (Vendor Payment/GST/Loan/etc. are company-level or vendor-level
+ * money movements, not a site cash position).
+ */
+export async function getSiteWallet(siteId: string, companyId: string) {
+  await verifySiteOwnership(siteId, companyId);
+
+  const rows = await prisma.transactionAllocation.groupBy({
+    by: ["allocationType"],
+    where: { companyId, siteId },
+    _sum: { amount: true },
+  });
+
+  const byType: Record<string, number> = {};
+  for (const r of rows) byType[r.allocationType] = Number(r._sum.amount ?? 0);
+
+  const inflow = WALLET_INFLOW_TYPES.reduce((s, t) => s + (byType[t] ?? 0), 0);
+  const outflow = WALLET_OUTFLOW_TYPES.reduce((s, t) => s + (byType[t] ?? 0), 0);
+
+  return {
+    inflow: inflow.toFixed(2),
+    outflow: outflow.toFixed(2),
+    balance: (inflow - outflow).toFixed(2),
+    breakdown: {
+      runningBillReceipts: (byType["RUNNING_BILL_RECEIPT"] ?? 0).toFixed(2),
+      siteExpenses: (byType["SITE_EXPENSE"] ?? 0).toFixed(2),
+      labour: (byType["LABOUR"] ?? 0).toFixed(2),
+    },
+  };
+}

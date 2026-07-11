@@ -31,7 +31,7 @@ import type {
   PayableRow,
   OutstandingSummary,
 } from "../../services/banking-reports";
-import { getBankAccountsWithBalances, RECONCILIATION_STATUS_LABELS, RECONCILIATION_STATUS_COLORS } from "../../services/bank-transactions";
+import { getBankAccountsWithBalances, ALLOCATION_STATUS_LABELS, ALLOCATION_STATUS_COLORS } from "../../services/bank-transactions";
 import type { BankAccountBalance } from "../../services/bank-transactions";
 import { getProjects } from "../../services/projects";
 
@@ -193,7 +193,7 @@ export default function BankingReports() {
                             <td className="px-4 py-3 text-right">{Number(e.withdrawal) > 0 ? inr(e.withdrawal) : "—"}</td>
                             <td className="px-4 py-3 text-right font-medium">{inr(e.balance)}</td>
                             <td className="px-4 py-3">
-                              <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${RECONCILIATION_STATUS_COLORS[e.reconciliationStatus]}`}>{RECONCILIATION_STATUS_LABELS[e.reconciliationStatus]}</span>
+                              <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${ALLOCATION_STATUS_COLORS[e.allocationStatus]}`}>{ALLOCATION_STATUS_LABELS[e.allocationStatus]}</span>
                             </td>
                           </tr>
                         ))
@@ -263,19 +263,19 @@ export default function BankingReports() {
               <div className="space-y-4">
                 <div className="grid gap-4 sm:grid-cols-3">
                   <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-5">
-                    <p className="text-sm text-emerald-700">Matched</p>
-                    <p className="text-2xl font-bold text-emerald-700">{reconciliation.summary.matched.count}</p>
-                    <p className="text-sm text-emerald-600">{inr(reconciliation.summary.matched.amount)}</p>
+                    <p className="text-sm text-emerald-700">Fully Allocated</p>
+                    <p className="text-2xl font-bold text-emerald-700">{reconciliation.summary.fullyAllocated.count}</p>
+                    <p className="text-sm text-emerald-600">{inr(reconciliation.summary.fullyAllocated.amount)}</p>
                   </div>
                   <div className="rounded-xl border border-amber-200 bg-amber-50 p-5">
-                    <p className="text-sm text-amber-700">Partially Matched</p>
-                    <p className="text-2xl font-bold text-amber-700">{reconciliation.summary.partiallyMatched.count}</p>
-                    <p className="text-sm text-amber-600">{inr(reconciliation.summary.partiallyMatched.amount)}</p>
+                    <p className="text-sm text-amber-700">Partially Allocated</p>
+                    <p className="text-2xl font-bold text-amber-700">{reconciliation.summary.partiallyAllocated.count}</p>
+                    <p className="text-sm text-amber-600">{inr(reconciliation.summary.partiallyAllocated.amount)}</p>
                   </div>
                   <div className="rounded-xl border border-red-200 bg-red-50 p-5">
-                    <p className="text-sm text-red-700">Unmatched</p>
-                    <p className="text-2xl font-bold text-red-700">{reconciliation.summary.unmatched.count}</p>
-                    <p className="text-sm text-red-600">{inr(reconciliation.summary.unmatched.amount)}</p>
+                    <p className="text-sm text-red-700">Unallocated</p>
+                    <p className="text-2xl font-bold text-red-700">{reconciliation.summary.unallocated.count}</p>
+                    <p className="text-sm text-red-600">{inr(reconciliation.summary.unallocated.amount)}</p>
                   </div>
                 </div>
                 <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -286,7 +286,7 @@ export default function BankingReports() {
                         <th className="px-4 py-3 text-left">Account</th>
                         <th className="px-4 py-3 text-right">Deposit</th>
                         <th className="px-4 py-3 text-right">Withdrawal</th>
-                        <th className="px-4 py-3 text-left">Matched Against</th>
+                        <th className="px-4 py-3 text-left">Allocations</th>
                         <th className="px-4 py-3 text-left">Status</th>
                       </tr>
                     </thead>
@@ -300,8 +300,8 @@ export default function BankingReports() {
                             <td className="px-4 py-3">{t.companyBankAccount?.nickname || t.companyBankAccount?.bankName}</td>
                             <td className="px-4 py-3 text-right">{Number(t.deposit) > 0 ? inr(t.deposit) : "—"}</td>
                             <td className="px-4 py-3 text-right">{Number(t.withdrawal) > 0 ? inr(t.withdrawal) : "—"}</td>
-                            <td className="px-4 py-3 text-slate-500">{t.runningBillPayment ? `RB ${t.runningBillPayment.billNumber}` : t.vendorPayment ? `VB ${t.vendorPayment.billNumber}` : "—"}</td>
-                            <td className="px-4 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-medium ${RECONCILIATION_STATUS_COLORS[t.reconciliationStatus]}`}>{RECONCILIATION_STATUS_LABELS[t.reconciliationStatus]}</span></td>
+                            <td className="px-4 py-3 text-slate-500">{t.allocationCount > 0 ? `${t.allocationCount} allocation${t.allocationCount === 1 ? "" : "s"}` : "—"}</td>
+                            <td className="px-4 py-3"><span className={`rounded-full px-2.5 py-1 text-xs font-medium ${ALLOCATION_STATUS_COLORS[t.allocationStatus]}`}>{ALLOCATION_STATUS_LABELS[t.allocationStatus]}</span></td>
                           </tr>
                         ))
                       )}

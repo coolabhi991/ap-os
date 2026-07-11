@@ -122,7 +122,7 @@ export async function getCashBookReport(companyId: string, query: { fromDate?: s
   };
 }
 
-/** Report: Bank Reconciliation — Matched / Partially Matched / Unmatched breakdown for an account (or all accounts). */
+/** Report: Bank Allocation Status — Fully / Partially / Unallocated breakdown for an account (or all accounts). */
 export async function getBankReconciliationReport(companyId: string, query: { companyBankAccountId?: string; fromDate?: string; toDate?: string }) {
   const result = await listBankTransactions(companyId, {
     companyBankAccountId: query.companyBankAccountId,
@@ -133,23 +133,23 @@ export async function getBankReconciliationReport(companyId: string, query: { co
   });
 
   const buckets = {
-    MATCHED: { count: 0, amount: 0 },
-    PARTIALLY_MATCHED: { count: 0, amount: 0 },
-    UNMATCHED: { count: 0, amount: 0 },
+    FULLY_ALLOCATED: { count: 0, amount: 0 },
+    PARTIALLY_ALLOCATED: { count: 0, amount: 0 },
+    UNALLOCATED: { count: 0, amount: 0 },
   };
 
   for (const t of result.data) {
     const amount = Number(t.deposit) + Number(t.withdrawal);
-    const bucket = buckets[t.reconciliationStatus as keyof typeof buckets];
+    const bucket = buckets[t.allocationStatus as keyof typeof buckets];
     bucket.count += 1;
     bucket.amount += amount;
   }
 
   return {
     summary: {
-      matched: { count: buckets.MATCHED.count, amount: buckets.MATCHED.amount.toFixed(2) },
-      partiallyMatched: { count: buckets.PARTIALLY_MATCHED.count, amount: buckets.PARTIALLY_MATCHED.amount.toFixed(2) },
-      unmatched: { count: buckets.UNMATCHED.count, amount: buckets.UNMATCHED.amount.toFixed(2) },
+      fullyAllocated: { count: buckets.FULLY_ALLOCATED.count, amount: buckets.FULLY_ALLOCATED.amount.toFixed(2) },
+      partiallyAllocated: { count: buckets.PARTIALLY_ALLOCATED.count, amount: buckets.PARTIALLY_ALLOCATED.amount.toFixed(2) },
+      unallocated: { count: buckets.UNALLOCATED.count, amount: buckets.UNALLOCATED.amount.toFixed(2) },
     },
     transactions: result.data,
   };
@@ -281,7 +281,7 @@ export async function exportBankBookToCSV(companyId: string, query: { companyBan
   const report = await getBankBookReport(companyId, query);
   const headers = ["Date", "Deposit", "Withdrawal", "Balance", "Reference", "Description", "Category", "Status"];
   const csv = report.entries.map((t) =>
-    [t.transactionDate, t.deposit, t.withdrawal, t.balance, t.referenceNumber, t.description, t.category, t.reconciliationStatus]
+    [t.transactionDate, t.deposit, t.withdrawal, t.balance, t.referenceNumber, t.description, t.category, t.allocationStatus]
       .map((v) => escapeCsv(String(v ?? "")))
       .join(",")
   );

@@ -1,26 +1,23 @@
 import prisma from "../config/prisma.js";
-import { Prisma, ReconciliationStatus, BankTransactionSource } from "@prisma/client";
+import { Prisma, AllocationStatus, BankTransactionSource } from "@prisma/client";
 
 /**
- * Banking & Reconciliation. BankTransaction is the bank/cash statement ledger — it never
- * duplicates the amount already recorded on a RunningBillPayment/VendorPayment/Expense; it
- * only links to them (runningBillPaymentId/vendorPaymentId) once reconciled. Current Balance
- * for a CompanyBankAccount is always openingBalance + sum(deposit) - sum(withdrawal) over this
- * table, computed on demand — never stored, matching the "derive, don't store" convention
- * already used for SubWork budgets.
+ * Banking — the single financial control center. BankTransaction is the bank/cash statement
+ * ledger and the single source of truth: source=IMPORTED rows (from an uploaded statement) are
+ * permanently read-only — never edited, never deleted, only ever allocated (see
+ * transaction-allocation.service.ts). Current Balance for a CompanyBankAccount is always
+ * openingBalance + sum(deposit) - sum(withdrawal) over this table, computed on demand — never
+ * stored, matching the "derive, don't store" convention already used for SubWork budgets.
  */
 
-export const RECONCILIATION_STATUSES = ["UNMATCHED", "PARTIALLY_MATCHED", "MATCHED"];
-export const RECONCILIATION_STATUS_LABELS: Record<string, string> = {
-  UNMATCHED: "Unmatched",
-  PARTIALLY_MATCHED: "Partially Matched",
-  MATCHED: "Matched",
+export const ALLOCATION_STATUSES = ["UNALLOCATED", "PARTIALLY_ALLOCATED", "FULLY_ALLOCATED"];
+export const ALLOCATION_STATUS_LABELS: Record<string, string> = {
+  UNALLOCATED: "Unallocated",
+  PARTIALLY_ALLOCATED: "Partially Allocated",
+  FULLY_ALLOCATED: "Fully Allocated",
 };
 
 export const BANK_TRANSACTION_SOURCES = ["MANUAL", "IMPORTED"];
-
-const AMOUNT_TOLERANCE = 0.01;
-const MATCH_WINDOW_DAYS = 7;
 
 export interface BankTransactionFormInput {
   companyBankAccountId: string;
@@ -31,15 +28,13 @@ export interface BankTransactionFormInput {
   description?: string;
   category?: string;
   projectId?: string;
-  runningBillPaymentId?: string;
-  vendorPaymentId?: string;
 }
 
 export interface BankTransactionListQuery {
   search?: string;
   companyBankAccountId?: string;
   projectId?: string;
-  reconciliationStatus?: string;
+  allocationStatus?: string;
   source?: string;
   fromDate?: string;
   toDate?: string;
@@ -63,27 +58,15 @@ export interface ImportBankTransactionsInput {
   rows: ImportRowInput[];
 }
 
-export interface MatchBankTransactionInput {
-  runningBillPaymentId?: string;
-  vendorPaymentId?: string;
-}
-
 function autoImportBatchId(): string {
   return `IMP-${Date.now()}-${Math.floor(Math.random() * 9000) + 1000}`;
-}
-
-function withinDays(a: Date, b: Date, days: number) {
-  return Math.abs(a.getTime() - b.getTime()) <= days * 24 * 60 * 60 * 1000;
 }
 
 const include = {
   companyBankAccount: { select: { id: true, nickname: true, bankName: true, accountNumber: true, accountType: true } },
   project: { select: { id: true, name: true } },
-  runningBillPayment: { select: { id: true, paymentNumber: true, amount: true, paymentDate: true, runningBill: { select: { id: true, billNumber: true } } } },
-  vendorPayment: {
-    select: { id: true, paymentNumber: true, amount: true, paymentDate: true, vendor: { select: { id: true, name: true } }, vendorBill: { select: { id: true, billNumber: true } } },
-  },
   createdBy: { select: { id: true, name: true } },
+  _count: { select: { allocations: true } },
 };
 
 type BankTransactionRow = Prisma.BankTransactionGetPayload<{ include: typeof include }>;
@@ -102,28 +85,8 @@ function toDTO(t: BankTransactionRow) {
     category: t.category ?? "",
     projectId: t.projectId ?? "",
     project: t.project,
-    runningBillPaymentId: t.runningBillPaymentId ?? "",
-    runningBillPayment: t.runningBillPayment
-      ? {
-          id: t.runningBillPayment.id,
-          paymentNumber: t.runningBillPayment.paymentNumber,
-          amount: t.runningBillPayment.amount.toString(),
-          paymentDate: t.runningBillPayment.paymentDate.toISOString().slice(0, 10),
-          billNumber: t.runningBillPayment.runningBill.billNumber,
-        }
-      : null,
-    vendorPaymentId: t.vendorPaymentId ?? "",
-    vendorPayment: t.vendorPayment
-      ? {
-          id: t.vendorPayment.id,
-          paymentNumber: t.vendorPayment.paymentNumber,
-          amount: t.vendorPayment.amount.toString(),
-          paymentDate: t.vendorPayment.paymentDate.toISOString().slice(0, 10),
-          vendor: t.vendorPayment.vendor.name,
-          billNumber: t.vendorPayment.vendorBill.billNumber,
-        }
-      : null,
-    reconciliationStatus: t.reconciliationStatus,
+    allocationStatus: t.allocationStatus,
+    allocationCount: t._count.allocations,
     source: t.source,
     importBatchId: t.importBatchId ?? "",
     createdById: t.createdById,
@@ -168,13 +131,13 @@ export async function listBankAccountsWithBalances(companyId: string) {
 }
 
 export async function listBankTransactions(companyId: string, query: BankTransactionListQuery) {
-  const { search = "", companyBankAccountId, projectId, reconciliationStatus, source, fromDate, toDate, page = 1, limit = 20, sortBy = "transactionDate", sortOrder = "desc" } = query;
+  const { search = "", companyBankAccountId, projectId, allocationStatus, source, fromDate, toDate, page = 1, limit = 20, sortBy = "transactionDate", sortOrder = "desc" } = query;
 
   const where: Prisma.BankTransactionWhereInput = {
     companyId,
     ...(companyBankAccountId && { companyBankAccountId }),
     ...(projectId && { projectId }),
-    ...(reconciliationStatus && RECONCILIATION_STATUSES.includes(reconciliationStatus.toUpperCase()) && { reconciliationStatus: reconciliationStatus.toUpperCase() as ReconciliationStatus }),
+    ...(allocationStatus && ALLOCATION_STATUSES.includes(allocationStatus.toUpperCase()) && { allocationStatus: allocationStatus.toUpperCase() as AllocationStatus }),
     ...(source && BANK_TRANSACTION_SOURCES.includes(source.toUpperCase()) && { source: source.toUpperCase() as BankTransactionSource }),
     ...(fromDate || toDate ? { transactionDate: { ...(fromDate ? { gte: new Date(fromDate) } : {}), ...(toDate ? { lte: new Date(toDate) } : {}) } } : {}),
     ...(search && {
@@ -213,38 +176,6 @@ function validateAmounts(deposit: number, withdrawal: number) {
   if (deposit > 0 && withdrawal > 0) throw new Error("A single transaction cannot be both a Deposit and a Withdrawal");
 }
 
-async function resolveMatch(
-  companyId: string,
-  input: { runningBillPaymentId?: string; vendorPaymentId?: string },
-  deposit: number,
-  withdrawal: number,
-  excludeTransactionId?: string
-) {
-  let runningBillPaymentId: string | null = null;
-  let vendorPaymentId: string | null = null;
-  let reconciliationStatus: ReconciliationStatus = "UNMATCHED";
-
-  if (input.runningBillPaymentId) {
-    const payment = await prisma.runningBillPayment.findFirst({ where: { id: input.runningBillPaymentId, companyId } });
-    if (!payment) throw new Error("Running Bill Payment not found");
-    const clash = await prisma.bankTransaction.findFirst({ where: { runningBillPaymentId: payment.id, ...(excludeTransactionId && { id: { not: excludeTransactionId } }) } });
-    if (clash) throw new Error("This Running Bill Payment is already matched to another Bank Transaction");
-    runningBillPaymentId = payment.id;
-    reconciliationStatus = Math.abs(Number(payment.amount) - deposit) <= AMOUNT_TOLERANCE ? "MATCHED" : "PARTIALLY_MATCHED";
-  }
-
-  if (input.vendorPaymentId) {
-    const payment = await prisma.vendorPayment.findFirst({ where: { id: input.vendorPaymentId, companyId } });
-    if (!payment) throw new Error("Vendor Payment not found");
-    const clash = await prisma.bankTransaction.findFirst({ where: { vendorPaymentId: payment.id, ...(excludeTransactionId && { id: { not: excludeTransactionId } }) } });
-    if (clash) throw new Error("This Vendor Payment is already matched to another Bank Transaction");
-    vendorPaymentId = payment.id;
-    reconciliationStatus = Math.abs(Number(payment.amount) - withdrawal) <= AMOUNT_TOLERANCE ? "MATCHED" : "PARTIALLY_MATCHED";
-  }
-
-  return { runningBillPaymentId, vendorPaymentId, reconciliationStatus };
-}
-
 export async function createBankTransaction(companyId: string, createdById: string, input: BankTransactionFormInput) {
   if (!input.companyBankAccountId?.trim()) throw new Error("Bank account is required");
   if (!input.transactionDate) throw new Error("Transaction date is required");
@@ -261,8 +192,6 @@ export async function createBankTransaction(companyId: string, createdById: stri
     if (!project) throw new Error("Project not found");
   }
 
-  const match = await resolveMatch(companyId, input, deposit, withdrawal);
-
   const txn = await prisma.bankTransaction.create({
     data: {
       companyId,
@@ -274,7 +203,6 @@ export async function createBankTransaction(companyId: string, createdById: stri
       description: input.description || null,
       category: input.category || null,
       projectId: input.projectId || null,
-      ...match,
       source: "MANUAL",
       createdById,
     },
@@ -284,9 +212,11 @@ export async function createBankTransaction(companyId: string, createdById: stri
   return toDTO(txn);
 }
 
+/** MANUAL rows only — a source=IMPORTED row is the bank's own statement line and is never edited, per Banking's "read-only forever" rule. */
 export async function updateBankTransaction(id: string, companyId: string, input: Partial<BankTransactionFormInput>) {
   const existing = await prisma.bankTransaction.findFirst({ where: { id, companyId } });
   if (!existing) throw new Error("Bank Transaction not found");
+  if (existing.source === "IMPORTED") throw new Error("Imported bank transactions are read-only — allocate it instead of editing it");
 
   const deposit = input.deposit !== undefined ? Number(input.deposit) || 0 : Number(existing.deposit);
   const withdrawal = input.withdrawal !== undefined ? Number(input.withdrawal) || 0 : Number(existing.withdrawal);
@@ -296,11 +226,6 @@ export async function updateBankTransaction(id: string, companyId: string, input
     const project = await prisma.project.findFirst({ where: { id: input.projectId, companyId } });
     if (!project) throw new Error("Project not found");
   }
-
-  const relinking = input.runningBillPaymentId !== undefined || input.vendorPaymentId !== undefined;
-  const match = relinking
-    ? await resolveMatch(companyId, input, deposit, withdrawal, id)
-    : { runningBillPaymentId: existing.runningBillPaymentId, vendorPaymentId: existing.vendorPaymentId, reconciliationStatus: existing.reconciliationStatus };
 
   const txn = await prisma.bankTransaction.update({
     where: { id },
@@ -312,7 +237,6 @@ export async function updateBankTransaction(id: string, companyId: string, input
       description: input.description !== undefined ? input.description || null : existing.description,
       category: input.category !== undefined ? input.category || null : existing.category,
       projectId: input.projectId !== undefined ? input.projectId || null : existing.projectId,
-      ...match,
     },
     include,
   });
@@ -320,128 +244,16 @@ export async function updateBankTransaction(id: string, companyId: string, input
   return toDTO(txn);
 }
 
+/** MANUAL rows only — see updateBankTransaction. A row with any allocations can never be deleted (that would silently orphan the ledger rows it created). */
 export async function deleteBankTransaction(id: string, companyId: string) {
-  const existing = await prisma.bankTransaction.findFirst({ where: { id, companyId } });
+  const existing = await prisma.bankTransaction.findFirst({ where: { id, companyId }, include: { _count: { select: { allocations: true } } } });
   if (!existing) throw new Error("Bank Transaction not found");
+  if (existing.source === "IMPORTED") throw new Error("Imported bank transactions are read-only and cannot be deleted");
+  if (existing._count.allocations > 0) throw new Error("This transaction has allocations and cannot be deleted");
   await prisma.bankTransaction.delete({ where: { id } });
 }
 
-/** Manually links (or re-links) a transaction to a Running Bill Payment or a Vendor Payment. */
-export async function matchBankTransaction(id: string, companyId: string, input: MatchBankTransactionInput) {
-  if (!input.runningBillPaymentId && !input.vendorPaymentId) {
-    throw new Error("Provide either a Running Bill Payment or a Vendor Payment to match against");
-  }
-  const existing = await prisma.bankTransaction.findFirst({ where: { id, companyId } });
-  if (!existing) throw new Error("Bank Transaction not found");
-
-  const match = await resolveMatch(companyId, input, Number(existing.deposit), Number(existing.withdrawal), id);
-  const txn = await prisma.bankTransaction.update({
-    where: { id },
-    data: { runningBillPaymentId: match.runningBillPaymentId, vendorPaymentId: match.vendorPaymentId, reconciliationStatus: match.reconciliationStatus },
-    include,
-  });
-  return toDTO(txn);
-}
-
-export async function unmatchBankTransaction(id: string, companyId: string) {
-  const existing = await prisma.bankTransaction.findFirst({ where: { id, companyId } });
-  if (!existing) throw new Error("Bank Transaction not found");
-
-  const txn = await prisma.bankTransaction.update({
-    where: { id },
-    data: { runningBillPaymentId: null, vendorPaymentId: null, reconciliationStatus: "UNMATCHED" },
-    include,
-  });
-  return toDTO(txn);
-}
-
-/**
- * Auto Reconciliation: Running Bill Receipts -> Bank Deposits, Vendor Payments -> Bank
- * Withdrawals. Matches by same bank account + amount (exact -> MATCHED, else closest within
- * a 7-day window -> PARTIALLY_MATCHED) against payments not already linked to any transaction.
- * Never touches an already-matched transaction or re-uses an already-linked payment.
- */
-export async function autoReconcile(companyId: string, companyBankAccountId?: string) {
-  const transactions = await prisma.bankTransaction.findMany({
-    where: { companyId, reconciliationStatus: "UNMATCHED", ...(companyBankAccountId && { companyBankAccountId }) },
-    orderBy: { transactionDate: "asc" },
-  });
-
-  let matched = 0;
-  let partiallyMatched = 0;
-
-  for (const txn of transactions) {
-    if (Number(txn.deposit) > 0) {
-      const candidates = await prisma.runningBillPayment.findMany({
-        where: { companyId, companyBankAccountId: txn.companyBankAccountId, mode: { not: "CASH" }, bankTransaction: null },
-      });
-      const inWindow = candidates.filter((c) => withinDays(c.paymentDate, txn.transactionDate, MATCH_WINDOW_DAYS));
-      if (!inWindow.length) continue;
-
-      const exact = inWindow.find((c) => Math.abs(Number(c.amount) - Number(txn.deposit)) <= AMOUNT_TOLERANCE);
-      const best = exact ?? inWindow.sort((a, b) => Math.abs(Number(a.amount) - Number(txn.deposit)) - Math.abs(Number(b.amount) - Number(txn.deposit)))[0];
-
-      await prisma.bankTransaction.update({
-        where: { id: txn.id },
-        data: { runningBillPaymentId: best.id, reconciliationStatus: exact ? "MATCHED" : "PARTIALLY_MATCHED" },
-      });
-      if (exact) matched++;
-      else partiallyMatched++;
-    } else if (Number(txn.withdrawal) > 0) {
-      const candidates = await prisma.vendorPayment.findMany({
-        where: { companyId, companyBankAccountId: txn.companyBankAccountId, mode: { not: "CASH" }, bankTransaction: null },
-      });
-      const inWindow = candidates.filter((c) => withinDays(c.paymentDate, txn.transactionDate, MATCH_WINDOW_DAYS));
-      if (!inWindow.length) continue;
-
-      const exact = inWindow.find((c) => Math.abs(Number(c.amount) - Number(txn.withdrawal)) <= AMOUNT_TOLERANCE);
-      const best = exact ?? inWindow.sort((a, b) => Math.abs(Number(a.amount) - Number(txn.withdrawal)) - Math.abs(Number(b.amount) - Number(txn.withdrawal)))[0];
-
-      await prisma.bankTransaction.update({
-        where: { id: txn.id },
-        data: { vendorPaymentId: best.id, reconciliationStatus: exact ? "MATCHED" : "PARTIALLY_MATCHED" },
-      });
-      if (exact) matched++;
-      else partiallyMatched++;
-    }
-  }
-
-  return { scanned: transactions.length, matched, partiallyMatched, stillUnmatched: transactions.length - matched - partiallyMatched };
-}
-
-export async function listUnmatchedRunningBillPayments(companyId: string, companyBankAccountId?: string) {
-  const payments = await prisma.runningBillPayment.findMany({
-    where: { companyId, mode: { not: "CASH" }, bankTransaction: null, ...(companyBankAccountId && { companyBankAccountId }) },
-    include: { runningBill: { select: { id: true, billNumber: true } }, project: { select: { id: true, name: true } } },
-    orderBy: { paymentDate: "desc" },
-  });
-  return payments.map((p) => ({
-    id: p.id,
-    paymentNumber: p.paymentNumber,
-    paymentDate: p.paymentDate.toISOString().slice(0, 10),
-    amount: p.amount.toString(),
-    billNumber: p.runningBill.billNumber,
-    project: p.project?.name ?? "",
-  }));
-}
-
-export async function listUnmatchedVendorPayments(companyId: string, companyBankAccountId?: string) {
-  const payments = await prisma.vendorPayment.findMany({
-    where: { companyId, mode: { not: "CASH" }, bankTransaction: null, ...(companyBankAccountId && { companyBankAccountId }) },
-    include: { vendorBill: { select: { id: true, billNumber: true } }, vendor: { select: { id: true, name: true } } },
-    orderBy: { paymentDate: "desc" },
-  });
-  return payments.map((p) => ({
-    id: p.id,
-    paymentNumber: p.paymentNumber,
-    paymentDate: p.paymentDate.toISOString().slice(0, 10),
-    amount: p.amount.toString(),
-    billNumber: p.vendorBill.billNumber,
-    vendor: p.vendor.name,
-  }));
-}
-
-/** Bulk-imports pre-parsed Excel/CSV rows (parsed client-side; the backend just validates and inserts). */
+/** Bulk-imports pre-parsed Excel/CSV rows (parsed client-side; the backend just validates and inserts). Every row is permanently read-only from the moment it's created. */
 export async function importBankTransactions(companyId: string, createdById: string, input: ImportBankTransactionsInput) {
   if (!input.companyBankAccountId?.trim()) throw new Error("Bank account is required");
   const account = await prisma.companyBankAccount.findFirst({ where: { id: input.companyBankAccountId, companyId } });
@@ -485,7 +297,7 @@ function escapeCsv(value: string) {
 export async function exportBankTransactionsToCSV(companyId: string, query: BankTransactionListQuery) {
   const { data } = await listBankTransactions(companyId, { ...query, page: 1, limit: 5000 });
 
-  const headers = ["Date", "Account", "Deposit", "Withdrawal", "Reference", "Description", "Category", "Project", "Status", "Matched Against"];
+  const headers = ["Date", "Account", "Deposit", "Withdrawal", "Reference", "Description", "Category", "Project", "Status", "Allocations"];
   const rows = data.map((t) =>
     [
       t.transactionDate,
@@ -496,8 +308,8 @@ export async function exportBankTransactionsToCSV(companyId: string, query: Bank
       t.description,
       t.category,
       t.project?.name ?? "",
-      RECONCILIATION_STATUS_LABELS[t.reconciliationStatus] ?? t.reconciliationStatus,
-      t.runningBillPayment ? `RB ${t.runningBillPayment.billNumber}` : t.vendorPayment ? `VB ${t.vendorPayment.billNumber}` : "",
+      ALLOCATION_STATUS_LABELS[t.allocationStatus] ?? t.allocationStatus,
+      t.allocationCount,
     ]
       .map((v) => escapeCsv(String(v ?? "")))
       .join(",")

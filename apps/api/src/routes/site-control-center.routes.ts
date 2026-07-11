@@ -11,12 +11,14 @@ import {
   getSiteMonthlyCostHandler,
   getSiteCostSummaryHandler,
   exportSiteCostBySubWorkHandler,
+  getSiteWalletHandler,
 } from "../controllers/site-control-center.controller.js";
 import { authMiddleware } from "../middleware/auth.middleware.js";
 
 const router = Router();
 
 router.get("/overview", authMiddleware, getSiteOverviewHandler);
+router.get("/wallet", authMiddleware, getSiteWalletHandler);
 
 router.get("/recap/live", authMiddleware, getSiteRecapLiveHandler);
 router.get("/recap/revisions", authMiddleware, listSiteRecapRevisionsHandler);

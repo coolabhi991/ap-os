@@ -65,6 +65,22 @@ export async function getSiteOverview(siteId: string): Promise<SiteOverview> {
   return response.data.data;
 }
 
+export interface SiteWallet {
+  inflow: string;
+  outflow: string;
+  balance: string;
+  breakdown: {
+    runningBillReceipts: string;
+    siteExpenses: string;
+    labour: string;
+  };
+}
+
+export async function getSiteWallet(siteId: string): Promise<SiteWallet> {
+  const response = await api.get<{ success: boolean; data: SiteWallet }>("/site-control-center/wallet", { params: { siteId } });
+  return response.data.data;
+}
+
 export async function getSiteRecapLive(siteId: string): Promise<SiteRecapLive> {
   const response = await api.get<{ success: boolean; data: SiteRecapLive }>("/site-control-center/recap/live", { params: { siteId } });
   return response.data.data;

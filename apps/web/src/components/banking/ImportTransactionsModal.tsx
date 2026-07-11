@@ -43,7 +43,7 @@ export default function ImportTransactionsModal({ accounts, onClose, onImported 
     setError(null);
     try {
       const result = await importBankTransactions(companyBankAccountId, parsed.rows);
-      alert(`Imported ${result.count} transaction${result.count === 1 ? "" : "s"}. Run Auto-Reconcile next to match them.`);
+      alert(`Imported ${result.count} transaction${result.count === 1 ? "" : "s"}. Allocate each one to record what it was for.`);
       onImported();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to import transactions.");

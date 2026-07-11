@@ -38,6 +38,7 @@ import dprRoutes from "./routes/dpr.routes.js";
 import mbRoutes from "./routes/mb.routes.js";
 import runningBillRoutes from "./routes/running-bill.routes.js";
 import bankTransactionRoutes from "./routes/bank-transaction.routes.js";
+import transactionAllocationRoutes from "./routes/transaction-allocation.routes.js";
 import bankingReportsRoutes from "./routes/banking-reports.routes.js";
 import aiRoutes from "./routes/ai.routes.js";
 
@@ -95,6 +96,7 @@ app.use("/api/v1/dpr", dprRoutes);
 app.use("/api/v1/measurement-books", mbRoutes);
 app.use("/api/v1/running-bills", runningBillRoutes);
 app.use("/api/v1/bank-transactions", bankTransactionRoutes);
+app.use("/api/v1/transaction-allocations", transactionAllocationRoutes);
 app.use("/api/v1/banking-reports", bankingReportsRoutes);
 app.use("/api/v1/ai", aiRoutes);
 

@@ -30,9 +30,9 @@ export interface CashBookReport {
 
 export interface BankReconciliationReport {
   summary: {
-    matched: { count: number; amount: string };
-    partiallyMatched: { count: number; amount: string };
-    unmatched: { count: number; amount: string };
+    fullyAllocated: { count: number; amount: string };
+    partiallyAllocated: { count: number; amount: string };
+    unallocated: { count: number; amount: string };
   };
   transactions: BankTransaction[];
 }

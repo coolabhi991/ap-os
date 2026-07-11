@@ -16,7 +16,6 @@ import {
   ChevronRight,
   NotebookPen,
   Ruler,
-  ArrowLeftRight,
 } from "lucide-react";
 
 import { NavLink } from "react-router-dom";
@@ -88,14 +87,9 @@ const menus = [
     icon: Receipt,
   },
   {
-    name: "Bank Accounts",
-    path: "/company-bank-accounts",
-    icon: Landmark,
-  },
-  {
     name: "Banking",
     path: "/banking",
-    icon: ArrowLeftRight,
+    icon: Landmark,
   },
   {
     name: "Reports",

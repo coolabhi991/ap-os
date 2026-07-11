@@ -201,20 +201,40 @@ enum BankAccountType {
 }
 
 /**
- * UNMATCHED: no linked payment record. MATCHED: linked and the amounts agree exactly.
- * PARTIALLY_MATCHED: linked (by account+date+reference proximity) but the amounts differ
- * (bank charges, rounding, a split receipt, ...) — flagged for manual review, never silently
- * treated as fully reconciled.
+ * UNALLOCATED: no TransactionAllocation rows yet. FULLY_ALLOCATED: allocations sum to the
+ * transaction's full amount. PARTIALLY_ALLOCATED: some but not all of the amount has a
+ * declared purpose yet — flagged for follow-up, never silently treated as fully allocated.
  */
-enum ReconciliationStatus {
-  UNMATCHED
-  PARTIALLY_MATCHED
-  MATCHED
+enum AllocationStatus {
+  UNALLOCATED
+  PARTIALLY_ALLOCATED
+  FULLY_ALLOCATED
 }
 
 enum BankTransactionSource {
   MANUAL
   IMPORTED
+}
+
+/**
+ * The 11 purposes a bank Deposit/Withdrawal can be allocated to. RUNNING_BILL_RECEIPT/
+ * VENDOR_PAYMENT/LABOUR/SITE_EXPENSE each auto-create their real ledger row (RunningBillPayment/
+ * VendorPayment/LabourPayment/Expense) — see TransactionAllocation. The remaining 7 types have
+ * no dedicated ledger yet (Partnership/Loan/GST/Office books are a future phase), so the
+ * allocation row itself IS the ledger entry for those.
+ */
+enum AllocationType {
+  RUNNING_BILL_RECEIPT
+  VENDOR_PAYMENT
+  LABOUR
+  SITE_EXPENSE
+  INTERNAL_TRANSFER
+  OWNER_INVESTMENT
+  PARTNER_INVESTMENT
+  GST
+  LOAN
+  OFFICE_EXPENSE
+  OTHER
 }
 
 model Company {
@@ -274,6 +294,7 @@ model Company {
   runningBillPayments   RunningBillPayment[]
   runningBillEmailLogs  RunningBillEmailLog[]
   bankTransactions      BankTransaction[]
+  transactionAllocations TransactionAllocation[]
   projectContractInfos  ProjectContractInfo[]
   sites                 Site[]
   siteRecapRevisions    SiteRecapRevision[]
@@ -354,6 +375,7 @@ model User {
   runningBillPaymentsCreated RunningBillPayment[]  @relation("RunningBillPaymentCreatedBy")
   runningBillEmailsSent      RunningBillEmailLog[] @relation("RunningBillEmailSentBy")
   bankTransactionsCreated    BankTransaction[]     @relation("BankTransactionCreatedBy")
+  transactionAllocationsCreated TransactionAllocation[]
   siteRecapRevisionsCreated  SiteRecapRevision[]
   siteVisitsCreated          SiteVisit[]
 }
@@ -486,6 +508,7 @@ model Site {
   documents            Document[]
   recapRevisions       SiteRecapRevision[]
   siteVisits           SiteVisit[]
+  transactionAllocations TransactionAllocation[]
 
   @@index([companyId])
   @@index([projectId])
@@ -1255,6 +1278,8 @@ model LabourPayment {
   createdAt            DateTime            @default(now())
   updatedAt            DateTime            @updatedAt
 
+  allocation TransactionAllocation?
+
   @@index([companyId])
   @@index([labourId])
   @@index([projectId])
@@ -1515,9 +1540,9 @@ model RunningBillPayment {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  // Reverse side of BankTransaction.runningBillPaymentId — set once Bank Reconciliation
-  // links this receipt to an actual bank statement line. Never populated by this module.
-  bankTransaction BankTransaction?
+  // Reverse side of TransactionAllocation.runningBillPaymentId — set when this receipt was
+  // created by allocating a bank statement line. Never populated by this module directly.
+  allocation TransactionAllocation?
 
   @@index([companyId])
   @@index([runningBillId])
@@ -1590,6 +1615,7 @@ model Expense {
 
   payments      Payment[]
   labourPayment LabourPayment?
+  allocation    TransactionAllocation?
 
   @@index([companyId])
   @@index([machineType])
@@ -1717,9 +1743,9 @@ model VendorPayment {
   createdAt            DateTime            @default(now())
   updatedAt            DateTime            @updatedAt
 
-  // Reverse side of BankTransaction.vendorPaymentId — set once Bank Reconciliation links
-  // this payment to an actual bank statement withdrawal. Never populated by this module.
-  bankTransaction BankTransaction?
+  // Reverse side of TransactionAllocation.vendorPaymentId — set when this payment was
+  // created by allocating a bank statement withdrawal. Never populated by this module directly.
+  allocation TransactionAllocation?
 
   @@index([companyId])
   @@index([vendorId])
@@ -1739,6 +1765,15 @@ model VendorPayment {
  * Balance for the owning CompanyBankAccount is always openingBalance + sum(deposit) -
  * sum(withdrawal) over these rows, computed on demand, never stored.
  */
+/**
+ * The bank/cash statement ledger — the single financial source of truth. A row created with
+ * source=IMPORTED (from an uploaded statement) is permanently read-only: never edited, never
+ * deleted, only ever allocated (see TransactionAllocation). MANUAL rows (entered directly, not
+ * from a statement) remain editable, mirroring how a cash book entry predates its own record.
+ * allocationStatus is a denormalized cache of sum(allocations.amount) vs (deposit+withdrawal),
+ * recomputed by transaction-allocation.service.ts on every allocate/unallocate — kept as a real
+ * column (not purely derived on read) so it stays filterable/indexable in listBankTransactions.
+ */
 model BankTransaction {
   id                   String                @id @default(cuid())
   companyId            String
@@ -1753,15 +1788,13 @@ model BankTransaction {
   category             String?
   projectId            String?
   project              Project?              @relation(fields: [projectId], references: [id])
-  runningBillPaymentId String?               @unique
-  runningBillPayment   RunningBillPayment?   @relation(fields: [runningBillPaymentId], references: [id])
-  vendorPaymentId      String?               @unique
-  vendorPayment        VendorPayment?        @relation(fields: [vendorPaymentId], references: [id])
-  reconciliationStatus ReconciliationStatus  @default(UNMATCHED)
+  allocationStatus     AllocationStatus      @default(UNALLOCATED)
   source               BankTransactionSource @default(MANUAL)
   // Groups the rows created by one Excel/CSV import call, purely for audit/undo — no separate
   // ImportBatch model, matching the "no abstraction beyond what's needed" convention.
   importBatchId        String?
+
+  allocations TransactionAllocation[]
 
   createdById String
   createdBy   User     @relation("BankTransactionCreatedBy", fields: [createdById], references: [id])
@@ -1771,11 +1804,53 @@ model BankTransaction {
   @@index([companyId])
   @@index([companyBankAccountId])
   @@index([transactionDate])
-  @@index([reconciliationStatus])
+  @@index([allocationStatus])
   @@index([projectId])
   @@index([importBatchId])
 }
 
+/**
+ * One "this money was for X" declaration against a BankTransaction. Split allocation: a single
+ * transaction can have many of these, across different AllocationTypes, as long as their amounts
+ * never exceed the transaction's own deposit/withdrawal amount (enforced in
+ * transaction-allocation.service.ts). Creating a RUNNING_BILL_RECEIPT/VENDOR_PAYMENT/LABOUR/
+ * SITE_EXPENSE allocation atomically creates the matching RunningBillPayment/VendorPayment/
+ * LabourPayment/Expense row (linked back here 1:1) — the allocation is never a second copy of
+ * that amount, only the pointer to it. siteId drives the Site Workspace's Site Wallet rollup and
+ * is set directly on the allocation (not inferred from the downstream row) so every allocation
+ * type, including the 7 with no dedicated ledger, can still be attributed to a Site.
+ */
+model TransactionAllocation {
+  id                String          @id @default(cuid())
+  companyId         String
+  company           Company         @relation(fields: [companyId], references: [id])
+  bankTransactionId String
+  bankTransaction   BankTransaction @relation(fields: [bankTransactionId], references: [id])
+  allocationType    AllocationType
+  amount            Decimal         @db.Decimal(14, 2)
+  siteId            String?
+  site              Site?           @relation(fields: [siteId], references: [id])
+  partyName         String?
+  notes             String?
+
+  runningBillPaymentId String?             @unique
+  runningBillPayment   RunningBillPayment? @relation(fields: [runningBillPaymentId], references: [id])
+  vendorPaymentId      String?             @unique
+  vendorPayment        VendorPayment?      @relation(fields: [vendorPaymentId], references: [id])
+  labourPaymentId      String?             @unique
+  labourPayment        LabourPayment?      @relation(fields: [labourPaymentId], references: [id])
+  expenseId            String?             @unique
+  expense              Expense?            @relation(fields: [expenseId], references: [id])
+
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@index([companyId])
+  @@index([bankTransactionId])
+  @@index([siteId])
+  @@index([allocationType])
+}
 model Document {
   id                    String               @id @default(cuid())
   companyId             String

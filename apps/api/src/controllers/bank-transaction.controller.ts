@@ -7,24 +7,20 @@ import {
   createBankTransaction,
   updateBankTransaction,
   deleteBankTransaction,
-  matchBankTransaction,
-  unmatchBankTransaction,
-  autoReconcile,
-  listUnmatchedRunningBillPayments,
-  listUnmatchedVendorPayments,
   importBankTransactions,
   exportBankTransactionsToCSV,
 } from "../services/bank-transaction.service.js";
 
 const notFoundMessage = "Bank Transaction not found";
+const readOnlyMessages = ["Imported bank transactions are read-only — allocate it instead of editing it", "Imported bank transactions are read-only and cannot be deleted"];
 
 function parseListQuery(req: AuthRequest) {
-  const { search, companyBankAccountId, projectId, reconciliationStatus, source, fromDate, toDate, page, limit, sortBy, sortOrder } = req.query;
+  const { search, companyBankAccountId, projectId, allocationStatus, source, fromDate, toDate, page, limit, sortBy, sortOrder } = req.query;
   return {
     search: search as string,
     companyBankAccountId: companyBankAccountId as string,
     projectId: projectId as string,
-    reconciliationStatus: reconciliationStatus as string,
+    allocationStatus: allocationStatus as string,
     source: source as string,
     fromDate: fromDate as string,
     toDate: toDate as string,
@@ -86,7 +82,8 @@ export const updateBankTransactionHandler = async (req: AuthRequest, res: Respon
     res.status(200).json({ success: true, data });
   } catch (error) {
     const is404 = error instanceof Error && error.message === notFoundMessage;
-    res.status(is404 ? 404 : 400).json({ success: false, message: error instanceof Error ? error.message : "Failed to update bank transaction" });
+    const isReadOnly = error instanceof Error && readOnlyMessages.includes(error.message);
+    res.status(is404 ? 404 : isReadOnly ? 403 : 400).json({ success: false, message: error instanceof Error ? error.message : "Failed to update bank transaction" });
   }
 };
 
@@ -98,64 +95,8 @@ export const deleteBankTransactionHandler = async (req: AuthRequest, res: Respon
     res.status(200).json({ success: true, message: "Bank Transaction deleted" });
   } catch (error) {
     const is404 = error instanceof Error && error.message === notFoundMessage;
-    res.status(is404 ? 404 : 400).json({ success: false, message: error instanceof Error ? error.message : "Failed to delete bank transaction" });
-  }
-};
-
-export const matchBankTransactionHandler = async (req: AuthRequest, res: Response) => {
-  try {
-    const companyId = req.user!.companyId;
-    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-    const data = await matchBankTransaction(id, companyId, req.body);
-    res.status(200).json({ success: true, data });
-  } catch (error) {
-    const is404 = error instanceof Error && error.message === notFoundMessage;
-    res.status(is404 ? 404 : 400).json({ success: false, message: error instanceof Error ? error.message : "Failed to match bank transaction" });
-  }
-};
-
-export const unmatchBankTransactionHandler = async (req: AuthRequest, res: Response) => {
-  try {
-    const companyId = req.user!.companyId;
-    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-    const data = await unmatchBankTransaction(id, companyId);
-    res.status(200).json({ success: true, data });
-  } catch (error) {
-    const is404 = error instanceof Error && error.message === notFoundMessage;
-    res.status(is404 ? 404 : 400).json({ success: false, message: error instanceof Error ? error.message : "Failed to unmatch bank transaction" });
-  }
-};
-
-export const autoReconcileHandler = async (req: AuthRequest, res: Response) => {
-  try {
-    const companyId = req.user!.companyId;
-    const companyBankAccountId = req.query.companyBankAccountId as string;
-    const data = await autoReconcile(companyId, companyBankAccountId || undefined);
-    res.status(200).json({ success: true, data });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error instanceof Error ? error.message : "Failed to run auto-reconciliation" });
-  }
-};
-
-export const getUnmatchedRunningBillPaymentsHandler = async (req: AuthRequest, res: Response) => {
-  try {
-    const companyId = req.user!.companyId;
-    const companyBankAccountId = req.query.companyBankAccountId as string;
-    const data = await listUnmatchedRunningBillPayments(companyId, companyBankAccountId || undefined);
-    res.status(200).json({ success: true, data });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error instanceof Error ? error.message : "Failed to load unmatched Running Bill payments" });
-  }
-};
-
-export const getUnmatchedVendorPaymentsHandler = async (req: AuthRequest, res: Response) => {
-  try {
-    const companyId = req.user!.companyId;
-    const companyBankAccountId = req.query.companyBankAccountId as string;
-    const data = await listUnmatchedVendorPayments(companyId, companyBankAccountId || undefined);
-    res.status(200).json({ success: true, data });
-  } catch (error) {
-    res.status(500).json({ success: false, message: error instanceof Error ? error.message : "Failed to load unmatched Vendor payments" });
+    const isReadOnly = error instanceof Error && readOnlyMessages.includes(error.message);
+    res.status(is404 ? 404 : isReadOnly ? 403 : 400).json({ success: false, message: error instanceof Error ? error.message : "Failed to delete bank transaction" });
   }
 };
 

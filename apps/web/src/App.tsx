@@ -73,9 +73,6 @@ import ViewVendorPayment from "./pages/vendor-payments/ViewVendorPayment";
 import VendorPaymentsDashboard from "./pages/vendor-payments/VendorPaymentsDashboard";
 import VendorLedger from "./pages/vendor-payments/VendorLedger";
 
-/* Company Bank Accounts */
-import CompanyBankAccounts from "./pages/company-bank-accounts/CompanyBankAccounts";
-
 /* Site Expenses */
 import Expenses from "./pages/expenses/Expenses";
 import AddExpense from "./pages/expenses/AddExpense";
@@ -121,8 +118,9 @@ import EditRunningBill from "./pages/running-bills/EditRunningBill";
 import ViewRunningBill from "./pages/running-bills/ViewRunningBill";
 import RunningBillReports from "./pages/running-bills/RunningBillReports";
 
-/* Banking & Reconciliation */
-import BankTransactions from "./pages/banking/BankTransactions";
+/* Banking */
+import Banking from "./pages/banking/Banking";
+import BankAccountStatement from "./pages/banking/BankAccountStatement";
 import BankingReports from "./pages/banking/BankingReports";
 
 /* AP AI */
@@ -182,9 +180,6 @@ export default function App() {
       <Route path="/vendor-payments/dashboard" element={<VendorPaymentsDashboard />} />
       <Route path="/vendor-payments/ledger" element={<VendorLedger />} />
       <Route path="/vendor-payments/:id" element={<ViewVendorPayment />} />
-
-      {/* Company Bank Accounts */}
-      <Route path="/company-bank-accounts" element={<CompanyBankAccounts />} />
 
       {/* Site Expenses */}
       <Route path="/expenses" element={<Expenses />} />
@@ -259,8 +254,9 @@ export default function App() {
       <Route path="/running-bills/:id" element={<ViewRunningBill />} />
       <Route path="/running-bills/:id/edit" element={<EditRunningBill />} />
 
-      {/* Banking & Reconciliation */}
-      <Route path="/banking" element={<BankTransactions />} />
+      {/* Banking */}
+      <Route path="/banking" element={<Banking />} />
+      <Route path="/banking/accounts/:id" element={<BankAccountStatement />} />
       <Route path="/banking/reports" element={<BankingReports />} />
 
       {/* AP AI */}

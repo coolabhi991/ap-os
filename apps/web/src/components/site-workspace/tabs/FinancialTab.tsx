@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { getSiteBudgetVsActualReport, getSiteCostBySubWorkReport } from "../../../services/site-control-center";
-import type { SiteBudgetVsActual, SiteSubWorkRecapRow } from "../../../services/site-control-center";
+import { getSiteBudgetVsActualReport, getSiteCostBySubWorkReport, getSiteWallet } from "../../../services/site-control-center";
+import type { SiteBudgetVsActual, SiteSubWorkRecapRow, SiteWallet } from "../../../services/site-control-center";
 import { COST_HEAD_LABELS } from "../../../services/project-control-center";
 import type { CostHeadKey } from "../../../services/project-control-center";
 import type { Site } from "../../../services/sites";
@@ -11,15 +11,17 @@ const HEAD_KEYS: CostHeadKey[] = ["material", "labour", "machinery", "fuel", "ve
 export default function FinancialTab({ site }: { site: Site }) {
   const [summary, setSummary] = useState<SiteBudgetVsActual | null>(null);
   const [subWorkRows, setSubWorkRows] = useState<SiteSubWorkRecapRow[]>([]);
+  const [wallet, setWallet] = useState<SiteWallet | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
-    Promise.all([getSiteBudgetVsActualReport(site.id), getSiteCostBySubWorkReport(site.id)])
-      .then(([s, rows]) => {
+    Promise.all([getSiteBudgetVsActualReport(site.id), getSiteCostBySubWorkReport(site.id), getSiteWallet(site.id)])
+      .then(([s, rows, w]) => {
         setSummary(s);
         setSubWorkRows(rows);
+        setWallet(w);
       })
       .catch(() => setError("Failed to load financial summary."))
       .finally(() => setLoading(false));
@@ -48,6 +50,27 @@ export default function FinancialTab({ site }: { site: Site }) {
           <p className="mt-1 text-lg font-bold capitalize">{summary.varianceStatus}</p>
         </div>
       </div>
+
+      {wallet && (
+        <div className="space-y-3">
+          <h2 className="text-lg font-bold text-slate-900">Site Wallet</h2>
+          <p className="text-sm text-slate-500">Net cash this site has moved through the bank, from allocated bank transactions — Running Bill Receipts in, Site Expenses and Labour out.</p>
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+              <p className="text-xs text-emerald-700">Inflow (Running Bill Receipts)</p>
+              <p className="mt-1 text-lg font-bold text-emerald-700">{inr(wallet.inflow)}</p>
+            </div>
+            <div className="rounded-xl border border-red-200 bg-red-50 p-4">
+              <p className="text-xs text-red-700">Outflow (Site Expenses + Labour)</p>
+              <p className="mt-1 text-lg font-bold text-red-700">{inr(wallet.outflow)}</p>
+            </div>
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <p className="text-xs text-slate-500">Wallet Balance</p>
+              <p className={`mt-1 text-lg font-bold ${Number(wallet.balance) < 0 ? "text-red-600" : "text-emerald-600"}`}>{inr(wallet.balance)}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="space-y-3">
         <h2 className="text-lg font-bold text-slate-900">Budget vs Actual by Cost Head</h2>

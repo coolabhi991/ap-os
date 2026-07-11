@@ -74,7 +74,7 @@ export async function generateBankBookPdf(report: BankBookDetail, companyName: s
         e.description || "-",
         e.referenceNumber || "-",
         e.category || "-",
-        e.reconciliationStatus,
+        e.allocationStatus,
         e.deposit !== "0" ? inr(e.deposit) : "-",
         e.withdrawal !== "0" ? inr(e.withdrawal) : "-",
         inr(e.balance),
@@ -108,7 +108,7 @@ export async function generateBankBookExcel(report: BankBookDetail): Promise<Buf
   sheet.addRow([]);
 
   boldRow(["Date", "Description", "Reference", "Category", "Status", "Deposit", "Withdrawal", "Balance"]);
-  report.entries.forEach((e) => sheet.addRow([e.transactionDate, e.description, e.referenceNumber, e.category, e.reconciliationStatus, e.deposit, e.withdrawal, e.balance]));
+  report.entries.forEach((e) => sheet.addRow([e.transactionDate, e.description, e.referenceNumber, e.category, e.allocationStatus, e.deposit, e.withdrawal, e.balance]));
 
   const buffer = await workbook.xlsx.writeBuffer();
   return Buffer.from(buffer);

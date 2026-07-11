@@ -570,8 +570,8 @@ export async function recordRunningBillPayment(id: string, companyId: string, cr
   const newOutstanding = round2(Number(existing.netPayable) - newAmountReceived);
   const newStatus = deriveRunningBillStatus(existing.status, newAmountReceived, Number(existing.netPayable));
 
-  const bill = await prisma.$transaction(async (tx) => {
-    await tx.runningBillPayment.create({
+  const { bill, paymentId } = await prisma.$transaction(async (tx) => {
+    const created = await tx.runningBillPayment.create({
       data: {
         companyId,
         runningBillId: id,
@@ -587,14 +587,15 @@ export async function recordRunningBillPayment(id: string, companyId: string, cr
       },
     });
 
-    return tx.runningBill.update({
+    const updated = await tx.runningBill.update({
       where: { id },
       data: { amountReceived: newAmountReceived, outstandingAmount: newOutstanding, status: newStatus },
       include,
     });
+    return { bill: updated, paymentId: created.id };
   });
 
-  return toDTO(bill);
+  return { ...toDTO(bill), paymentId };
 }
 
 export async function listRunningBillPayments(runningBillId: string, companyId: string) {

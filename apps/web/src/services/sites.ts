@@ -71,6 +71,11 @@ export interface SiteListResult {
   data: Site[];
 }
 
+export async function getAllSites(): Promise<Site[]> {
+  const response = await api.get<{ success: boolean } & SiteListResult>("/sites", { params: { limit: 100 } });
+  return response.data.data;
+}
+
 export async function getSites(projectId: string): Promise<Site[]> {
   const response = await api.get<{ success: boolean } & SiteListResult>("/sites", { params: { projectId, limit: 100 } });
   return response.data.data;

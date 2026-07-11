@@ -60,7 +60,7 @@ export async function getProjectHealthList(companyId: string): Promise<ProjectHe
  * total itself; it only reads and arranges what those modules already produce.
  */
 export async function getControlCenter(companyId: string) {
-  const [projects, projectHealth, outstandingSummary, cashFlow, receivables, payables, runningBillsResult, runningBillStatusCounts, unmatchedTransactionCount] = await Promise.all([
+  const [projects, projectHealth, outstandingSummary, cashFlow, receivables, payables, runningBillsResult, runningBillStatusCounts, unallocatedTransactionCount] = await Promise.all([
     prisma.project.findMany({
       where: { companyId, status: { in: ["PLANNING", "ACTIVE"] } },
       select: { id: true, name: true, status: true, progress: true, contractValue: true },
@@ -73,7 +73,7 @@ export async function getControlCenter(companyId: string) {
     getPayablesReport(companyId, {}),
     listRunningBills(companyId, { page: 1, limit: RUNNING_BILLS_PREVIEW, sortBy: "billDate", sortOrder: "desc" }),
     prisma.runningBill.groupBy({ by: ["status"], where: { companyId }, _count: { _all: true } }),
-    prisma.bankTransaction.count({ where: { companyId, reconciliationStatus: "UNMATCHED" } }),
+    prisma.bankTransaction.count({ where: { companyId, allocationStatus: "UNALLOCATED" } }),
   ]);
 
   const totalContractValue = projects.reduce((s, p) => s + Number(p.contractValue), 0);
@@ -112,11 +112,11 @@ export async function getControlCenter(companyId: string) {
     });
   }
 
-  if (unmatchedTransactionCount > 0) {
+  if (unallocatedTransactionCount > 0) {
     alerts.push({
       severity: "low",
-      category: "Reconciliation",
-      message: `${unmatchedTransactionCount} bank transaction${unmatchedTransactionCount === 1 ? "" : "s"} awaiting reconciliation`,
+      category: "Allocation",
+      message: `${unallocatedTransactionCount} bank transaction${unallocatedTransactionCount === 1 ? "" : "s"} awaiting allocation`,
       link: "/banking",
     });
   }

@@ -12,6 +12,7 @@ import {
   getSiteMonthlyCostReport,
   getSiteCostSummaryReport,
   exportSiteCostBySubWorkToCSV,
+  getSiteWallet,
 } from "../services/site-control-center.service.js";
 
 const notFoundMessage = "Site not found";
@@ -141,5 +142,16 @@ export const exportSiteCostBySubWorkHandler = async (req: AuthRequest, res: Resp
     res.status(200).send(csv);
   } catch (error) {
     res.status(500).json({ success: false, message: error instanceof Error ? error.message : "Failed to export site cost summary" });
+  }
+};
+
+export const getSiteWalletHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const companyId = req.user!.companyId;
+    const data = await getSiteWallet(getSiteId(req), companyId);
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    const is404 = error instanceof Error && error.message === notFoundMessage;
+    res.status(is404 ? 404 : 500).json({ success: false, message: error instanceof Error ? error.message : "Failed to load site wallet" });
   }
 };
