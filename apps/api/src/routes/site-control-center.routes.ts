@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   getSiteOverviewHandler,
   getSiteRecapLiveHandler,
+  getRecapitulationDraftHandler,
   createSiteRecapRevisionHandler,
   listSiteRecapRevisionsHandler,
   getCurrentSiteRecapRevisionHandler,
@@ -27,6 +28,7 @@ router.get("/vendor-bills", authMiddleware, getSiteVendorBillsHandler);
 router.get("/money-flow", authMiddleware, getSiteMoneyFlowHandler);
 
 router.get("/recap/live", authMiddleware, getSiteRecapLiveHandler);
+router.get("/recap/draft", authMiddleware, getRecapitulationDraftHandler);
 router.get("/recap/revisions", authMiddleware, listSiteRecapRevisionsHandler);
 router.get("/recap/revisions/current", authMiddleware, getCurrentSiteRecapRevisionHandler);
 router.get("/recap/revisions/:revisionId", authMiddleware, getSiteRecapRevisionHandler);

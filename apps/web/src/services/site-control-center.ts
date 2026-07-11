@@ -39,6 +39,24 @@ export interface SiteRecapLive extends ProgressComparison {
   subWorks: SiteSubWorkRecapRow[];
 }
 
+export const GST_TYPES = ["NONE", "FIVE", "TWELVE", "EIGHTEEN", "CUSTOM"];
+export const GST_TYPE_LABELS: Record<string, string> = { NONE: "None", FIVE: "5%", TWELVE: "12%", EIGHTEEN: "18%", CUSTOM: "Custom" };
+
+export interface OtherCharge {
+  label: string;
+  amount: string;
+}
+
+export interface RecapitulationItem {
+  id?: string;
+  subWorkId: string;
+  sortOrder: number;
+  particular: string;
+  qty: string;
+  rate: string;
+  amount: string;
+}
+
 export interface SiteRecapRevision {
   id: string;
   siteId: string;
@@ -47,9 +65,35 @@ export interface SiteRecapRevision {
   label: string;
   notes: string;
   snapshot: SiteRecapLive;
+  gstType: string;
+  gstPercent: string;
+  administrationCharges: string;
+  otherCharges: OtherCharge[];
+  subTotal: string;
+  gstAmount: string;
+  grandTotal: string;
+  items: RecapitulationItem[];
   createdById: string;
   createdByName: string;
   createdAt: string;
+}
+
+export interface RecapitulationDraft {
+  items: RecapitulationItem[];
+  gstType: string;
+  gstPercent: string;
+  administrationCharges: string;
+  otherCharges: OtherCharge[];
+}
+
+export interface CreateRecapRevisionInput {
+  label?: string;
+  notes?: string;
+  items: { subWorkId?: string; particular: string; qty: number; rate: number }[];
+  gstType: string;
+  gstPercent?: number;
+  administrationCharges?: number;
+  otherCharges?: OtherCharge[];
 }
 
 export interface SiteBudgetVsActual extends ProgressComparison {
@@ -143,8 +187,13 @@ export async function getCurrentSiteRecapRevision(siteId: string): Promise<SiteR
   return response.data.data;
 }
 
-export async function createSiteRecapRevision(siteId: string, input: { label?: string; notes?: string }): Promise<SiteRecapRevision> {
+export async function createSiteRecapRevision(siteId: string, input: CreateRecapRevisionInput): Promise<SiteRecapRevision> {
   const response = await api.post<{ success: boolean; data: SiteRecapRevision }>("/site-control-center/recap/revisions", input, { params: { siteId } });
+  return response.data.data;
+}
+
+export async function getRecapitulationDraft(siteId: string): Promise<RecapitulationDraft> {
+  const response = await api.get<{ success: boolean; data: RecapitulationDraft }>("/site-control-center/recap/draft", { params: { siteId } });
   return response.data.data;
 }
 

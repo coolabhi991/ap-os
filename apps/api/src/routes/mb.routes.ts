@@ -15,6 +15,8 @@ import {
   exportMBExcelHandler,
   sendMBEmailHandler,
   getMBEmailLogsHandler,
+  getMBRowsFromRecapitulationHandler,
+  getMBFieldAuditsHandler,
 } from "../controllers/mb.controller.js";
 import { authMiddleware } from "../middleware/auth.middleware.js";
 
@@ -27,6 +29,7 @@ router.get("/reports/item-wise-quantity", authMiddleware, getItemWiseQuantityRep
 router.get("/reports/sub-work-quantity", authMiddleware, getSubWorkQuantityReportHandler);
 router.get("/reports/pending", authMiddleware, getPendingMBReportHandler);
 router.get("/reports/export", authMiddleware, exportAbstractRegisterHandler);
+router.get("/from-recapitulation", authMiddleware, getMBRowsFromRecapitulationHandler);
 
 router.get("/", authMiddleware, getMBsHandler);
 router.post("/", authMiddleware, createMBHandler);
@@ -39,5 +42,6 @@ router.get("/:id/export/excel", authMiddleware, exportMBExcelHandler);
 
 router.post("/:id/email", authMiddleware, sendMBEmailHandler);
 router.get("/:id/email-logs", authMiddleware, getMBEmailLogsHandler);
+router.get("/:id/field-audits", authMiddleware, getMBFieldAuditsHandler);
 
 export default router;

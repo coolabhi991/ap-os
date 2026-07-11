@@ -12,6 +12,8 @@ import {
   getSubWorkQuantityReport,
   getPendingMBReport,
   exportAbstractRegisterToCSV,
+  getMBRowsFromRecapitulation,
+  getMBFieldAudits,
 } from "../services/measurement-book.service.js";
 import { generateMBPdf, generateMBExcel } from "../services/mb-export.service.js";
 import { sendMBEmail, listMBEmailLogs } from "../services/mb-email.service.js";
@@ -81,8 +83,9 @@ export const createMBHandler = async (req: AuthRequest, res: Response) => {
 export const updateMBHandler = async (req: AuthRequest, res: Response) => {
   try {
     const companyId = req.user!.companyId;
+    const changedById = req.user!.id;
     const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-    const data = await updateMB(id, companyId, req.body);
+    const data = await updateMB(id, companyId, changedById, req.body);
     res.status(200).json({ success: true, data });
   } catch (error) {
     const is404 = error instanceof Error && error.message === notFoundMessage;
@@ -99,6 +102,29 @@ export const deleteMBHandler = async (req: AuthRequest, res: Response) => {
   } catch (error) {
     const is404 = error instanceof Error && error.message === notFoundMessage;
     res.status(is404 ? 404 : 400).json({ success: false, message: error instanceof Error ? error.message : "Failed to delete Measurement Book" });
+  }
+};
+
+export const getMBRowsFromRecapitulationHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const companyId = req.user!.companyId;
+    const siteId = req.query.siteId as string;
+    const data = await getMBRowsFromRecapitulation(siteId, companyId);
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error instanceof Error ? error.message : "Failed to load rows from Recapitulation" });
+  }
+};
+
+export const getMBFieldAuditsHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const companyId = req.user!.companyId;
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const data = await getMBFieldAudits(id, companyId);
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    const is404 = error instanceof Error && error.message === notFoundMessage;
+    res.status(is404 ? 404 : 500).json({ success: false, message: error instanceof Error ? error.message : "Failed to load edit history" });
   }
 };
 

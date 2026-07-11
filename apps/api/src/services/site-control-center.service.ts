@@ -206,18 +206,31 @@ export async function getSiteRecapLive(siteId: string, companyId: string) {
   };
 }
 
-function toRecapRevisionDTO(r: {
-  id: string;
-  siteId: string;
-  revisionNo: number;
-  isCurrent: boolean;
-  label: string | null;
-  notes: string | null;
-  snapshot: Prisma.JsonValue;
-  createdById: string;
-  createdAt: Date;
-  createdBy?: { name: string } | null;
-}) {
+export const GST_TYPES = ["NONE", "FIVE", "TWELVE", "EIGHTEEN", "CUSTOM"];
+export const GST_TYPE_LABELS: Record<string, string> = { NONE: "None", FIVE: "5%", TWELVE: "12%", EIGHTEEN: "18%", CUSTOM: "Custom" };
+const GST_FIXED_PERCENT: Record<string, number> = { NONE: 0, FIVE: 5, TWELVE: 12, EIGHTEEN: 18 };
+
+/** Resolves the effective GST % for a revision: fixed for NONE/FIVE/TWELVE/EIGHTEEN, user-supplied for CUSTOM. */
+function resolveGstPercent(gstType: string, customPercent: number): number {
+  return gstType === "CUSTOM" ? customPercent : (GST_FIXED_PERCENT[gstType] ?? 0);
+}
+
+export interface OtherCharge {
+  label: string;
+  amount: string;
+}
+
+export interface RecapitulationItemInput {
+  subWorkId?: string;
+  particular: string;
+  qty: number;
+  rate: number;
+}
+
+const recapItemInclude = { items: { orderBy: { sortOrder: "asc" as const } }, createdBy: { select: { name: true } } };
+type RecapRevisionRow = Prisma.SiteRecapRevisionGetPayload<{ include: typeof recapItemInclude }>;
+
+function toRecapRevisionDTO(r: RecapRevisionRow) {
   return {
     id: r.id,
     siteId: r.siteId,
@@ -226,9 +239,60 @@ function toRecapRevisionDTO(r: {
     label: r.label ?? "",
     notes: r.notes ?? "",
     snapshot: r.snapshot,
+    gstType: r.gstType,
+    gstPercent: r.gstPercent.toString(),
+    administrationCharges: r.administrationCharges.toString(),
+    otherCharges: (r.otherCharges as unknown as OtherCharge[]) ?? [],
+    subTotal: r.subTotal.toString(),
+    gstAmount: r.gstAmount.toString(),
+    grandTotal: r.grandTotal.toString(),
+    items: r.items.map((i) => ({
+      id: i.id,
+      subWorkId: i.subWorkId ?? "",
+      sortOrder: i.sortOrder,
+      particular: i.particular,
+      qty: i.qty.toString(),
+      rate: i.rate.toString(),
+      amount: i.amount.toString(),
+    })),
     createdById: r.createdById,
     createdByName: r.createdBy?.name ?? "",
     createdAt: r.createdAt.toISOString(),
+  };
+}
+
+/**
+ * Recapitulation Sheet draft — the rows the "Add / Edit Recapitulation Sheet" screen starts
+ * from. Always exactly one row per current Sub Work of the Site (never hardcoded, never an
+ * arbitrary user-added row). If a saved revision already exists, its Qty/Rate values are
+ * carried into the draft for matching Sub Works (by subWorkId) so re-saving isn't a blank
+ * retype; brand-new Sub Works simply start at Qty 0 / Rate 0.
+ */
+export async function getRecapitulationDraft(siteId: string, companyId: string) {
+  await verifySiteOwnership(siteId, companyId);
+  const [subWorks, current] = await Promise.all([
+    prisma.subWork.findMany({ where: { companyId, siteId }, orderBy: { sortOrder: "asc" } }),
+    prisma.siteRecapRevision.findFirst({ where: { siteId, companyId, isCurrent: true }, include: recapItemInclude }),
+  ]);
+
+  const priorBysubWork = new Map((current?.items ?? []).filter((i) => i.subWorkId).map((i) => [i.subWorkId as string, i]));
+
+  return {
+    items: subWorks.map((sw, index) => {
+      const prior = priorBysubWork.get(sw.id);
+      return {
+        subWorkId: sw.id,
+        sortOrder: index,
+        particular: sw.name,
+        qty: prior ? prior.qty.toString() : "0",
+        rate: prior ? prior.rate.toString() : "0",
+        amount: prior ? prior.amount.toString() : "0",
+      };
+    }),
+    gstType: current?.gstType ?? "NONE",
+    gstPercent: current?.gstPercent.toString() ?? "0",
+    administrationCharges: current?.administrationCharges.toString() ?? "0",
+    otherCharges: (current?.otherCharges as unknown as OtherCharge[]) ?? [],
   };
 }
 
@@ -237,16 +301,44 @@ export async function createSiteRecapRevision(
   siteId: string,
   companyId: string,
   createdById: string,
-  input: { label?: string; notes?: string }
+  input: {
+    label?: string;
+    notes?: string;
+    items?: RecapitulationItemInput[];
+    gstType?: string;
+    gstPercent?: number;
+    administrationCharges?: number;
+    otherCharges?: OtherCharge[];
+  }
 ) {
   await verifySiteOwnership(siteId, companyId);
   const snapshot = await getSiteRecapLive(siteId, companyId);
+
+  const gstType = input.gstType && GST_TYPES.includes(input.gstType) ? input.gstType : "NONE";
+  if (gstType === "CUSTOM" && (input.gstPercent === undefined || input.gstPercent < 0)) {
+    throw new Error("A valid custom GST % is required when GST type is Custom");
+  }
+  const effectiveGstPercent = resolveGstPercent(gstType, input.gstPercent ?? 0);
+  const administrationCharges = Math.max(0, input.administrationCharges ?? 0);
+  const otherCharges = (input.otherCharges ?? []).filter((c) => c.label?.trim());
+
+  // Amount is always server-recomputed as qty * rate — the client's amount is never trusted.
+  const items = (input.items ?? []).map((row, index) => {
+    const qty = Number(row.qty) || 0;
+    const rate = Number(row.rate) || 0;
+    return { companyId, subWorkId: row.subWorkId || null, sortOrder: index, particular: row.particular, qty, rate, amount: qty * rate };
+  });
+
+  const subTotal = items.reduce((s, i) => s + i.amount, 0);
+  const gstAmount = subTotal * (effectiveGstPercent / 100);
+  const otherChargesTotal = otherCharges.reduce((s, c) => s + (Number(c.amount) || 0), 0);
+  const grandTotal = subTotal + gstAmount + administrationCharges + otherChargesTotal;
 
   const revision = await prisma.$transaction(async (tx) => {
     await tx.siteRecapRevision.updateMany({ where: { siteId, isCurrent: true }, data: { isCurrent: false } });
     const last = await tx.siteRecapRevision.findFirst({ where: { siteId }, orderBy: { revisionNo: "desc" } });
     const revisionNo = (last?.revisionNo ?? 0) + 1;
-    return tx.siteRecapRevision.create({
+    const created = await tx.siteRecapRevision.create({
       data: {
         companyId,
         siteId,
@@ -255,10 +347,19 @@ export async function createSiteRecapRevision(
         label: input.label || null,
         notes: input.notes || null,
         snapshot: snapshot as unknown as Prisma.InputJsonValue,
+        gstType: gstType as Prisma.SiteRecapRevisionUncheckedCreateInput["gstType"],
+        gstPercent: effectiveGstPercent,
+        administrationCharges,
+        otherCharges: otherCharges as unknown as Prisma.InputJsonValue,
+        subTotal,
+        gstAmount,
+        grandTotal,
         createdById,
+        items: { create: items },
       },
-      include: { createdBy: { select: { name: true } } },
+      include: recapItemInclude,
     });
+    return created;
   });
 
   return toRecapRevisionDTO(revision);
@@ -269,7 +370,7 @@ export async function listSiteRecapRevisions(siteId: string, companyId: string) 
   const revisions = await prisma.siteRecapRevision.findMany({
     where: { siteId, companyId },
     orderBy: { revisionNo: "desc" },
-    include: { createdBy: { select: { name: true } } },
+    include: recapItemInclude,
   });
   return revisions.map(toRecapRevisionDTO);
 }
@@ -278,7 +379,7 @@ export async function getCurrentSiteRecapRevision(siteId: string, companyId: str
   await verifySiteOwnership(siteId, companyId);
   const current = await prisma.siteRecapRevision.findFirst({
     where: { siteId, companyId, isCurrent: true },
-    include: { createdBy: { select: { name: true } } },
+    include: recapItemInclude,
   });
   return current ? toRecapRevisionDTO(current) : null;
 }
@@ -286,7 +387,7 @@ export async function getCurrentSiteRecapRevision(siteId: string, companyId: str
 export async function getSiteRecapRevisionById(revisionId: string, companyId: string) {
   const revision = await prisma.siteRecapRevision.findFirst({
     where: { id: revisionId, companyId },
-    include: { createdBy: { select: { name: true } } },
+    include: recapItemInclude,
   });
   if (!revision) throw new Error("Recap revision not found");
   return toRecapRevisionDTO(revision);

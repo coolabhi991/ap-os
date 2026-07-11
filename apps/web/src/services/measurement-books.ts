@@ -3,6 +3,7 @@ import api from "./api";
 export interface MBItem {
   id: string;
   sortOrder: number;
+  subWorkId: string;
   boqItemNo: string;
   boqDescription: string;
   unit: string;
@@ -14,6 +15,10 @@ export interface MBItem {
   paymentPercent: string;
   effectiveRate: string;
   amount: string;
+  previousQuantity: string;
+  totalQuantity: string;
+  previousAmount: string;
+  totalAmount: string;
   remarks: string;
 }
 
@@ -21,12 +26,39 @@ export interface MBItemInput {
   boqItemNo: string;
   boqDescription: string;
   unit: string;
+  subWorkId?: string;
   length?: number;
   breadth?: number;
   height?: number;
+  currentQuantity?: number;
   boqRate: number;
   paymentPercent?: number;
+  previousQuantity?: number;
+  fieldChangeReason?: string;
   remarks?: string;
+}
+
+export interface MBFieldAudit {
+  id: string;
+  boqItemNo: string;
+  fieldName: string;
+  oldValue: string;
+  newValue: string;
+  reason: string;
+  changedById: string;
+  changedByName: string;
+  changedAt: string;
+}
+
+export interface MBRecapRow {
+  sortOrder: number;
+  subWorkId: string;
+  boqItemNo: string;
+  boqDescription: string;
+  unit: string;
+  boqRate: string;
+  previousQuantity: string;
+  currentQuantity: string;
 }
 
 export interface MB {
@@ -38,6 +70,7 @@ export interface MB {
   subWorkId: string;
   subWork: { id: string; name: string } | null;
   mbNumber: string;
+  raBillNumber: string;
   mbDate: string;
   site: string;
   engineerId: string;
@@ -46,6 +79,9 @@ export interface MB {
   contractor: { id: string; name: string } | null;
   status: string;
   remarks: string;
+  abstractPdfUrl: string;
+  abstractPdfName: string;
+  sourceRecapRevisionId: string;
   items: MBItem[];
   totalQuantity: string;
   totalAmount: string;
@@ -60,12 +96,16 @@ export interface MBFormData {
   siteId: string;
   subWorkId?: string;
   mbNumber: string;
+  raBillNumber?: string;
   mbDate: string;
   site?: string;
   engineerId?: string;
   contractorId?: string;
   status?: string;
   remarks?: string;
+  abstractPdfUrl?: string;
+  abstractPdfName?: string;
+  sourceRecapRevisionId?: string;
   items?: MBItemInput[];
 }
 
@@ -191,6 +231,16 @@ export async function updateMB(id: string, data: Partial<MBFormData>): Promise<M
 
 export async function deleteMB(id: string): Promise<void> {
   await api.delete(`/measurement-books/${id}`);
+}
+
+export async function getMBRowsFromRecapitulation(siteId: string): Promise<{ sourceRecapRevisionId: string; items: MBRecapRow[] }> {
+  const response = await api.get<{ success: boolean; data: { sourceRecapRevisionId: string; items: MBRecapRow[] } }>("/measurement-books/from-recapitulation", { params: { siteId } });
+  return response.data.data;
+}
+
+export async function getMBFieldAudits(id: string): Promise<MBFieldAudit[]> {
+  const response = await api.get<{ success: boolean; data: MBFieldAudit[] }>(`/measurement-books/${id}/field-audits`);
+  return response.data.data;
 }
 
 export async function getMBRegisterReport(query?: ReportQuery): Promise<MBRegisterRow[]> {

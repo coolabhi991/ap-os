@@ -206,18 +206,131 @@ export async function getEMISchedule(companyId: string) {
   });
 }
 
-/** Credit Card Report — every CREDIT_CARD liability with limit/outstanding/utilization. */
+/** Credit Card Report — every CREDIT_CARD liability with limit/outstanding/utilization. Card
+ * Name/Masked Number/Statement Date/Minimum Due/Outstanding are read straight off Liability's
+ * own fields; Available Limit is never stored — always sanctionAmount - outstandingAmount. */
 export async function getCreditCardReport(companyId: string) {
   const cards = await prisma.liability.findMany({ where: { companyId, liabilityType: "CREDIT_CARD" }, orderBy: { loanName: "asc" } });
   return cards.map((c) => ({
     id: c.id,
     loanName: c.loanName,
     bankName: c.bankName ?? "",
+    maskedCardNumber: c.accountNumber ?? "",
     creditLimit: c.sanctionAmount.toString(),
     outstandingAmount: c.outstandingAmount.toString(),
+    availableLimit: (Number(c.sanctionAmount) - Number(c.outstandingAmount)).toFixed(2),
+    statementDate: c.statementDate,
+    dueDate: c.emiDate,
+    minimumDue: c.minimumDue.toString(),
     utilizationPercent: Number(c.sanctionAmount) > 0 ? round2((Number(c.outstandingAmount) / Number(c.sanctionAmount)) * 100) : 0,
     status: c.status,
   }));
+}
+
+/** EMI Calendar — every active EMI-bearing liability, grouped by day-of-month due date, for a
+ * calendar-style upcoming-payments view. Purely a projection off Liability's own emiDate/
+ * emiAmount — no new stored schedule. */
+export async function getEMICalendar(companyId: string) {
+  const liabilities = await prisma.liability.findMany({ where: { companyId, status: "ACTIVE", emiAmount: { gt: 0 } } });
+  const byDay = new Map<number, { liabilityId: string; loanName: string; liabilityType: string; emiAmount: string }[]>();
+  for (const l of liabilities) {
+    const day = l.emiDate ?? 1;
+    const bucket = byDay.get(day) ?? [];
+    bucket.push({ liabilityId: l.id, loanName: l.loanName, liabilityType: l.liabilityType, emiAmount: l.emiAmount.toString() });
+    byDay.set(day, bucket);
+  }
+  return Array.from(byDay.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([day, items]) => ({ day, items, totalAmount: items.reduce((s, i) => s + Number(i.emiAmount), 0).toFixed(2) }));
+}
+
+/** Liability Timeline — a company-wide, chronological feed of every disbursement and every
+ * repayment across ALL liabilities (unlike Loan Ledger, which is scoped to one liability) —
+ * read straight off TransactionAllocation (disbursements) and LiabilityRepayment. */
+export async function getLiabilityTimeline(companyId: string) {
+  const [disbursements, repayments] = await Promise.all([
+    prisma.transactionAllocation.findMany({
+      where: { companyId, allocationType: "LIABILITY_DISBURSEMENT" },
+      include: {
+        liability: { select: { id: true, loanName: true, liabilityType: true } },
+        bankTransaction: { select: { transactionDate: true, companyBankAccount: { select: { nickname: true, bankName: true } } } },
+      },
+    }),
+    prisma.liabilityRepayment.findMany({
+      where: { companyId },
+      include: { liability: { select: { id: true, loanName: true, liabilityType: true } }, companyBankAccount: { select: { nickname: true, bankName: true } } },
+    }),
+  ]);
+
+  const entries = [
+    ...disbursements
+      .filter((d) => d.liability)
+      .map((d) => ({
+        date: d.bankTransaction.transactionDate.toISOString().slice(0, 10),
+        type: "DISBURSEMENT" as const,
+        liabilityId: d.liability!.id,
+        loanName: d.liability!.loanName,
+        liabilityType: d.liability!.liabilityType,
+        bankAccount: d.bankTransaction.companyBankAccount.nickname || d.bankTransaction.companyBankAccount.bankName,
+        amount: d.amount.toString(),
+      })),
+    ...repayments.map((r) => ({
+      date: r.paymentDate.toISOString().slice(0, 10),
+      type: "REPAYMENT" as const,
+      liabilityId: r.liability.id,
+      loanName: r.liability.loanName,
+      liabilityType: r.liability.liabilityType,
+      bankAccount: r.companyBankAccount.nickname || r.companyBankAccount.bankName,
+      amount: r.totalPaid.toString(),
+    })),
+  ].sort((a, b) => b.date.localeCompare(a.date));
+
+  return entries;
+}
+
+/** Bank-wise Repayment — repayments grouped by the CompanyBankAccount that funded them. A
+ * Liability can be (and often is) repaid from a different bank account each time — see
+ * LiabilityRepayment.companyBankAccountId — this report is the traceability view over exactly
+ * that, never a second copy of the repayment amounts themselves. */
+export async function getBankWiseRepaymentReport(companyId: string, query: DateRangeQuery) {
+  const range = dateRange(query);
+  const repayments = await prisma.liabilityRepayment.findMany({
+    where: { companyId, ...(range && { paymentDate: range }) },
+    include: { companyBankAccount: { select: { id: true, nickname: true, bankName: true } }, liability: { select: { loanName: true } } },
+    orderBy: { paymentDate: "desc" },
+  });
+
+  const byAccount = new Map<string, { bankAccountId: string; bankAccount: string; totalPaid: number; count: number; repayments: typeof repayments }>();
+  for (const r of repayments) {
+    const key = r.companyBankAccountId;
+    const bucket = byAccount.get(key) ?? {
+      bankAccountId: key,
+      bankAccount: r.companyBankAccount.nickname || r.companyBankAccount.bankName,
+      totalPaid: 0,
+      count: 0,
+      repayments: [],
+    };
+    bucket.totalPaid += Number(r.totalPaid);
+    bucket.count += 1;
+    bucket.repayments.push(r);
+    byAccount.set(key, bucket);
+  }
+
+  return Array.from(byAccount.values())
+    .sort((a, b) => b.totalPaid - a.totalPaid)
+    .map((b) => ({
+      bankAccountId: b.bankAccountId,
+      bankAccount: b.bankAccount,
+      totalPaid: b.totalPaid.toFixed(2),
+      count: b.count,
+      repayments: b.repayments.map((r) => ({
+        id: r.id,
+        repaymentNumber: r.repaymentNumber,
+        paymentDate: r.paymentDate.toISOString().slice(0, 10),
+        liability: r.liability.loanName,
+        totalPaid: r.totalPaid.toString(),
+      })),
+    }));
 }
 
 /** CC Utilization Report — same idea, across all revolving credit types (CC, Cash Credit, OD). */

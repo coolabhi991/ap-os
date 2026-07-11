@@ -11,6 +11,9 @@ import {
   getLoanLedger,
   getFundingSourceReport,
   getRepaymentReport,
+  getEMICalendar,
+  getLiabilityTimeline,
+  getBankWiseRepaymentReport,
 } from "../services/finance-reports.service.js";
 
 function fail(res: Response, error: unknown, fallback: string) {
@@ -117,5 +120,33 @@ export const getRepaymentReportHandler = async (req: AuthRequest, res: Response)
     res.status(200).json({ success: true, data });
   } catch (error) {
     fail(res, error, "Failed to load Repayment report");
+  }
+};
+
+export const getEMICalendarHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const data = await getEMICalendar(req.user!.companyId);
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    fail(res, error, "Failed to load EMI Calendar");
+  }
+};
+
+export const getLiabilityTimelineHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const data = await getLiabilityTimeline(req.user!.companyId);
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    fail(res, error, "Failed to load Liability Timeline");
+  }
+};
+
+export const getBankWiseRepaymentReportHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const { fromDate, toDate } = req.query;
+    const data = await getBankWiseRepaymentReport(req.user!.companyId, { fromDate: fromDate as string, toDate: toDate as string });
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    fail(res, error, "Failed to load Bank-wise Repayment report");
   }
 };

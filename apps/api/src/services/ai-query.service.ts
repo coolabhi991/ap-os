@@ -13,9 +13,9 @@ import { listMaterialIssues } from "./material-issue.service.js";
 import { listDPRs } from "./dpr.service.js";
 import { getPendingMBReport } from "./measurement-book.service.js";
 import { getLowStockAlerts } from "./inventory.service.js";
-import { listLiabilities } from "./liability.service.js";
+import { listLiabilities, LIABILITY_TYPES, LIABILITY_TYPE_LABELS } from "./liability.service.js";
 import { listLiabilityRepayments } from "./liability-repayment.service.js";
-import { getInterestPaidReport } from "./finance-reports.service.js";
+import { getInterestPaidReport, getFundingSourceReport } from "./finance-reports.service.js";
 
 /**
  * AP AI Foundation — Phase 1: the AI Integration Layer.
@@ -750,6 +750,117 @@ async function handleLoanRepaymentsThisMonth({ companyId }: Ctx): Promise<AIResp
   };
 }
 
+/** Finds which of the 12 Liability Types is mentioned in the message, if any (e.g. "Gold Loan" -> GOLD_LOAN). */
+function findMentionedLiabilityType(message: string): string | null {
+  const lower = message.toLowerCase();
+  let best: { type: string; length: number } | null = null;
+  for (const type of LIABILITY_TYPES) {
+    const label = LIABILITY_TYPE_LABELS[type].toLowerCase().replace(/\s*\([^)]*\)/, "");
+    if (lower.includes(label) && (!best || label.length > best.length)) {
+      best = { type, length: label.length };
+    }
+  }
+  return best?.type ?? null;
+}
+
+/** Finance #7 — Total Credit Card Outstanding? */
+async function handleTotalCCOutstanding({ companyId }: Ctx): Promise<AIResponse> {
+  const { data } = await listLiabilities(companyId, { liabilityType: "CREDIT_CARD", limit: 100 });
+  const totalOutstanding = data.reduce((s, l) => s + Number(l.outstandingAmount), 0);
+  const totalLimit = data.reduce((s, l) => s + Number(l.sanctionAmount), 0);
+  return {
+    intentId: "total-cc-outstanding",
+    intentLabel: "Total Credit Card Outstanding",
+    summary: data.length
+      ? `Total Credit Card outstanding: ${inr(totalOutstanding)} across ${data.length} card${data.length === 1 ? "" : "s"}.`
+      : "No Credit Card recorded in Finance.",
+    cards: [
+      { label: "Total Outstanding", value: inr(totalOutstanding), tone: "warning" },
+      { label: "Total Credit Limit", value: inr(totalLimit) },
+    ],
+    links: [{ label: "Open Finance — Credit Card Report", href: "/finance", kind: "generic" }],
+  };
+}
+
+/** Finance #8 — Interest Paid This Year? (all liability types combined). */
+async function handleTotalInterestPaidThisYear({ companyId }: Ctx): Promise<AIResponse> {
+  const d = new Date();
+  const fromDate = new Date(d.getFullYear(), 0, 1).toISOString().slice(0, 10);
+  const report = await getInterestPaidReport(companyId, { fromDate });
+  return {
+    intentId: "total-interest-paid-year",
+    intentLabel: "Interest Paid This Year",
+    summary: `Total interest paid this year across every liability: ${inr(report.thisYearInterestPaid)}.`,
+    cards: report.byLiabilityType.map((r) => ({ label: LIABILITY_TYPE_LABELS[r.liabilityType] ?? r.liabilityType, value: inr(r.interestPaid) })),
+    links: [{ label: "Open Finance — Interest History", href: "/finance", kind: "generic" }],
+  };
+}
+
+/** Finance #9 — Which Site used Gold Loan money? (or any other liability type mentioned). */
+async function handleWhichSiteUsedLiabilityMoney({ companyId, message }: Ctx): Promise<AIResponse> {
+  const liabilityType = findMentionedLiabilityType(message);
+  const { data: liabilities } = await listLiabilities(companyId, { liabilityType: liabilityType ?? undefined, limit: 100 });
+  if (!liabilities.length) {
+    return {
+      intentId: "which-site-used-liability-money",
+      intentLabel: "Funding Source by Site",
+      summary: liabilityType ? `No ${LIABILITY_TYPE_LABELS[liabilityType]} recorded in Finance.` : "No liability mentioned or recorded — try naming one, e.g. \"Which Site used Gold Loan money?\"",
+    };
+  }
+
+  const rows = (await Promise.all(liabilities.map((l) => getFundingSourceReport(companyId, l.id)))).flat();
+  const siteRows = rows.flatMap((r) => r.allocatedTo.map((a) => ({ liability: r.loanName, destination: a.destination, amount: a.amount })));
+
+  return {
+    intentId: "which-site-used-liability-money",
+    intentLabel: "Funding Source by Site",
+    summary: siteRows.length
+      ? `${liabilityType ? LIABILITY_TYPE_LABELS[liabilityType] : "This liability"} money has been allocated to: ${Array.from(new Set(siteRows.map((r) => r.destination))).join(", ")}.`
+      : `${liabilityType ? LIABILITY_TYPE_LABELS[liabilityType] : "This liability"}'s disbursed money hasn't been spent/allocated yet.`,
+    table: {
+      columns: [
+        { key: "liability", label: "Liability" },
+        { key: "destination", label: "Allocated To" },
+        { key: "amount", label: "Amount", align: "right" },
+      ],
+      rows: siteRows.map((r) => ({ liability: r.liability, destination: r.destination, amount: inr(r.amount) })),
+    },
+    links: [{ label: "Open Finance — Funding Source Report", href: "/finance", kind: "generic" }],
+  };
+}
+
+/** Finance #10 — Which account paid this EMI? (generalizes the Car Loan-specific intent to any liability type mentioned). */
+async function handleWhichAccountPaidEMI({ companyId, message }: Ctx): Promise<AIResponse> {
+  const liabilityType = findMentionedLiabilityType(message);
+  const { data: liabilities } = await listLiabilities(companyId, { liabilityType: liabilityType ?? undefined, limit: 100 });
+  const liabilityIds = new Set(liabilities.map((l) => l.id));
+  const { data: repayments } = await listLiabilityRepayments(companyId, { liabilityType: liabilityType ?? undefined, limit: 200 });
+  const relevant = liabilityType ? repayments.filter((r) => liabilityIds.has(r.liabilityId)) : repayments.slice(0, 10);
+
+  return {
+    intentId: "which-account-paid-emi",
+    intentLabel: "Which Account Paid This EMI",
+    summary: relevant.length
+      ? `Paid from: ${Array.from(new Set(relevant.map((r) => r.companyBankAccount?.nickname || r.companyBankAccount?.bankName))).join(", ")}.`
+      : "No matching repayments recorded yet.",
+    table: {
+      columns: [
+        { key: "date", label: "Date" },
+        { key: "loan", label: "Loan" },
+        { key: "bank", label: "Bank Account" },
+        { key: "amount", label: "Amount", align: "right" },
+      ],
+      rows: relevant.slice(0, 10).map((r) => ({
+        date: r.paymentDate,
+        loan: r.liability?.loanName ?? "",
+        bank: r.companyBankAccount?.nickname || r.companyBankAccount?.bankName || "",
+        amount: inr(r.totalPaid),
+      })),
+    },
+    links: [{ label: "Open Finance — Repayment History", href: "/finance", kind: "generic" }],
+  };
+}
+
 /** #29 — Show today's summary (composite, entirely re-reading intents 3/8/9/10/15's own sources). */
 async function handleTodaysSummary({ companyId }: Ctx): Promise<AIResponse> {
   const [cf, labour, expenseDash, materials, dprs, activeProjects] = await Promise.all([
@@ -808,6 +919,11 @@ const INTENT_HANDLERS: Record<string, (ctx: Ctx) => Promise<AIResponse>> = {
   "gold-loan-pending": handleGoldLoanPending,
   "car-loan-emi-bank": handleCarLoanEMIBank,
   "friend-loan-borrowed": handleFriendLoanBorrowed,
+  "friend-loan-pending": handleFriendLoanBorrowed,
+  "total-cc-outstanding": handleTotalCCOutstanding,
+  "total-interest-paid-year": handleTotalInterestPaidThisYear,
+  "which-site-used-liability-money": handleWhichSiteUsedLiabilityMoney,
+  "which-account-paid-emi": handleWhichAccountPaidEMI,
   "loan-repayments-month": handleLoanRepaymentsThisMonth,
 };
 
@@ -848,6 +964,11 @@ export const AI_INTENTS: AIIntentDefinition[] = [
   { id: "car-loan-emi-bank", label: "Which bank account paid the Car Loan EMI?", example: "Which bank account paid the Car Loan EMI?", category: "Finance", keywords: ["bank account paid the car loan", "car loan emi", "which bank paid car loan"] },
   { id: "friend-loan-borrowed", label: "How much money borrowed from friends?", example: "How much money borrowed from friends?", category: "Finance", keywords: ["borrowed from friends", "money borrowed from friends", "friend loan"] },
   { id: "loan-repayments-month", label: "Show all loan repayments this month", example: "Show all loan repayments this month", category: "Finance", keywords: ["loan repayments this month", "show all loan repayments", "repayments this month"] },
+  { id: "friend-loan-pending", label: "Friend Loan pending?", example: "Friend Loan pending?", category: "Finance", keywords: ["friend loan pending", "pending friend loan", "friend loan outstanding"] },
+  { id: "total-cc-outstanding", label: "Total Credit Card Outstanding?", example: "Total Credit Card Outstanding?", category: "Finance", keywords: ["total credit card outstanding", "credit card outstanding", "total cc outstanding"] },
+  { id: "total-interest-paid-year", label: "Interest Paid This Year?", example: "Interest Paid This Year?", category: "Finance", keywords: ["interest paid this year", "total interest paid this year", "interest paid year"] },
+  { id: "which-site-used-liability-money", label: "Which Site used Gold Loan money?", example: "Which Site used Gold Loan money?", category: "Finance", keywords: ["which site used", "site used gold loan", "site used loan money", "used gold loan money"] },
+  { id: "which-account-paid-emi", label: "Which account paid this EMI?", example: "Which account paid this EMI?", category: "Finance", keywords: ["which account paid this emi", "account paid this emi", "which account paid the emi"] },
 ];
 
 // #14/#30 catalogue entry "owners-attention-2" reuses the same handler as "owners-attention".

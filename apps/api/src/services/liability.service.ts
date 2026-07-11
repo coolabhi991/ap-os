@@ -69,15 +69,19 @@ export interface LiabilityFormInput {
   loanName: string;
   liabilityType: string;
   lenderName?: string;
+  lenderMobile?: string;
   bankName?: string;
   branch?: string;
   accountNumber?: string;
+  loanNumber?: string;
   sanctionAmount: number;
   outstandingAmount?: number;
   interestType?: string;
   interestRate?: number;
   emiAmount?: number;
   emiDate?: number;
+  statementDate?: number;
+  minimumDue?: number;
   startDate: string;
   endDate?: string;
   security?: string;
@@ -101,15 +105,19 @@ type LiabilityRow = {
   loanName: string;
   liabilityType: LiabilityType;
   lenderName: string | null;
+  lenderMobile: string | null;
   bankName: string | null;
   branch: string | null;
   accountNumber: string | null;
+  loanNumber: string | null;
   sanctionAmount: Prisma.Decimal;
   outstandingAmount: Prisma.Decimal;
   interestType: LiabilityInterestType;
   interestRate: Prisma.Decimal;
   emiAmount: Prisma.Decimal;
   emiDate: number | null;
+  statementDate: number | null;
+  minimumDue: Prisma.Decimal;
   startDate: Date;
   endDate: Date | null;
   security: LiabilitySecurity;
@@ -126,15 +134,20 @@ function toDTO(l: LiabilityRow) {
     loanName: l.loanName,
     liabilityType: l.liabilityType,
     lenderName: l.lenderName ?? "",
+    lenderMobile: l.lenderMobile ?? "",
     bankName: l.bankName ?? "",
     branch: l.branch ?? "",
     accountNumber: l.accountNumber ?? "",
+    loanNumber: l.loanNumber ?? "",
     sanctionAmount: l.sanctionAmount.toString(),
     outstandingAmount: l.outstandingAmount.toString(),
     interestType: l.interestType,
     interestRate: l.interestRate.toString(),
     emiAmount: l.emiAmount.toString(),
     emiDate: l.emiDate,
+    statementDate: l.statementDate,
+    minimumDue: l.minimumDue.toString(),
+    availableLimit: (Number(l.sanctionAmount) - Number(l.outstandingAmount)).toFixed(2),
     startDate: l.startDate.toISOString().slice(0, 10),
     endDate: l.endDate ? l.endDate.toISOString().slice(0, 10) : "",
     security: l.security,
@@ -206,15 +219,19 @@ export async function createLiability(companyId: string, input: LiabilityFormInp
       loanName: input.loanName.trim(),
       liabilityType: parseEnum(input.liabilityType as LiabilityType, LIABILITY_TYPES, "OTHER" as LiabilityType),
       lenderName: input.lenderName || null,
+      lenderMobile: input.lenderMobile || null,
       bankName: input.bankName || null,
       branch: input.branch || null,
       accountNumber: input.accountNumber || null,
+      loanNumber: input.loanNumber || null,
       sanctionAmount,
       outstandingAmount,
       interestType: parseEnum(input.interestType as LiabilityInterestType, LIABILITY_INTEREST_TYPES, "NONE" as LiabilityInterestType),
       interestRate: input.interestRate ?? 0,
       emiAmount: input.emiAmount ?? 0,
       emiDate: input.emiDate ?? null,
+      statementDate: input.statementDate ?? null,
+      minimumDue: input.minimumDue ?? 0,
       startDate: new Date(input.startDate),
       endDate: input.endDate ? new Date(input.endDate) : null,
       security: parseEnum(input.security as LiabilitySecurity, LIABILITY_SECURITY_TYPES, "NONE" as LiabilitySecurity),
@@ -237,15 +254,19 @@ export async function updateLiability(id: string, companyId: string, input: Part
       ...(input.loanName !== undefined && { loanName: input.loanName.trim() }),
       ...(input.liabilityType !== undefined && { liabilityType: parseEnum(input.liabilityType as LiabilityType, LIABILITY_TYPES, "OTHER" as LiabilityType) }),
       ...(input.lenderName !== undefined && { lenderName: input.lenderName || null }),
+      ...(input.lenderMobile !== undefined && { lenderMobile: input.lenderMobile || null }),
       ...(input.bankName !== undefined && { bankName: input.bankName || null }),
       ...(input.branch !== undefined && { branch: input.branch || null }),
       ...(input.accountNumber !== undefined && { accountNumber: input.accountNumber || null }),
+      ...(input.loanNumber !== undefined && { loanNumber: input.loanNumber || null }),
       ...(input.sanctionAmount !== undefined && { sanctionAmount: input.sanctionAmount }),
       ...(input.outstandingAmount !== undefined && { outstandingAmount: input.outstandingAmount }),
       ...(input.interestType !== undefined && { interestType: parseEnum(input.interestType as LiabilityInterestType, LIABILITY_INTEREST_TYPES, "NONE" as LiabilityInterestType) }),
       ...(input.interestRate !== undefined && { interestRate: input.interestRate }),
       ...(input.emiAmount !== undefined && { emiAmount: input.emiAmount }),
       ...(input.emiDate !== undefined && { emiDate: input.emiDate }),
+      ...(input.statementDate !== undefined && { statementDate: input.statementDate }),
+      ...(input.minimumDue !== undefined && { minimumDue: input.minimumDue }),
       ...(input.startDate !== undefined && { startDate: new Date(input.startDate) }),
       ...(input.endDate !== undefined && { endDate: input.endDate ? new Date(input.endDate) : null }),
       ...(input.security !== undefined && { security: parseEnum(input.security as LiabilitySecurity, LIABILITY_SECURITY_TYPES, "NONE" as LiabilitySecurity) }),

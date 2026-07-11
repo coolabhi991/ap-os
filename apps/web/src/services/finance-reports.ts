@@ -108,8 +108,13 @@ export interface CreditCardReportRow {
   id: string;
   loanName: string;
   bankName: string;
+  maskedCardNumber: string;
   creditLimit: string;
   outstandingAmount: string;
+  availableLimit: string;
+  statementDate: number | null;
+  dueDate: number | null;
+  minimumDue: string;
   utilizationPercent: number;
   status: string;
 }
@@ -183,5 +188,44 @@ export interface RepaymentReport {
 
 export async function getRepaymentReport(fromDate?: string, toDate?: string, liabilityId?: string): Promise<RepaymentReport> {
   const response = await api.get<{ success: boolean; data: RepaymentReport }>("/finance-reports/repayments", { params: { fromDate, toDate, liabilityId } });
+  return response.data.data;
+}
+
+export interface EMICalendarDay {
+  day: number;
+  items: { liabilityId: string; loanName: string; liabilityType: string; emiAmount: string }[];
+  totalAmount: string;
+}
+
+export async function getEMICalendar(): Promise<EMICalendarDay[]> {
+  const response = await api.get<{ success: boolean; data: EMICalendarDay[] }>("/finance-reports/emi-calendar");
+  return response.data.data;
+}
+
+export interface LiabilityTimelineEntry {
+  date: string;
+  type: "DISBURSEMENT" | "REPAYMENT";
+  liabilityId: string;
+  loanName: string;
+  liabilityType: string;
+  bankAccount: string;
+  amount: string;
+}
+
+export async function getLiabilityTimeline(): Promise<LiabilityTimelineEntry[]> {
+  const response = await api.get<{ success: boolean; data: LiabilityTimelineEntry[] }>("/finance-reports/liability-timeline");
+  return response.data.data;
+}
+
+export interface BankWiseRepaymentRow {
+  bankAccountId: string;
+  bankAccount: string;
+  totalPaid: string;
+  count: number;
+  repayments: { id: string; repaymentNumber: string; paymentDate: string; liability: string; totalPaid: string }[];
+}
+
+export async function getBankWiseRepaymentReport(fromDate?: string, toDate?: string): Promise<BankWiseRepaymentRow[]> {
+  const response = await api.get<{ success: boolean; data: BankWiseRepaymentRow[] }>("/finance-reports/bank-wise-repayment", { params: { fromDate, toDate } });
   return response.data.data;
 }

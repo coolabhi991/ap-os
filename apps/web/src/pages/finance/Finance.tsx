@@ -32,8 +32,23 @@ import {
   getCreditCardReport,
   getCCUtilizationReport,
   getFundingSourceReport,
+  getEMICalendar,
+  getLiabilityTimeline,
+  getBankWiseRepaymentReport,
 } from "../../services/finance-reports";
-import type { FinanceDashboard, LiabilitySummaryRow, OutstandingReport, InterestPaidReport, EMIScheduleRow, CreditCardReportRow, CCUtilizationReport, FundingSourceRow } from "../../services/finance-reports";
+import type {
+  FinanceDashboard,
+  LiabilitySummaryRow,
+  OutstandingReport,
+  InterestPaidReport,
+  EMIScheduleRow,
+  CreditCardReportRow,
+  CCUtilizationReport,
+  FundingSourceRow,
+  EMICalendarDay,
+  LiabilityTimelineEntry,
+  BankWiseRepaymentRow,
+} from "../../services/finance-reports";
 
 const TABS = [
   { key: "dashboard", label: "Dashboard" },
@@ -48,15 +63,19 @@ const emptyForm: LiabilityFormData = {
   loanName: "",
   liabilityType: "BANK_LOAN",
   lenderName: "",
+  lenderMobile: "",
   bankName: "",
   branch: "",
   accountNumber: "",
+  loanNumber: "",
   sanctionAmount: 0,
   outstandingAmount: 0,
   interestType: "NONE",
   interestRate: 0,
   emiAmount: 0,
   emiDate: undefined,
+  statementDate: undefined,
+  minimumDue: 0,
   startDate: todayISO(),
   endDate: "",
   security: "NONE",
@@ -237,15 +256,19 @@ function LiabilitiesTab() {
       loanName: l.loanName,
       liabilityType: l.liabilityType,
       lenderName: l.lenderName,
+      lenderMobile: l.lenderMobile,
       bankName: l.bankName,
       branch: l.branch,
       accountNumber: l.accountNumber,
+      loanNumber: l.loanNumber,
       sanctionAmount: Number(l.sanctionAmount),
       outstandingAmount: Number(l.outstandingAmount),
       interestType: l.interestType,
       interestRate: Number(l.interestRate),
       emiAmount: Number(l.emiAmount),
       emiDate: l.emiDate ?? undefined,
+      statementDate: l.statementDate ?? undefined,
+      minimumDue: Number(l.minimumDue),
       startDate: l.startDate,
       endDate: l.endDate,
       security: l.security,
@@ -328,6 +351,10 @@ function LiabilitiesTab() {
               <input value={form.lenderName} onChange={(e) => setForm({ ...form, lenderName: e.target.value })} className="w-full rounded-lg border p-2.5" />
             </div>
             <div>
+              <label className="mb-1 block text-sm font-medium">Lender Mobile</label>
+              <input value={form.lenderMobile} onChange={(e) => setForm({ ...form, lenderMobile: e.target.value })} placeholder="For Friend / Relative loans" className="w-full rounded-lg border p-2.5" />
+            </div>
+            <div>
               <label className="mb-1 block text-sm font-medium">Bank Name</label>
               <input value={form.bankName} onChange={(e) => setForm({ ...form, bankName: e.target.value })} className="w-full rounded-lg border p-2.5" />
             </div>
@@ -336,8 +363,12 @@ function LiabilitiesTab() {
               <input value={form.branch} onChange={(e) => setForm({ ...form, branch: e.target.value })} className="w-full rounded-lg border p-2.5" />
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium">Loan / Account Number</label>
-              <input value={form.accountNumber} onChange={(e) => setForm({ ...form, accountNumber: e.target.value })} className="w-full rounded-lg border p-2.5" />
+              <label className="mb-1 block text-sm font-medium">Account Number</label>
+              <input value={form.accountNumber} onChange={(e) => setForm({ ...form, accountNumber: e.target.value })} placeholder="Masked Card Number for Credit Cards" className="w-full rounded-lg border p-2.5" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Loan Number</label>
+              <input value={form.loanNumber} onChange={(e) => setForm({ ...form, loanNumber: e.target.value })} className="w-full rounded-lg border p-2.5" />
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium">Sanction Amount *</label>
@@ -362,8 +393,16 @@ function LiabilitiesTab() {
               <input type="number" min={0} step="0.01" value={form.emiAmount} onChange={(e) => setForm({ ...form, emiAmount: Number(e.target.value) || 0 })} className="w-full rounded-lg border p-2.5" />
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium">EMI Date (day of month)</label>
+              <label className="mb-1 block text-sm font-medium">Due Date (day of month)</label>
               <input type="number" min={1} max={31} value={form.emiDate ?? ""} onChange={(e) => setForm({ ...form, emiDate: e.target.value ? Number(e.target.value) : undefined })} className="w-full rounded-lg border p-2.5" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Statement Date (day of month)</label>
+              <input type="number" min={1} max={31} value={form.statementDate ?? ""} onChange={(e) => setForm({ ...form, statementDate: e.target.value ? Number(e.target.value) : undefined })} placeholder="Credit Card / CC / OD" className="w-full rounded-lg border p-2.5" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Minimum Due</label>
+              <input type="number" min={0} step="0.01" value={form.minimumDue} onChange={(e) => setForm({ ...form, minimumDue: Number(e.target.value) || 0 })} placeholder="Credit Card only" className="w-full rounded-lg border p-2.5" />
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium">Start Date *</label>
@@ -607,18 +646,24 @@ const REPORT_KEYS = [
   "liability-summary",
   "outstanding",
   "emi-schedule",
+  "emi-calendar",
   "credit-card",
   "cc-utilization",
   "funding-source",
+  "liability-timeline",
+  "bank-wise-repayment",
 ] as const;
 type ReportKey = (typeof REPORT_KEYS)[number];
 const REPORT_LABELS: Record<ReportKey, string> = {
   "liability-summary": "Liability Summary",
   outstanding: "Outstanding Report",
   "emi-schedule": "EMI Schedule",
+  "emi-calendar": "EMI Calendar",
   "credit-card": "Credit Card Report",
   "cc-utilization": "CC Utilization Report",
   "funding-source": "Funding Source Report",
+  "liability-timeline": "Liability Timeline",
+  "bank-wise-repayment": "Bank-wise Repayment",
 };
 
 function ReportsTab() {
@@ -640,9 +685,12 @@ function ReportsTab() {
       {report === "liability-summary" && <LiabilitySummaryReportView />}
       {report === "outstanding" && <OutstandingReportView />}
       {report === "emi-schedule" && <EMIScheduleReportView />}
+      {report === "emi-calendar" && <EMICalendarReportView />}
       {report === "credit-card" && <CreditCardReportView />}
       {report === "cc-utilization" && <CCUtilizationReportView />}
       {report === "funding-source" && <FundingSourceReportView />}
+      {report === "liability-timeline" && <LiabilityTimelineReportView />}
+      {report === "bank-wise-repayment" && <BankWiseRepaymentReportView />}
     </div>
   );
 }
@@ -778,22 +826,32 @@ function CreditCardReportView() {
           <tr>
             <th className="px-4 py-3 text-left">Card</th>
             <th className="px-4 py-3 text-left">Bank</th>
+            <th className="px-4 py-3 text-left">Masked Number</th>
             <th className="px-4 py-3 text-right">Credit Limit</th>
             <th className="px-4 py-3 text-right">Outstanding</th>
+            <th className="px-4 py-3 text-right">Available Limit</th>
+            <th className="px-4 py-3 text-right">Min Due</th>
+            <th className="px-4 py-3 text-right">Statement Day</th>
+            <th className="px-4 py-3 text-right">Due Day</th>
             <th className="px-4 py-3 text-right">Utilization</th>
             <th className="px-4 py-3 text-left">Status</th>
           </tr>
         </thead>
         <tbody>
           {rows.length === 0 ? (
-            <EmptyTableRow colSpan={6}>No Credit Cards recorded.</EmptyTableRow>
+            <EmptyTableRow colSpan={11}>No Credit Cards recorded.</EmptyTableRow>
           ) : (
             rows.map((r) => (
               <tr key={r.id} className="border-t">
                 <td className="px-4 py-3 font-medium">{r.loanName}</td>
                 <td className="px-4 py-3">{r.bankName || "—"}</td>
+                <td className="px-4 py-3">{r.maskedCardNumber || "—"}</td>
                 <td className="px-4 py-3 text-right">{inr(r.creditLimit)}</td>
                 <td className="px-4 py-3 text-right">{inr(r.outstandingAmount)}</td>
+                <td className="px-4 py-3 text-right">{inr(r.availableLimit)}</td>
+                <td className="px-4 py-3 text-right">{inr(r.minimumDue)}</td>
+                <td className="px-4 py-3 text-right">{r.statementDate ?? "—"}</td>
+                <td className="px-4 py-3 text-right">{r.dueDate ?? "—"}</td>
                 <td className={`px-4 py-3 text-right font-medium ${r.utilizationPercent > 80 ? "text-red-600" : ""}`}>{r.utilizationPercent}%</td>
                 <td className="px-4 py-3">{LIABILITY_STATUS_LABELS[r.status] ?? r.status}</td>
               </tr>
@@ -887,6 +945,127 @@ function FundingSourceReportView() {
                       </tr>
                     ))
                   )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
+function EMICalendarReportView() {
+  const [days, setDays] = useState<EMICalendarDay[]>([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => { getEMICalendar().then(setDays).finally(() => setLoading(false)); }, []);
+  if (loading) return <LoadingState />;
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-slate-500">Every active EMI, grouped by its due day of the month.</p>
+      {days.length === 0 ? (
+        <div className="rounded-xl border border-slate-200 bg-white py-16 text-center text-slate-500 shadow-sm">No EMI-bearing liabilities.</div>
+      ) : (
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+          {days.map((d) => (
+            <div key={d.day} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <div className="flex items-center justify-between">
+                <p className="font-bold text-slate-900">Day {d.day}</p>
+                <p className="text-sm font-medium">{inr(d.totalAmount)}</p>
+              </div>
+              <div className="mt-2 space-y-1">
+                {d.items.map((it) => (
+                  <div key={it.liabilityId} className="flex items-center justify-between text-sm">
+                    <span className="text-slate-600">{it.loanName}</span>
+                    <span className="text-slate-500">{inr(it.emiAmount)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LiabilityTimelineReportView() {
+  const [entries, setEntries] = useState<LiabilityTimelineEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => { getLiabilityTimeline().then(setEntries).finally(() => setLoading(false)); }, []);
+  if (loading) return <LoadingState />;
+  return (
+    <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+      <table className="min-w-full text-sm">
+        <thead className="bg-slate-100">
+          <tr>
+            <th className="px-4 py-3 text-left">Date</th>
+            <th className="px-4 py-3 text-left">Type</th>
+            <th className="px-4 py-3 text-left">Liability</th>
+            <th className="px-4 py-3 text-left">Bank Account</th>
+            <th className="px-4 py-3 text-right">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          {entries.length === 0 ? (
+            <EmptyTableRow colSpan={5}>No disbursements or repayments recorded yet.</EmptyTableRow>
+          ) : (
+            entries.map((e, i) => (
+              <tr key={i} className="border-t">
+                <td className="px-4 py-3">{e.date}</td>
+                <td className="px-4 py-3">
+                  <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${e.type === "DISBURSEMENT" ? "bg-blue-100 text-blue-700" : "bg-emerald-100 text-emerald-700"}`}>
+                    {e.type === "DISBURSEMENT" ? "Disbursement" : "Repayment"}
+                  </span>
+                </td>
+                <td className="px-4 py-3">{e.loanName}</td>
+                <td className="px-4 py-3 text-slate-500">{e.bankAccount}</td>
+                <td className="px-4 py-3 text-right font-medium">{inr(e.amount)}</td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function BankWiseRepaymentReportView() {
+  const [rows, setRows] = useState<BankWiseRepaymentRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  useEffect(() => { getBankWiseRepaymentReport().then(setRows).finally(() => setLoading(false)); }, []);
+  if (loading) return <LoadingState />;
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-slate-500">A Liability can be repaid from any Bank Account — this groups every repayment by the account that actually funded it.</p>
+      {rows.length === 0 ? (
+        <div className="rounded-xl border border-slate-200 bg-white py-16 text-center text-slate-500 shadow-sm">No repayments recorded yet.</div>
+      ) : (
+        rows.map((b) => (
+          <div key={b.bankAccountId} className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-slate-900">{b.bankAccount}</h3>
+              <p className="text-lg font-bold">{inr(b.totalPaid)} <span className="text-sm font-normal text-slate-500">({b.count} repayment{b.count === 1 ? "" : "s"})</span></p>
+            </div>
+            <div className="mt-4 overflow-hidden rounded-lg border border-slate-100">
+              <table className="min-w-full text-sm">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="px-4 py-2 text-left">Repayment #</th>
+                    <th className="px-4 py-2 text-left">Date</th>
+                    <th className="px-4 py-2 text-left">Liability</th>
+                    <th className="px-4 py-2 text-right">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {b.repayments.map((r) => (
+                    <tr key={r.id} className="border-t border-slate-100">
+                      <td className="px-4 py-2">{r.repaymentNumber}</td>
+                      <td className="px-4 py-2">{r.paymentDate}</td>
+                      <td className="px-4 py-2">{r.liability}</td>
+                      <td className="px-4 py-2 text-right">{inr(r.totalPaid)}</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>

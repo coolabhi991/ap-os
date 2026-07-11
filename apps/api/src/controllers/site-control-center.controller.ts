@@ -3,6 +3,7 @@ import { AuthRequest } from "../middleware/auth.middleware.js";
 import {
   getSiteOverview,
   getSiteRecapLive,
+  getRecapitulationDraft,
   createSiteRecapRevision,
   listSiteRecapRevisions,
   getCurrentSiteRecapRevision,
@@ -43,6 +44,17 @@ export const getSiteRecapLiveHandler = async (req: AuthRequest, res: Response) =
   } catch (error) {
     const is404 = error instanceof Error && error.message === notFoundMessage;
     res.status(is404 ? 404 : 500).json({ success: false, message: error instanceof Error ? error.message : "Failed to load recapitulation sheet" });
+  }
+};
+
+export const getRecapitulationDraftHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const companyId = req.user!.companyId;
+    const data = await getRecapitulationDraft(getSiteId(req), companyId);
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    const is404 = error instanceof Error && error.message === notFoundMessage;
+    res.status(is404 ? 404 : 500).json({ success: false, message: error instanceof Error ? error.message : "Failed to load recapitulation draft" });
   }
 };
 

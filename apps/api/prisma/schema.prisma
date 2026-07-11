@@ -357,6 +357,8 @@ model Company {
   siteVisits            SiteVisit[]
   liabilities           Liability[]
   liabilityRepayments   LiabilityRepayment[]
+  recapitulationItems   RecapitulationItem[]
+  measurementItemFieldAudits MeasurementItemFieldAudit[]
 }
 
 model CompanyBankAccount {
@@ -442,6 +444,7 @@ model User {
   siteRecapRevisionsCreated  SiteRecapRevision[]
   siteVisitsCreated          SiteVisit[]
   liabilityRepaymentsCreated LiabilityRepayment[]
+  measurementItemFieldAuditsChanged MeasurementItemFieldAudit[]
 }
 
 model Client {
@@ -579,33 +582,88 @@ model Site {
   @@index([status])
 }
 
+enum GstType {
+  NONE
+  FIVE
+  TWELVE
+  EIGHTEEN
+  CUSTOM
+}
+
 /**
  * Recapitulation Sheet snapshots for a Site — unlimited revisions, exactly one marked
  * Current at a time. A new revision is always INSERTed, never UPDATEd over a prior one
  * (createSiteRecapRevision wraps the insert + "flip previous current off" in a
- * transaction). `snapshot` freezes the full recap payload (budget/actual/variance per
- * cost head, per Sub Work) as it existed at save time, so historical revisions stay
- * accurate even as later transactions change the live numbers.
+ * transaction). `snapshot` freezes the full budget/actual/variance-per-cost-head payload
+ * (unchanged, powers the existing 4 KPI cards), while the new items/GST/charges/total
+ * fields below hold the newer government-contractor BOQ Recapitulation sheet (Sr No/Particular/Qty/
+ * Rate/Amount, one row per Sub Work, plus GST + Administration + Other Charges below the
+ * table) — additive fields, so revisions saved before this existed simply read back with
+ * an empty `items` array and zeroed charges. "Latest approved Recapitulation" (referenced
+ * by the Abstract MB module) means the current (isCurrent=true) revision — saving a
+ * revision IS the approval step here, there is no separate draft/approve state.
  */
 model SiteRecapRevision {
-  id          String   @id @default(cuid())
-  companyId   String
-  company     Company  @relation(fields: [companyId], references: [id])
-  siteId      String
-  site        Site     @relation(fields: [siteId], references: [id])
-  revisionNo  Int
-  isCurrent   Boolean  @default(true)
-  label       String?
-  notes       String?
-  snapshot    Json
-  createdById String
-  createdBy   User     @relation(fields: [createdById], references: [id])
-  createdAt   DateTime @default(now())
+  id                     String               @id @default(cuid())
+  companyId              String
+  company                Company              @relation(fields: [companyId], references: [id])
+  siteId                 String
+  site                   Site                 @relation(fields: [siteId], references: [id])
+  revisionNo             Int
+  isCurrent              Boolean              @default(true)
+  label                  String?
+  notes                  String?
+  snapshot               Json
+  gstType                GstType              @default(NONE)
+  gstPercent             Decimal              @default(0) @db.Decimal(5, 2)
+  administrationCharges  Decimal              @default(0) @db.Decimal(14, 2)
+  // Unlimited free-form extra charges below the table — [{ label: string, amount: string }].
+  // A JSON array rather than a child table: there is nothing to query across rows for, only
+  // ever read/written as a whole alongside the rest of this revision (same reasoning as
+  // BankTransaction's other Json fields elsewhere in this schema).
+  otherCharges           Json                 @default("[]")
+  subTotal               Decimal              @default(0) @db.Decimal(14, 2)
+  gstAmount              Decimal              @default(0) @db.Decimal(14, 2)
+  grandTotal             Decimal              @default(0) @db.Decimal(14, 2)
+  createdById            String
+  createdBy              User                 @relation(fields: [createdById], references: [id])
+  createdAt              DateTime             @default(now())
+
+  items                  RecapitulationItem[]
+  seededMeasurementBooks MeasurementBook[]
 
   @@unique([siteId, revisionNo])
   @@index([companyId])
   @@index([siteId])
   @@index([isCurrent])
+}
+
+/**
+ * One BOQ row of a Recapitulation Sheet revision — always one row per Sub Work that existed
+ * on the Site at save time (never hand-added/removed, never hardcoded: createSiteRecapRevision
+ * generates exactly one row per current SubWork). `particular` freezes the Sub Work's name at
+ * save time (survives the Sub Work later being renamed/deleted, same snapshot philosophy as
+ * `snapshot` on the parent revision); `subWorkId` is kept alongside for the Abstract MB's
+ * carry-forward lookup, and is nullable only so a deleted Sub Work doesn't block reading old
+ * revisions. `amount` is always server-recomputed as qty * rate — never trusted from the client.
+ */
+model RecapitulationItem {
+  id                  String            @id @default(cuid())
+  companyId           String
+  company             Company           @relation(fields: [companyId], references: [id])
+  siteRecapRevisionId String
+  siteRecapRevision   SiteRecapRevision @relation(fields: [siteRecapRevisionId], references: [id])
+  subWorkId           String?
+  subWork             SubWork?          @relation(fields: [subWorkId], references: [id])
+  sortOrder           Int               @default(0)
+  particular          String
+  qty                 Decimal           @default(0) @db.Decimal(14, 4)
+  rate                Decimal           @default(0) @db.Decimal(14, 2)
+  amount              Decimal           @default(0) @db.Decimal(14, 2)
+
+  @@index([companyId])
+  @@index([siteRecapRevisionId])
+  @@index([subWorkId])
 }
 
 /**
@@ -722,6 +780,8 @@ model SubWork {
   dailyProgressReports DailyProgressReport[]
   measurementBooks     MeasurementBook[]
   runningBills         RunningBill[]
+  recapitulationItems  RecapitulationItem[]
+  measurementBookItems MeasurementBookItem[]
 
   @@index([companyId])
   @@index([projectId])
@@ -1382,29 +1442,43 @@ model Equipment {
  * engineers maintain the official detailed MB on paper/their own system; AP OS only tracks
  * the official MB Number, the Abstract Sheet (BOQ rows with auto-calculated quantity/amount),
  * and attachments. Quantity/Effective Rate/Amount on each MeasurementBookItem are the ONLY
- * numbers a future Running Bill module may read — it must never recompute them itself.
+ * numbers the Running Bill module reads — it must never recompute them itself.
+ * `raBillNumber` is a free-text label only (the engineer's own "this MB is for RA-2" note) —
+ * it is NOT the same as RunningBill.billNumber, which is set later when the bill is actually
+ * raised; the two are never reconciled/validated against each other.
+ * `sourceRecapRevisionId` records which Recapitulation revision's rates/particulars seeded this
+ * MB's rows (via "Load from Recapitulation"), purely for traceability — an MB can still be built
+ * without one (manual BOQ entry, the original flow, keeps working unchanged).
+ * `abstractPdfUrl`/`abstractPdfName` are a simple stored reference (this app has no binary file
+ * upload pipeline anywhere else either — see CompanyBankAccount/Document's own fileUrl fields),
+ * not a new upload subsystem.
  */
 model MeasurementBook {
-  id           String                @id @default(cuid())
-  companyId    String
-  company      Company               @relation(fields: [companyId], references: [id])
-  projectId    String
-  project      Project               @relation(fields: [projectId], references: [id])
-  siteId       String
-  siteRecord   Site                  @relation(fields: [siteId], references: [id])
-  subWorkId    String?
-  subWork      SubWork?              @relation(fields: [subWorkId], references: [id])
+  id                    String                @id @default(cuid())
+  companyId             String
+  company               Company               @relation(fields: [companyId], references: [id])
+  projectId             String
+  project               Project               @relation(fields: [projectId], references: [id])
+  siteId                String
+  siteRecord            Site                  @relation(fields: [siteId], references: [id])
+  subWorkId             String?
+  subWork               SubWork?              @relation(fields: [subWorkId], references: [id])
   // Manually entered by the engineer (the government-issued official MB number) — unique per
   // company, not globally, since different departments run their own independent numbering.
-  mbNumber     String
-  mbDate       DateTime              @default(now())
-  site         String?
-  engineerId   String?
-  engineer     User?                 @relation("MBEngineer", fields: [engineerId], references: [id])
-  contractorId String?
-  contractor   Vendor?               @relation(fields: [contractorId], references: [id])
-  status       MeasurementBookStatus @default(DRAFT)
-  remarks      String?
+  mbNumber              String
+  raBillNumber          String?
+  mbDate                DateTime              @default(now())
+  site                  String?
+  engineerId            String?
+  engineer              User?                 @relation("MBEngineer", fields: [engineerId], references: [id])
+  contractorId          String?
+  contractor            Vendor?               @relation(fields: [contractorId], references: [id])
+  status                MeasurementBookStatus @default(DRAFT)
+  remarks               String?
+  abstractPdfUrl        String?
+  abstractPdfName       String?
+  sourceRecapRevisionId String?
+  sourceRecapRevision   SiteRecapRevision?    @relation(fields: [sourceRecapRevisionId], references: [id])
 
   createdById String
   createdBy   User     @relation("MBCreatedBy", fields: [createdById], references: [id])
@@ -1418,6 +1492,7 @@ model MeasurementBook {
   // always declares the field as optional-singular, the unique constraint lives on the FK).
   runningBill RunningBill?
   emailLogs   MBEmailLog[]
+  fieldAudits MeasurementItemFieldAudit[]
 
   @@unique([companyId, mbNumber])
   @@index([companyId])
@@ -1425,12 +1500,23 @@ model MeasurementBook {
   @@index([siteId])
   @@index([subWorkId])
   @@index([status])
+  @@index([sourceRecapRevisionId])
 }
 
 /**
  * One Abstract Sheet row (unlimited per MB). Quantity/Effective Rate/Amount are always
  * server-recomputed from Length/Breadth/Height, BOQ Rate, and Payment % — the engineer
  * never enters them directly, and the client's calculated values are never trusted.
+ * `previousQuantity`/`totalQuantity`/`previousAmount`/`totalAmount` are the Auto Carry
+ * Forward fields: `previousQuantity` is auto-populated from the immediately preceding MB's
+ * `totalQuantity` for the same `subWorkId` (0 for the very first MB of that Sub Work — see
+ * computePreviousQuantityForItem in measurement-book.service.ts) and `totalQuantity =
+ * previousQuantity + quantity`. This is a SEPARATE carry-forward from the one Running Bill
+ * already performs across RunningBillItem history (running-bill.service.ts is untouched by
+ * this) — this one exists so the Abstract MB itself shows progressive certified quantity
+ * before a Running Bill is ever raised. `subWorkId` is what the carry-forward is keyed on;
+ * it's nullable so old, manually-entered BOQ-item rows (matched instead by `boqItemNo`) keep
+ * working exactly as before.
  */
 model MeasurementBookItem {
   id                String          @id @default(cuid())
@@ -1438,6 +1524,8 @@ model MeasurementBookItem {
   company           Company         @relation(fields: [companyId], references: [id])
   measurementBookId String
   measurementBook   MeasurementBook @relation(fields: [measurementBookId], references: [id])
+  subWorkId         String?
+  subWork           SubWork?        @relation(fields: [subWorkId], references: [id])
   sortOrder         Int             @default(0)
   boqItemNo         String
   boqDescription    String
@@ -1450,9 +1538,40 @@ model MeasurementBookItem {
   paymentPercent    Decimal         @default(100) @db.Decimal(5, 2)
   effectiveRate     Decimal         @default(0) @db.Decimal(14, 2)
   amount            Decimal         @default(0) @db.Decimal(14, 2)
+  previousQuantity  Decimal         @default(0) @db.Decimal(14, 4)
+  totalQuantity     Decimal         @default(0) @db.Decimal(14, 4)
+  previousAmount    Decimal         @default(0) @db.Decimal(14, 2)
+  totalAmount       Decimal         @default(0) @db.Decimal(14, 2)
   remarks           String?
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
+
+  @@index([companyId])
+  @@index([measurementBookId])
+  @@index([subWorkId])
+}
+
+/**
+ * Audit trail for the two Abstract MB fields Government revisions can force a change to after
+ * the fact: Previous Qty and Rate (see measurement-book.service.ts). Keyed by `boqItemNo` rather
+ * than a MeasurementBookItem id because updateMB deletes and recreates all items on every save
+ * (the existing, unchanged persistence pattern) — an item's own id does not survive an edit, but
+ * its `boqItemNo` identity within the MB does.
+ */
+model MeasurementItemFieldAudit {
+  id                String          @id @default(cuid())
+  companyId         String
+  company           Company         @relation(fields: [companyId], references: [id])
+  measurementBookId String
+  measurementBook   MeasurementBook @relation(fields: [measurementBookId], references: [id])
+  boqItemNo         String
+  fieldName         String
+  oldValue          String
+  newValue          String
+  reason            String
+  changedById       String
+  changedBy         User            @relation(fields: [changedById], references: [id])
+  changedAt         DateTime        @default(now())
 
   @@index([companyId])
   @@index([measurementBookId])
@@ -2036,15 +2155,27 @@ model Liability {
   loanName          String
   liabilityType     LiabilityType
   lenderName        String?
+  // Friend/Relative loans have no bank of their own — this is the lender's own mobile number.
+  lenderMobile      String?
   bankName          String?
   branch            String?
   accountNumber     String?
+  // The lender's own loan/account reference, distinct from `accountNumber` (the bank account
+  // used to service it) — e.g. a Gold Loan's loan number differs from the linked SB account.
+  loanNumber        String?
   sanctionAmount    Decimal               @db.Decimal(14, 2)
   outstandingAmount Decimal               @db.Decimal(14, 2)
   interestType      LiabilityInterestType @default(NONE)
   interestRate      Decimal               @default(0) @db.Decimal(6, 3)
   emiAmount         Decimal               @default(0) @db.Decimal(12, 2)
   emiDate           Int?
+  // Credit Card / Cash Credit / Overdraft only: the statement generation day-of-month, distinct
+  // from emiDate (the payment due day). Minimum Due is likewise Credit-Card-specific; Available
+  // Limit is deliberately NOT stored here — it's always sanctionAmount - outstandingAmount,
+  // computed on demand in finance-reports.service.ts, same "never store a derivable total" rule
+  // used everywhere else in this schema.
+  statementDate     Int?
+  minimumDue        Decimal               @default(0) @db.Decimal(12, 2)
   startDate         DateTime
   endDate           DateTime?
   security          LiabilitySecurity     @default(NONE)

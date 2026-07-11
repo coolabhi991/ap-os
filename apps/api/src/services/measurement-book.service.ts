@@ -13,11 +13,21 @@ export interface MBItemInput {
   boqItemNo: string;
   boqDescription: string;
   unit: string;
+  subWorkId?: string;
   length?: number;
   breadth?: number;
   height?: number;
+  // Direct quantity entry for the Recapitulation-sourced Abstract MB flow (no L/B/H dimensions
+  // involved) — only used when none of length/breadth/height are supplied; otherwise the
+  // dimensional calc below still wins, exactly as before.
+  currentQuantity?: number;
   boqRate: number;
   paymentPercent?: number;
+  // Auto Carry Forward: normally left undefined so computePreviousQuantityForItem resolves it.
+  // Only set this to explicitly override the auto value (Government-revised certified qty) —
+  // doing so requires fieldChangeReason.
+  previousQuantity?: number;
+  fieldChangeReason?: string;
   remarks?: string;
 }
 
@@ -26,12 +36,16 @@ export interface MBFormInput {
   siteId: string;
   subWorkId?: string;
   mbNumber: string;
+  raBillNumber?: string;
   mbDate?: string;
   site?: string;
   engineerId?: string;
   contractorId?: string;
   status?: string;
   remarks?: string;
+  abstractPdfUrl?: string;
+  abstractPdfName?: string;
+  sourceRecapRevisionId?: string;
   items?: MBItemInput[];
 }
 
@@ -69,8 +83,15 @@ function parseStatus(s: string | undefined): MeasurementBookStatus {
  *   Effective Rate = BOQ Rate x Payment % / 100
  *   Amount = Quantity x Effective Rate
  */
-function computeItemCalc(input: { length?: number; breadth?: number; height?: number; boqRate: number; paymentPercent: number }) {
-  const { length, breadth, height, boqRate, paymentPercent } = input;
+function computeItemCalc(input: {
+  length?: number;
+  breadth?: number;
+  height?: number;
+  boqRate: number;
+  paymentPercent: number;
+  currentQuantity?: number;
+}) {
+  const { length, breadth, height, boqRate, paymentPercent, currentQuantity } = input;
 
   let quantity = 0;
   if (length !== undefined && length !== null) {
@@ -81,12 +102,33 @@ function computeItemCalc(input: { length?: number; breadth?: number; height?: nu
     } else {
       quantity = length;
     }
+  } else if (currentQuantity !== undefined && currentQuantity !== null) {
+    quantity = currentQuantity;
   }
 
   const effectiveRate = Math.round(boqRate * (paymentPercent / 100) * 100) / 100;
   const amount = Math.round(quantity * effectiveRate * 100) / 100;
 
   return { quantity: Math.round(quantity * 10000) / 10000, effectiveRate, amount };
+}
+
+/**
+ * Auto Carry Forward — the Previous Qty for a new Abstract MB row is always the immediately
+ * preceding MB's Total Qty for the same Sub Work (0 for the very first MB of that Sub Work),
+ * never re-summed across the whole history (Total Qty already IS the cumulative figure once
+ * carried forward once). Scoped to the Site, keyed by subWorkId; rows without a subWorkId
+ * (old-style manual BOQ entry) simply get previousQuantity 0, unchanged from before this existed.
+ */
+async function computePreviousQuantityForItem(companyId: string, siteId: string, subWorkId: string, excludeMbId?: string): Promise<number> {
+  const priorItem = await prisma.measurementBookItem.findFirst({
+    where: {
+      companyId,
+      subWorkId,
+      measurementBook: { companyId, siteId, ...(excludeMbId ? { id: { not: excludeMbId } } : {}) },
+    },
+    orderBy: [{ measurementBook: { mbDate: "desc" } }, { createdAt: "desc" }],
+  });
+  return priorItem ? Number(priorItem.totalQuantity) : 0;
 }
 
 function validateItemInput(item: MBItemInput) {
@@ -107,6 +149,101 @@ function validateItemInput(item: MBItemInput) {
   return { ...item, paymentPercent };
 }
 
+interface ResolvedItemRow {
+  data: {
+    companyId: string;
+    measurementBookId: string;
+    subWorkId: string | null;
+    sortOrder: number;
+    boqItemNo: string;
+    boqDescription: string;
+    unit: string;
+    length: number | null;
+    breadth: number | null;
+    height: number | null;
+    quantity: number;
+    boqRate: number;
+    paymentPercent: number;
+    effectiveRate: number;
+    amount: number;
+    previousQuantity: number;
+    totalQuantity: number;
+    previousAmount: number;
+    totalAmount: number;
+    remarks: string | null;
+  };
+  audits: Array<{ fieldName: string; oldValue: string; newValue: string; reason: string }>;
+}
+
+/**
+ * Resolves one Abstract MB row: runs the existing L/B/H (or direct-quantity) calc, then applies
+ * Auto Carry Forward for Previous Qty, then diffs Previous Qty and Rate against their "expected"
+ * value (the auto carry-forward figure, or — on update — whatever is currently persisted for
+ * this boqItemNo) and requires `fieldChangeReason` whenever a Government revision changes either
+ * figure (section 4/5's mandatory warning + audit trail).
+ */
+async function resolveItemRow(
+  companyId: string,
+  siteId: string,
+  measurementBookId: string,
+  item: ReturnType<typeof validateItemInput>,
+  index: number,
+  expected: { previousQuantity?: number; boqRate?: number } | undefined,
+  excludeMbId?: string
+): Promise<ResolvedItemRow> {
+  const calc = computeItemCalc(item);
+
+  const autoPrevious = item.subWorkId ? await computePreviousQuantityForItem(companyId, siteId, item.subWorkId, excludeMbId) : 0;
+  const expectedPrevious = expected?.previousQuantity ?? autoPrevious;
+  const resolvedPrevious = item.previousQuantity !== undefined && item.previousQuantity !== null ? item.previousQuantity : autoPrevious;
+
+  const audits: ResolvedItemRow["audits"] = [];
+
+  if (Math.abs(resolvedPrevious - expectedPrevious) > 0.0001) {
+    if (!item.fieldChangeReason?.trim()) {
+      throw new Error(`Previous Qty for item ${item.boqItemNo} was changed from the auto-carried-forward value — a reason is required`);
+    }
+    audits.push({ fieldName: "previousQuantity", oldValue: String(expectedPrevious), newValue: String(resolvedPrevious), reason: item.fieldChangeReason.trim() });
+  }
+
+  if (expected?.boqRate !== undefined && Math.abs(item.boqRate - expected.boqRate) > 0.0001) {
+    if (!item.fieldChangeReason?.trim()) {
+      throw new Error(`Rate for item ${item.boqItemNo} was changed — a reason is required`);
+    }
+    audits.push({ fieldName: "boqRate", oldValue: String(expected.boqRate), newValue: String(item.boqRate), reason: item.fieldChangeReason.trim() });
+  }
+
+  const totalQuantity = Math.round((resolvedPrevious + calc.quantity) * 10000) / 10000;
+  const previousAmount = Math.round(resolvedPrevious * calc.effectiveRate * 100) / 100;
+  const totalAmount = Math.round(totalQuantity * calc.effectiveRate * 100) / 100;
+
+  return {
+    data: {
+      companyId,
+      measurementBookId,
+      subWorkId: item.subWorkId || null,
+      sortOrder: index,
+      boqItemNo: item.boqItemNo.trim(),
+      boqDescription: item.boqDescription.trim(),
+      unit: item.unit.trim(),
+      length: item.length ?? null,
+      breadth: item.breadth ?? null,
+      height: item.height ?? null,
+      quantity: calc.quantity,
+      boqRate: item.boqRate,
+      paymentPercent: item.paymentPercent,
+      effectiveRate: calc.effectiveRate,
+      amount: calc.amount,
+      previousQuantity: resolvedPrevious,
+      totalQuantity,
+      previousAmount,
+      totalAmount,
+      remarks: item.remarks || null,
+    },
+    audits,
+  };
+}
+
 const include = {
   project: { select: { id: true, name: true, location: true } },
   subWork: { select: { id: true, name: true } },
@@ -122,6 +259,7 @@ function itemToDTO(item: MBRow["items"][number]) {
   return {
     id: item.id,
     sortOrder: item.sortOrder,
+    subWorkId: item.subWorkId ?? "",
     boqItemNo: item.boqItemNo,
     boqDescription: item.boqDescription,
     unit: item.unit,
@@ -133,6 +271,10 @@ function itemToDTO(item: MBRow["items"][number]) {
     paymentPercent: item.paymentPercent.toString(),
     effectiveRate: item.effectiveRate.toString(),
     amount: item.amount.toString(),
+    previousQuantity: item.previousQuantity.toString(),
+    totalQuantity: item.totalQuantity.toString(),
+    previousAmount: item.previousAmount.toString(),
+    totalAmount: item.totalAmount.toString(),
     remarks: item.remarks ?? "",
   };
 }
@@ -150,6 +292,7 @@ function toDTO(mb: MBRow) {
     subWorkId: mb.subWorkId ?? "",
     subWork: mb.subWork,
     mbNumber: mb.mbNumber,
+    raBillNumber: mb.raBillNumber ?? "",
     mbDate: mb.mbDate.toISOString().slice(0, 10),
     site: mb.site ?? mb.project.location ?? "",
     engineerId: mb.engineerId ?? "",
@@ -158,6 +301,9 @@ function toDTO(mb: MBRow) {
     contractor: mb.contractor,
     status: mb.status,
     remarks: mb.remarks ?? "",
+    abstractPdfUrl: mb.abstractPdfUrl ?? "",
+    abstractPdfName: mb.abstractPdfName ?? "",
+    sourceRecapRevisionId: mb.sourceRecapRevisionId ?? "",
     items: mb.items.map(itemToDTO),
     totalQuantity: totalQuantity.toFixed(4),
     totalAmount: totalAmount.toFixed(2),
@@ -230,6 +376,13 @@ export async function getMBById(id: string, companyId: string) {
   return toDTO(mb);
 }
 
+/** Rate "expected" for a new MB row seeded from a Recap revision — matched by subWorkId. */
+async function getRecapRateBySubWork(companyId: string, sourceRecapRevisionId: string | undefined): Promise<Map<string, number>> {
+  if (!sourceRecapRevisionId) return new Map();
+  const recapItems = await prisma.recapitulationItem.findMany({ where: { companyId, siteRecapRevisionId: sourceRecapRevisionId } });
+  return new Map(recapItems.filter((r) => r.subWorkId).map((r) => [r.subWorkId as string, Number(r.rate)]));
+}
+
 export async function createMB(companyId: string, createdById: string, input: MBFormInput) {
   if (!input.projectId?.trim()) throw new Error("Project is required");
   if (!input.siteId?.trim()) throw new Error("Site is required");
@@ -240,6 +393,7 @@ export async function createMB(companyId: string, createdById: string, input: MB
   if (existingNumber) throw new Error(`MB Number "${input.mbNumber}" already exists`);
 
   const items = (input.items ?? []).map(validateItemInput);
+  const recapRateBySubWork = await getRecapRateBySubWork(companyId, input.sourceRecapRevisionId);
 
   const mb = await prisma.$transaction(async (tx) => {
     const created = await tx.measurementBook.create({
@@ -249,39 +403,33 @@ export async function createMB(companyId: string, createdById: string, input: MB
         siteId: input.siteId,
         subWorkId: input.subWorkId || null,
         mbNumber: input.mbNumber.trim(),
+        raBillNumber: input.raBillNumber || null,
         mbDate: input.mbDate ? new Date(input.mbDate) : new Date(),
         site: input.site || null,
         engineerId: input.engineerId || null,
         contractorId: input.contractorId || null,
         status: parseStatus(input.status),
         remarks: input.remarks || null,
+        abstractPdfUrl: input.abstractPdfUrl || null,
+        abstractPdfName: input.abstractPdfName || null,
+        sourceRecapRevisionId: input.sourceRecapRevisionId || null,
         createdById,
       },
     });
 
     if (items.length) {
-      await tx.measurementBookItem.createMany({
-        data: items.map((item, index) => {
-          const calc = computeItemCalc(item);
-          return {
-            companyId,
-            measurementBookId: created.id,
-            sortOrder: index,
-            boqItemNo: item.boqItemNo.trim(),
-            boqDescription: item.boqDescription.trim(),
-            unit: item.unit.trim(),
-            length: item.length ?? null,
-            breadth: item.breadth ?? null,
-            height: item.height ?? null,
-            quantity: calc.quantity,
-            boqRate: item.boqRate,
-            paymentPercent: item.paymentPercent,
-            effectiveRate: calc.effectiveRate,
-            amount: calc.amount,
-            remarks: item.remarks || null,
-          };
-        }),
-      });
+      const resolved = await Promise.all(
+        items.map((item, index) =>
+          resolveItemRow(companyId, input.siteId, created.id, item, index, {
+            boqRate: item.subWorkId ? recapRateBySubWork.get(item.subWorkId) : undefined,
+          })
+        )
+      );
+      await tx.measurementBookItem.createMany({ data: resolved.map((r) => r.data) });
+      const auditRows = resolved.flatMap((r) =>
+        r.audits.map((a) => ({ companyId, measurementBookId: created.id, boqItemNo: r.data.boqItemNo, ...a, changedById: createdById }))
+      );
+      if (auditRows.length) await tx.measurementItemFieldAudit.createMany({ data: auditRows });
     }
 
     return tx.measurementBook.findFirstOrThrow({ where: { id: created.id }, include });
@@ -290,8 +438,8 @@ export async function createMB(companyId: string, createdById: string, input: MB
   return toDTO(mb);
 }
 
-export async function updateMB(id: string, companyId: string, input: Partial<MBFormInput>) {
-  const existing = await prisma.measurementBook.findFirst({ where: { id, companyId } });
+export async function updateMB(id: string, companyId: string, changedById: string, input: Partial<MBFormInput>) {
+  const existing = await prisma.measurementBook.findFirst({ where: { id, companyId }, include: { items: true } });
   if (!existing) throw new Error("Measurement Book not found");
   if (existing.status === "APPROVED") throw new Error("Cannot edit an Approved Measurement Book");
 
@@ -311,6 +459,8 @@ export async function updateMB(id: string, companyId: string, input: Partial<MBF
   }
 
   const items = input.items !== undefined ? input.items.map(validateItemInput) : undefined;
+  const existingByBoqNo = new Map(existing.items.map((i) => [i.boqItemNo, i]));
+  const effectiveSiteIdForCarryForward = input.siteId || existing.siteId;
 
   const mb = await prisma.$transaction(async (tx) => {
     const updated = await tx.measurementBook.update({
@@ -320,40 +470,41 @@ export async function updateMB(id: string, companyId: string, input: Partial<MBF
         siteId: input.siteId || existing.siteId,
         subWorkId: input.subWorkId !== undefined ? input.subWorkId || null : existing.subWorkId,
         mbNumber: input.mbNumber?.trim() || existing.mbNumber,
+        raBillNumber: input.raBillNumber !== undefined ? input.raBillNumber || null : existing.raBillNumber,
         mbDate: input.mbDate ? new Date(input.mbDate) : existing.mbDate,
         site: input.site !== undefined ? input.site || null : existing.site,
         engineerId: input.engineerId !== undefined ? input.engineerId || null : existing.engineerId,
         contractorId: input.contractorId !== undefined ? input.contractorId || null : existing.contractorId,
         status: input.status !== undefined ? parseStatus(input.status) : existing.status,
         remarks: input.remarks !== undefined ? input.remarks || null : existing.remarks,
+        abstractPdfUrl: input.abstractPdfUrl !== undefined ? input.abstractPdfUrl || null : existing.abstractPdfUrl,
+        abstractPdfName: input.abstractPdfName !== undefined ? input.abstractPdfName || null : existing.abstractPdfName,
+        sourceRecapRevisionId: input.sourceRecapRevisionId !== undefined ? input.sourceRecapRevisionId || null : existing.sourceRecapRevisionId,
       },
     });
 
     if (items !== undefined) {
       await tx.measurementBookItem.deleteMany({ where: { measurementBookId: id } });
       if (items.length) {
-        await tx.measurementBookItem.createMany({
-          data: items.map((item, index) => {
-            const calc = computeItemCalc(item);
-            return {
+        const resolved = await Promise.all(
+          items.map((item, index) => {
+            const existingItem = existingByBoqNo.get(item.boqItemNo.trim());
+            return resolveItemRow(
               companyId,
-              measurementBookId: id,
-              sortOrder: index,
-              boqItemNo: item.boqItemNo.trim(),
-              boqDescription: item.boqDescription.trim(),
-              unit: item.unit.trim(),
-              length: item.length ?? null,
-              breadth: item.breadth ?? null,
-              height: item.height ?? null,
-              quantity: calc.quantity,
-              boqRate: item.boqRate,
-              paymentPercent: item.paymentPercent,
-              effectiveRate: calc.effectiveRate,
-              amount: calc.amount,
-              remarks: item.remarks || null,
-            };
-          }),
-        });
+              effectiveSiteIdForCarryForward,
+              id,
+              item,
+              index,
+              existingItem ? { previousQuantity: Number(existingItem.previousQuantity), boqRate: Number(existingItem.boqRate) } : undefined,
+              id
+            );
+          })
+        );
+        await tx.measurementBookItem.createMany({ data: resolved.map((r) => r.data) });
+        const auditRows = resolved.flatMap((r) =>
+          r.audits.map((a) => ({ companyId, measurementBookId: id, boqItemNo: r.data.boqItemNo, ...a, changedById }))
+        );
+        if (auditRows.length) await tx.measurementItemFieldAudit.createMany({ data: auditRows });
       }
     }
 
@@ -370,6 +521,70 @@ export async function deleteMB(id: string, companyId: string) {
   if (existing.status === "APPROVED") throw new Error("Cannot delete an Approved Measurement Book");
 
   await prisma.measurementBook.delete({ where: { id } });
+}
+
+/**
+ * "Load from Recapitulation" — builds Abstract MB draft rows from the Site's current
+ * (isCurrent=true) Recapitulation revision: Sr No/Particular/Rate copied straight from each
+ * RecapitulationItem, Unit left blank (Recap has no Unit concept), Previous Qty auto-carried
+ * forward from the latest prior MB for that Sub Work (0 if this is its first MB), Current Qty
+ * left at 0 for the engineer to fill in. Never hardcoded — one row per current Sub Work, exactly
+ * mirroring the Recapitulation sheet itself.
+ */
+export async function getMBRowsFromRecapitulation(siteId: string, companyId: string) {
+  const site = await prisma.site.findFirst({ where: { id: siteId, companyId } });
+  if (!site) throw new Error("Site not found");
+
+  const current = await prisma.siteRecapRevision.findFirst({
+    where: { siteId, companyId, isCurrent: true },
+    include: { items: { orderBy: { sortOrder: "asc" } } },
+  });
+  if (!current || !current.items.length) {
+    throw new Error("No saved Recapitulation Sheet exists yet for this Site — add one first");
+  }
+
+  const rows = await Promise.all(
+    current.items.map(async (recapItem, index) => {
+      const previousQuantity = recapItem.subWorkId
+        ? await computePreviousQuantityForItem(companyId, siteId, recapItem.subWorkId)
+        : 0;
+      return {
+        sortOrder: index,
+        subWorkId: recapItem.subWorkId ?? "",
+        boqItemNo: String(index + 1),
+        boqDescription: recapItem.particular,
+        unit: "",
+        boqRate: recapItem.rate.toString(),
+        previousQuantity: previousQuantity.toString(),
+        currentQuantity: "0",
+      };
+    })
+  );
+
+  return { sourceRecapRevisionId: current.id, items: rows };
+}
+
+export async function getMBFieldAudits(measurementBookId: string, companyId: string) {
+  const mb = await prisma.measurementBook.findFirst({ where: { id: measurementBookId, companyId } });
+  if (!mb) throw new Error("Measurement Book not found");
+
+  const audits = await prisma.measurementItemFieldAudit.findMany({
+    where: { measurementBookId, companyId },
+    include: { changedBy: { select: { id: true, name: true } } },
+    orderBy: { changedAt: "desc" },
+  });
+
+  return audits.map((a) => ({
+    id: a.id,
+    boqItemNo: a.boqItemNo,
+    fieldName: a.fieldName,
+    oldValue: a.oldValue,
+    newValue: a.newValue,
+    reason: a.reason,
+    changedById: a.changedById,
+    changedByName: a.changedBy.name,
+    changedAt: a.changedAt.toISOString(),
+  }));
 }
 
 function dateRangeWhere(query: ReportDateQuery) {
