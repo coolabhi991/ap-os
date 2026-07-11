@@ -8,6 +8,7 @@ import ProjectTable from "../../components/projects/ProjectTable";
 
 import { getProjects, deleteProject } from "../../services/projects";
 import type { Project } from "../../services/projects";
+import LoadingState from "../../components/ui/LoadingState";
 
 export default function Projects() {
   const navigate = useNavigate();
@@ -75,9 +76,7 @@ export default function Projects() {
         />
 
         {loading && (
-          <div className="rounded-xl border border-slate-200 bg-white py-16 text-center text-slate-500 shadow-sm">
-            Loading projects...
-          </div>
+          <LoadingState label="Loading projects..." />
         )}
 
         {error && !loading && (

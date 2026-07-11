@@ -7,6 +7,7 @@ import VendorPaymentTable from "../../components/vendor-payments/VendorPaymentTa
 
 import { getVendorPaymentDashboard, PAYMENT_MODE_LABELS } from "../../services/vendor-payments";
 import type { VendorPaymentDashboardSummary } from "../../services/vendor-payments";
+import LoadingState from "../../components/ui/LoadingState";
 
 export default function VendorPaymentsDashboard() {
   const navigate = useNavigate();
@@ -30,9 +31,7 @@ export default function VendorPaymentsDashboard() {
         </div>
 
         {loading && (
-          <div className="rounded-xl border border-slate-200 bg-white py-16 text-center text-slate-500 shadow-sm">
-            Loading vendor payments dashboard...
-          </div>
+          <LoadingState label="Loading vendor payments dashboard..." />
         )}
 
         {error && !loading && (

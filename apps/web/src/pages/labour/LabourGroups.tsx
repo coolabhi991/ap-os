@@ -10,6 +10,7 @@ import {
 } from "../../services/labour-groups";
 import type { LabourGroup, LabourGroupFormData } from "../../services/labour-groups";
 import { getProjects } from "../../services/projects";
+import EmptyTableRow from "../../components/ui/EmptyTableRow";
 
 const emptyForm: LabourGroupFormData = { name: "", projectId: "", description: "", isActive: true };
 
@@ -118,7 +119,7 @@ export default function LabourGroups() {
               </thead>
               <tbody>
                 {groups.length === 0 ? (
-                  <tr><td colSpan={4} className="py-10 text-center text-slate-500">No labour groups yet.</td></tr>
+                  <EmptyTableRow colSpan={4}>No labour groups yet.</EmptyTableRow>
                 ) : (
                   groups.map((g) => (
                     <tr key={g.id} className={`border-t hover:bg-slate-50 ${!g.isActive ? "opacity-60" : ""}`}>
@@ -132,7 +133,7 @@ export default function LabourGroups() {
                       <td className="px-6 py-4">
                         <div className="flex justify-center gap-4">
                           <button onClick={() => startEdit(g)}><Pencil size={18} className="text-green-600" /></button>
-                          <button onClick={() => handleDelete(g.id)}><Trash2 size={18} className="text-red-600" /></button>
+                          <button onClick={() => handleDelete(g.id)} aria-label="Delete"><Trash2 size={18} className="text-red-600" /></button>
                         </div>
                       </td>
                     </tr>

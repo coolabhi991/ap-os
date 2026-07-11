@@ -8,6 +8,7 @@ import VendorTable from "../../components/vendors/VendorTable";
 
 import { getVendors, deleteVendor } from "../../services/vendors";
 import type { Vendor } from "../../services/vendors";
+import LoadingState from "../../components/ui/LoadingState";
 
 export default function Vendors() {
   const navigate = useNavigate();
@@ -77,9 +78,7 @@ export default function Vendors() {
         />
 
         {loading && (
-          <div className="rounded-xl border border-slate-200 bg-white py-16 text-center text-slate-500 shadow-sm">
-            Loading vendors...
-          </div>
+          <LoadingState label="Loading vendors..." />
         )}
 
         {error && !loading && (

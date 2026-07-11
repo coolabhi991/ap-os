@@ -8,6 +8,7 @@ import VendorBillTable from "../../components/vendor-bills/VendorBillTable";
 
 import { getVendorBills, deleteVendorBill, exportVendorBillsCSV } from "../../services/vendor-bills";
 import type { VendorBill } from "../../services/vendor-bills";
+import LoadingState from "../../components/ui/LoadingState";
 
 export default function VendorBills() {
   const navigate = useNavigate();
@@ -109,9 +110,7 @@ export default function VendorBills() {
         />
 
         {loading && (
-          <div className="rounded-xl border border-slate-200 bg-white py-16 text-center text-slate-500 shadow-sm">
-            Loading vendor bills...
-          </div>
+          <LoadingState label="Loading vendor bills..." />
         )}
 
         {error && !loading && (

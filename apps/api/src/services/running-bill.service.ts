@@ -106,10 +106,6 @@ function round4(n: number) {
   return Math.round(n * 10000) / 10000;
 }
 
-function parseStatus(s: string | undefined): BillStatus {
-  return s && RB_STATUSES.includes(s.toUpperCase()) ? (s.toUpperCase() as BillStatus) : "DRAFT";
-}
-
 function parseBillType(s: string | undefined): BillType {
   return s && BILL_TYPES.includes(s.toUpperCase()) ? (s.toUpperCase() as BillType) : "RA_BILL";
 }

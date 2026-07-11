@@ -7,8 +7,8 @@ import { getVendorBillDashboard, exportVendorBillsCSV, VENDOR_BILL_STATUS_LABELS
 import type { VendorBillDashboardSummary } from "../../services/vendor-bills";
 import { getVendorPaymentDashboard, exportVendorPaymentsCSV } from "../../services/vendor-payments";
 import type { VendorPaymentDashboardSummary } from "../../services/vendor-payments";
+import { formatCurrency as inr } from "../../lib/utils";
 
-const inr = (v: string | number) => `₹${Number(v).toLocaleString("en-IN")}`;
 
 export default function VendorReports() {
   const navigate = useNavigate();

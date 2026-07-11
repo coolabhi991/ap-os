@@ -3,6 +3,7 @@ import { Plus, Trash2 } from "lucide-react";
 import type { POFormData, POItem, ApprovedPR } from "../../services/purchase-orders";
 import { PO_STATUS_LABELS } from "../../services/purchase-orders";
 import type { PRItem } from "../../services/purchase-requisitions";
+import { todayISO } from "../../lib/utils";
 
 interface Props {
   initialData?: Partial<POFormData>;
@@ -50,7 +51,7 @@ export default function PurchaseOrderForm({
     requisitionId: initialData?.requisitionId ?? "",
     projectId: initialData?.projectId ?? "",
     vendorId: initialData?.vendorId ?? "",
-    orderDate: initialData?.orderDate ?? new Date().toISOString().slice(0, 10),
+    orderDate: initialData?.orderDate ?? todayISO(),
     expectedDate: initialData?.expectedDate ?? "",
     deliveryAddress: initialData?.deliveryAddress ?? "",
     paymentTerms: initialData?.paymentTerms ?? "",

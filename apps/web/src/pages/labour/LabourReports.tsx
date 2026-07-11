@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import Layout from "../../components/layout/Layout";
 import { getWageRegister, getPendingWages, getProjectLabourCostReport } from "../../services/labour-reports";
 import type { WageSummaryRow, ProjectLabourCostRow } from "../../services/labour-reports";
+import EmptyTableRow from "../../components/ui/EmptyTableRow";
 
 type ReportTab = "wage-register" | "pending-wages" | "project-cost";
 
@@ -99,7 +100,7 @@ export default function LabourReports() {
                 </thead>
                 <tbody>
                   {wageRegisterRows.length === 0 ? (
-                    <tr><td colSpan={9} className="py-10 text-center text-slate-500">No data.</td></tr>
+                    <EmptyTableRow colSpan={9}>No data.</EmptyTableRow>
                   ) : (
                     wageRegisterRows.map((w) => (
                       <tr key={w.labourId} className="border-t">
@@ -132,7 +133,7 @@ export default function LabourReports() {
                 </thead>
                 <tbody>
                   {pendingWagesRows.length === 0 ? (
-                    <tr><td colSpan={6} className="py-10 text-center text-slate-500">No outstanding pending wages.</td></tr>
+                    <EmptyTableRow colSpan={6}>No outstanding pending wages.</EmptyTableRow>
                   ) : (
                     pendingWagesRows.map((w) => (
                       <tr key={w.labourId} className="border-t">
@@ -159,7 +160,7 @@ export default function LabourReports() {
                 </thead>
                 <tbody>
                   {projectCostRows.length === 0 ? (
-                    <tr><td colSpan={3} className="py-10 text-center text-slate-500">No data.</td></tr>
+                    <EmptyTableRow colSpan={3}>No data.</EmptyTableRow>
                   ) : (
                     projectCostRows.map((r) => (
                       <tr key={r.projectId} className="border-t">

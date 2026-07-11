@@ -5,8 +5,10 @@ import type { SubWork, SubWorkFormData } from "../../../services/sub-works";
 import { SUBWORK_STATUS_LABELS, SUBWORK_STATUS_COLORS } from "../../../services/sub-works";
 import type { Site } from "../../../services/sites";
 import SubWorkFormModal from "../SubWorkFormModal";
+import LoadingState from "../../ui/LoadingState";
+import { formatCurrency as inr } from "../../../lib/utils";
+import EmptyTableRow from "../../ui/EmptyTableRow";
 
-const inr = (v: string | number) => `₹${Number(v).toLocaleString("en-IN")}`;
 
 export default function SubWorksTab({ site }: { site: Site }) {
   const [subWorks, setSubWorks] = useState<SubWork[]>([]);
@@ -59,7 +61,7 @@ export default function SubWorksTab({ site }: { site: Site }) {
         </button>
       </div>
 
-      {loading && <div className="rounded-xl border border-slate-200 bg-white py-16 text-center text-slate-500 shadow-sm">Loading...</div>}
+      {loading && <LoadingState />}
       {error && !loading && <div className="rounded-xl border border-red-200 bg-red-50 px-6 py-5 text-red-700">{error}</div>}
 
       {!loading && !error && (
@@ -76,7 +78,7 @@ export default function SubWorksTab({ site }: { site: Site }) {
             </thead>
             <tbody>
               {subWorks.length === 0 ? (
-                <tr><td colSpan={5} className="py-10 text-center text-slate-500">No sub works yet for this site.</td></tr>
+                <EmptyTableRow colSpan={5}>No sub works yet for this site.</EmptyTableRow>
               ) : (
                 subWorks.map((sw) => (
                   <tr key={sw.id} className="border-t">

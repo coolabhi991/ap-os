@@ -8,6 +8,7 @@ import StockLedgerTable from "../../components/inventory/StockLedgerTable";
 
 import { getInventoryDashboard, getLowStockAlerts } from "../../services/inventory";
 import type { InventoryDashboardSummary, InventoryItem, StockLedgerEntry } from "../../services/inventory";
+import LoadingState from "../../components/ui/LoadingState";
 
 export default function InventoryDashboard() {
   const navigate = useNavigate();
@@ -49,9 +50,7 @@ export default function InventoryDashboard() {
         </div>
 
         {loading && (
-          <div className="rounded-xl border border-slate-200 bg-white py-16 text-center text-slate-500 shadow-sm">
-            Loading inventory dashboard...
-          </div>
+          <LoadingState label="Loading inventory dashboard..." />
         )}
 
         {error && !loading && (

@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { LabourAdvanceFormData } from "../../services/labour-advances";
 import { ADVANCE_MODE_OPTIONS, ADVANCE_MODE_LABELS } from "../../services/labour-advances";
 import type { CompanyBankAccount } from "../../services/company-bank-accounts";
+import { todayISO } from "../../lib/utils";
 
 interface Option {
   id: string;
@@ -21,7 +22,7 @@ export default function AdvanceForm({ onSubmit, saving = false, labourers, proje
     labourId: "",
     projectId: "",
     amount: 0,
-    advanceDate: new Date().toISOString().slice(0, 10),
+    advanceDate: todayISO(),
     mode: "",
     companyBankAccountId: "",
     remarks: "",

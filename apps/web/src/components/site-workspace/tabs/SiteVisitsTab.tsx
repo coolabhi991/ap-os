@@ -11,9 +11,12 @@ import {
 } from "../../../services/site-visits";
 import type { SiteVisit, SiteVisitFormData, SiteVisitSummary } from "../../../services/site-visits";
 import type { Site } from "../../../services/sites";
+import LoadingState from "../../ui/LoadingState";
+import { todayISO } from "../../../lib/utils";
+import EmptyTableRow from "../../ui/EmptyTableRow";
 
 const EMPTY_FORM: Omit<SiteVisitFormData, "siteId"> = {
-  visitDate: new Date().toISOString().slice(0, 10),
+  visitDate: todayISO(),
   visitedBy: "",
   purpose: "",
   remarks: "",
@@ -150,7 +153,7 @@ export default function SiteVisitsTab({ site }: { site: Site }) {
         </form>
       )}
 
-      {loading && <div className="rounded-xl border border-slate-200 bg-white py-16 text-center text-slate-500 shadow-sm">Loading...</div>}
+      {loading && <LoadingState />}
       {error && !loading && <div className="rounded-xl border border-red-200 bg-red-50 px-6 py-5 text-red-700">{error}</div>}
 
       {!loading && !error && (
@@ -168,7 +171,7 @@ export default function SiteVisitsTab({ site }: { site: Site }) {
             </thead>
             <tbody>
               {visits.length === 0 ? (
-                <tr><td colSpan={6} className="py-10 text-center text-slate-500">No site visits logged yet.</td></tr>
+                <EmptyTableRow colSpan={6}>No site visits logged yet.</EmptyTableRow>
               ) : (
                 visits.map((v) => (
                   <tr key={v.id} className="border-t">
@@ -182,7 +185,7 @@ export default function SiteVisitsTab({ site }: { site: Site }) {
                     <td className="px-4 py-3 text-right">
                       <div className="flex justify-end gap-1">
                         <button onClick={() => openEdit(v)} className="rounded p-1.5 text-slate-500 hover:bg-slate-100"><Pencil className="h-4 w-4" /></button>
-                        <button onClick={() => handleDelete(v.id)} className="rounded p-1.5 text-red-600 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button>
+                        <button onClick={() => handleDelete(v.id)} aria-label="Delete" className="rounded p-1.5 text-red-600 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button>
                       </div>
                     </td>
                   </tr>

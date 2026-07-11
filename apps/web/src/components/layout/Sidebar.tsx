@@ -16,6 +16,8 @@ import {
   ChevronRight,
   NotebookPen,
   Ruler,
+  Handshake,
+  PiggyBank,
 } from "lucide-react";
 
 import { NavLink } from "react-router-dom";
@@ -90,6 +92,16 @@ const menus = [
     name: "Banking",
     path: "/banking",
     icon: Landmark,
+  },
+  {
+    name: "Partnership",
+    path: "/partnership",
+    icon: Handshake,
+  },
+  {
+    name: "Finance",
+    path: "/finance",
+    icon: PiggyBank,
   },
   {
     name: "Reports",

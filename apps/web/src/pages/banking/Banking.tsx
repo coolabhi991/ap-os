@@ -25,6 +25,8 @@ import {
   ACCOUNT_TYPE_LABELS,
 } from "../../services/company-bank-accounts";
 import type { CompanyBankAccount, CompanyBankAccountFormData } from "../../services/company-bank-accounts";
+import LoadingState from "../../components/ui/LoadingState";
+import EmptyTableRow from "../../components/ui/EmptyTableRow";
 
 const TABS = [
   { key: "accounts", label: "Accounts" },
@@ -399,7 +401,7 @@ export default function Banking() {
               </div>
             </div>
 
-            {txnLoading && <div className="rounded-xl border border-slate-200 bg-white py-16 text-center text-slate-500 shadow-sm">Loading...</div>}
+            {txnLoading && <LoadingState />}
             {txnError && !txnLoading && <div className="rounded-xl border border-red-200 bg-red-50 px-6 py-5 text-red-700">{txnError}</div>}
 
             {!txnLoading && !txnError && (
@@ -419,7 +421,7 @@ export default function Banking() {
                   </thead>
                   <tbody>
                     {transactions.length === 0 ? (
-                      <tr><td colSpan={8} className="py-10 text-center text-slate-500">No bank transactions recorded yet.</td></tr>
+                      <EmptyTableRow colSpan={8}>No bank transactions recorded yet.</EmptyTableRow>
                     ) : (
                       transactions.map((t) => (
                         <tr key={t.id} className="border-t hover:bg-slate-50">

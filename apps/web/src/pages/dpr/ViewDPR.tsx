@@ -8,8 +8,9 @@ import { getDPR, exportDPRPdf, exportDPRExcel, SHIFT_LABELS, VISITOR_TYPE_LABELS
 import type { DPRDetail } from "../../services/dpr";
 import { getDocumentsByDPR, createDocument, deleteDocument, DPR_ATTACHMENT_TYPE_OPTIONS, DOCUMENT_TYPE_LABELS } from "../../services/documents";
 import type { ProjectDocument } from "../../services/documents";
+import { formatCurrency as inr } from "../../lib/utils";
+import EmptyTableRow from "../../components/ui/EmptyTableRow";
 
-const inr = (v: string | number) => `₹${Number(v).toLocaleString("en-IN")}`;
 
 function Field({ label, value }: { label: string; value: string }) {
   return (
@@ -316,7 +317,7 @@ export default function ViewDPR() {
               </thead>
               <tbody>
                 {documents.length === 0 ? (
-                  <tr><td colSpan={4} className="py-8 text-center text-slate-500">No attachments yet.</td></tr>
+                  <EmptyTableRow colSpan={4}>No attachments yet.</EmptyTableRow>
                 ) : (
                   documents.map((d) => (
                     <tr key={d.id} className="border-t">

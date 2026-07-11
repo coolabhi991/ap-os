@@ -5,6 +5,7 @@ import type { ProjectContractInfoFormData } from "../../services/project-contrac
 import { getDocuments, createDocument, deleteDocument, CONTRACT_INFO_ATTACHMENT_TYPE_OPTIONS, DOCUMENT_TYPE_LABELS } from "../../services/documents";
 import type { ProjectDocument } from "../../services/documents";
 import type { Project } from "../../services/projects";
+import EmptyTableRow from "../ui/EmptyTableRow";
 
 interface Props {
   project: Project;
@@ -245,7 +246,7 @@ export default function ContractInformationTab({ project }: Props) {
             </thead>
             <tbody>
               {documents.length === 0 ? (
-                <tr><td colSpan={4} className="py-8 text-center text-slate-500">No contract documents uploaded yet.</td></tr>
+                <EmptyTableRow colSpan={4}>No contract documents uploaded yet.</EmptyTableRow>
               ) : (
                 documents.map((d) => (
                   <tr key={d.id} className="border-t">

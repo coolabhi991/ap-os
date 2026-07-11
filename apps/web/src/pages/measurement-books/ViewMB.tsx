@@ -6,6 +6,7 @@ import Layout from "../../components/layout/Layout";
 import EmailMBModal from "../../components/measurement-books/EmailMBModal";
 import { getMB, exportMBPdf, exportMBExcel, getMBEmailLogs, MB_STATUS_LABELS, MB_STATUS_COLORS } from "../../services/measurement-books";
 import type { MB, MBEmailLog } from "../../services/measurement-books";
+import EmptyTableRow from "../../components/ui/EmptyTableRow";
 
 function Field({ label, value }: { label: string; value: string }) {
   return (
@@ -148,7 +149,7 @@ export default function ViewMB() {
                 </thead>
                 <tbody>
                   {mb.items.length === 0 ? (
-                    <tr><td colSpan={12} className="py-8 text-center text-slate-500">No BOQ rows recorded.</td></tr>
+                    <EmptyTableRow colSpan={12}>No BOQ rows recorded.</EmptyTableRow>
                   ) : (
                     mb.items.map((item) => (
                       <tr key={item.id} className="border-t">
@@ -198,7 +199,7 @@ export default function ViewMB() {
               </thead>
               <tbody>
                 {emailLogs.length === 0 ? (
-                  <tr><td colSpan={4} className="py-8 text-center text-slate-500">No emails sent yet.</td></tr>
+                  <EmptyTableRow colSpan={4}>No emails sent yet.</EmptyTableRow>
                 ) : (
                   emailLogs.map((log) => (
                     <tr key={log.id} className="border-t">

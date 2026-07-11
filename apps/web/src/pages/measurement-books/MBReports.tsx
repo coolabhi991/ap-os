@@ -14,6 +14,7 @@ import {
 } from "../../services/measurement-books";
 import type { MBRegisterRow, AbstractRegisterRow, ItemWiseQuantityRow, SubWorkQuantityRow, PendingMBRow } from "../../services/measurement-books";
 import { getProjects } from "../../services/projects";
+import EmptyTableRow from "../../components/ui/EmptyTableRow";
 
 type ReportTab = "register" | "abstract" | "item-wise" | "sub-work" | "pending";
 
@@ -145,7 +146,7 @@ export default function MBReports() {
                 </thead>
                 <tbody>
                   {registerRows.length === 0 ? (
-                    <tr><td colSpan={9} className="py-10 text-center text-slate-500">No data.</td></tr>
+                    <EmptyTableRow colSpan={9}>No data.</EmptyTableRow>
                   ) : (
                     registerRows.map((r) => (
                       <tr key={r.id} className="border-t">
@@ -184,7 +185,7 @@ export default function MBReports() {
                 </thead>
                 <tbody>
                   {abstractRows.length === 0 ? (
-                    <tr><td colSpan={9} className="py-10 text-center text-slate-500">No data.</td></tr>
+                    <EmptyTableRow colSpan={9}>No data.</EmptyTableRow>
                   ) : (
                     abstractRows.map((r, i) => (
                       <tr key={`${r.mbId}-${i}`} className="border-t">
@@ -218,7 +219,7 @@ export default function MBReports() {
                 </thead>
                 <tbody>
                   {itemWiseRows.length === 0 ? (
-                    <tr><td colSpan={6} className="py-10 text-center text-slate-500">No data.</td></tr>
+                    <EmptyTableRow colSpan={6}>No data.</EmptyTableRow>
                   ) : (
                     itemWiseRows.map((r, i) => (
                       <tr key={`${r.boqItemNo}-${i}`} className="border-t">
@@ -247,7 +248,7 @@ export default function MBReports() {
                 </thead>
                 <tbody>
                   {subWorkRows.length === 0 ? (
-                    <tr><td colSpan={4} className="py-10 text-center text-slate-500">No data.</td></tr>
+                    <EmptyTableRow colSpan={4}>No data.</EmptyTableRow>
                   ) : (
                     subWorkRows.map((r, i) => (
                       <tr key={`${r.subWork}-${i}`} className="border-t">
@@ -277,7 +278,7 @@ export default function MBReports() {
                 </thead>
                 <tbody>
                   {pendingRows.length === 0 ? (
-                    <tr><td colSpan={7} className="py-10 text-center text-slate-500">No pending Measurement Books.</td></tr>
+                    <EmptyTableRow colSpan={7}>No pending Measurement Books.</EmptyTableRow>
                   ) : (
                     pendingRows.map((r) => (
                       <tr key={r.id} className="border-t">

@@ -3,8 +3,10 @@ import { useNavigate } from "react-router-dom";
 import { getRunningBills, RB_STATUS_LABELS, RB_STATUS_COLORS } from "../../../services/running-bills";
 import type { RunningBill } from "../../../services/running-bills";
 import type { Site } from "../../../services/sites";
+import LoadingState from "../../ui/LoadingState";
+import { formatCurrency as inr } from "../../../lib/utils";
+import EmptyTableRow from "../../ui/EmptyTableRow";
 
-const inr = (v: string | number) => `₹${Number(v).toLocaleString("en-IN")}`;
 
 export default function RunningBillsTab({ site }: { site: Site }) {
   const navigate = useNavigate();
@@ -31,7 +33,7 @@ export default function RunningBillsTab({ site }: { site: Site }) {
         <button onClick={() => navigate("/running-bills/new")} className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700">Add Running Bill</button>
       </div>
 
-      {loading && <div className="rounded-xl border border-slate-200 bg-white py-16 text-center text-slate-500 shadow-sm">Loading...</div>}
+      {loading && <LoadingState />}
       {error && !loading && <div className="rounded-xl border border-red-200 bg-red-50 px-6 py-5 text-red-700">{error}</div>}
 
       {!loading && !error && (
@@ -48,7 +50,7 @@ export default function RunningBillsTab({ site }: { site: Site }) {
             </thead>
             <tbody>
               {bills.length === 0 ? (
-                <tr><td colSpan={5} className="py-10 text-center text-slate-500">No Running Bills for this site yet.</td></tr>
+                <EmptyTableRow colSpan={5}>No Running Bills for this site yet.</EmptyTableRow>
               ) : (
                 bills.map((b) => (
                   <tr key={b.id} className="cursor-pointer border-t hover:bg-slate-50" onClick={() => navigate(`/running-bills/${b.id}`)}>

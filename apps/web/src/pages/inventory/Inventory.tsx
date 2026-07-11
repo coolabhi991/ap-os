@@ -8,6 +8,7 @@ import InventoryTable from "../../components/inventory/InventoryTable";
 
 import { getInventoryItems, deleteInventoryItem, exportInventoryCSV } from "../../services/inventory";
 import type { InventoryItem } from "../../services/inventory";
+import LoadingState from "../../components/ui/LoadingState";
 
 export default function Inventory() {
   const navigate = useNavigate();
@@ -113,9 +114,7 @@ export default function Inventory() {
         />
 
         {loading && (
-          <div className="rounded-xl border border-slate-200 bg-white py-16 text-center text-slate-500 shadow-sm">
-            Loading inventory...
-          </div>
+          <LoadingState label="Loading inventory..." />
         )}
 
         {error && !loading && (

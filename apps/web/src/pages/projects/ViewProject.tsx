@@ -8,6 +8,7 @@ import type { Project } from "../../services/projects";
 import { getSites } from "../../services/sites";
 import type { Site } from "../../services/sites";
 import { SITE_TYPE_LABELS, SITE_STATUS_LABELS, SITE_STATUS_COLORS } from "../../services/sites";
+import LoadingState from "../../components/ui/LoadingState";
 
 const TABS = [
   { key: "sites", label: "Sites" },
@@ -103,7 +104,7 @@ export default function ViewProject() {
             </div>
 
             {sitesLoading && (
-              <div className="rounded-xl border border-slate-200 bg-white py-16 text-center text-slate-500 shadow-sm">Loading sites...</div>
+              <LoadingState label="Loading sites..." />
             )}
 
             {!sitesLoading && sites.length === 0 && (

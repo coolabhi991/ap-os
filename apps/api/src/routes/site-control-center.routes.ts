@@ -12,6 +12,9 @@ import {
   getSiteCostSummaryHandler,
   exportSiteCostBySubWorkHandler,
   getSiteWalletHandler,
+  getSiteBillReceivedHandler,
+  getSiteVendorBillsHandler,
+  getSiteMoneyFlowHandler,
 } from "../controllers/site-control-center.controller.js";
 import { authMiddleware } from "../middleware/auth.middleware.js";
 
@@ -19,6 +22,9 @@ const router = Router();
 
 router.get("/overview", authMiddleware, getSiteOverviewHandler);
 router.get("/wallet", authMiddleware, getSiteWalletHandler);
+router.get("/bill-received", authMiddleware, getSiteBillReceivedHandler);
+router.get("/vendor-bills", authMiddleware, getSiteVendorBillsHandler);
+router.get("/money-flow", authMiddleware, getSiteMoneyFlowHandler);
 
 router.get("/recap/live", authMiddleware, getSiteRecapLiveHandler);
 router.get("/recap/revisions", authMiddleware, listSiteRecapRevisionsHandler);

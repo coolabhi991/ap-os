@@ -10,7 +10,7 @@ export default function StatCard({
   subtitle,
 }: StatCardProps) {
   return (
-    <div className="rounded-xl bg-white p-6 shadow-sm border border-slate-200 hover:shadow-md transition">
+    <div className="rounded-2xl bg-white p-6 shadow-sm border border-slate-200 hover:shadow-md transition">
 
       <p className="text-sm text-slate-500">
         {title}

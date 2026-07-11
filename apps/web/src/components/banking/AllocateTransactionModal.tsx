@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { X, Plus, Trash2 } from "lucide-react";
-import { createAllocations, ALLOCATION_TYPES, ALLOCATION_TYPE_LABELS, SITE_SCOPED_TYPES } from "../../services/transaction-allocations";
+import { createAllocations, ALLOCATION_TYPES, ALLOCATION_TYPE_LABELS, SITE_SCOPED_TYPES, PARTNER_SCOPED_TYPES } from "../../services/transaction-allocations";
 import type { AllocationRowInput } from "../../services/transaction-allocations";
 import type { BankTransaction } from "../../services/bank-transactions";
 import { getRunningBills } from "../../services/running-bills";
@@ -15,6 +15,11 @@ import { getExpenseCategories } from "../../services/expense-categories";
 import type { ExpenseCategory } from "../../services/expense-categories";
 import { getAllSites } from "../../services/sites";
 import type { Site } from "../../services/sites";
+import { getPartners } from "../../services/partners";
+import type { Partner } from "../../services/partners";
+import { getLiabilities } from "../../services/liabilities";
+import type { Liability } from "../../services/liabilities";
+import { formatCurrency as inr } from "../../lib/utils";
 
 interface Props {
   transaction: BankTransaction;
@@ -29,7 +34,6 @@ interface Row extends AllocationRowInput {
 let rowKeySeq = 0;
 const emptyRow = (amount: number): Row => ({ key: ++rowKeySeq, allocationType: "OTHER", amount });
 
-const inr = (v: string | number) => `₹${Number(v).toLocaleString("en-IN")}`;
 
 export default function AllocateTransactionModal({ transaction, onClose, onSaved }: Props) {
   const isDeposit = Number(transaction.deposit) > 0;
@@ -40,6 +44,8 @@ export default function AllocateTransactionModal({ transaction, onClose, onSaved
   const [labourers, setLabourers] = useState<Labour[]>([]);
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
   const [sites, setSites] = useState<Site[]>([]);
+  const [partners, setPartners] = useState<Partner[]>([]);
+  const [liabilities, setLiabilities] = useState<Liability[]>([]);
   const [vendorAccountsByBill, setVendorAccountsByBill] = useState<Record<string, VendorBankAccount[]>>({});
   const [loadingOptions, setLoadingOptions] = useState(true);
 
@@ -55,13 +61,17 @@ export default function AllocateTransactionModal({ transaction, onClose, onSaved
       getLabourList({ status: "Active", limit: 200 }),
       getExpenseCategories(false),
       getAllSites(),
+      getPartners({ isActive: true }),
+      getLiabilities({ status: "ACTIVE" }),
     ])
-      .then(([rb, vb, lab, cats, siteList]) => {
+      .then(([rb, vb, lab, cats, siteList, partnerList, liabilityList]) => {
         setRunningBills(rb.data.filter((b) => Number(b.outstandingAmount) > 0.01));
         setVendorBills(vb.data.filter((b) => Number(b.outstandingBalance) > 0.01));
         setLabourers(lab.data);
         setCategories(cats);
         setSites(siteList);
+        setPartners(partnerList.data);
+        setLiabilities(liabilityList.data);
       })
       .finally(() => setLoadingOptions(false));
   }, []);
@@ -147,7 +157,7 @@ export default function AllocateTransactionModal({ transaction, onClose, onSaved
                       <label className="mb-1 block text-xs font-medium">Type *</label>
                       <select
                         value={row.allocationType}
-                        onChange={(e) => updateRow(row.key, { allocationType: e.target.value, runningBillId: undefined, vendorBillId: undefined, vendorBankAccountId: undefined, labourId: undefined, categoryId: undefined })}
+                        onChange={(e) => updateRow(row.key, { allocationType: e.target.value, runningBillId: undefined, vendorBillId: undefined, vendorBankAccountId: undefined, labourId: undefined, categoryId: undefined, partnerId: undefined, liabilityId: undefined, principalPaid: undefined, interestPaid: undefined })}
                         className="w-full rounded-lg border p-2 text-sm"
                       >
                         {ALLOCATION_TYPES.map((t) => <option key={t} value={t}>{ALLOCATION_TYPE_LABELS[t]}</option>)}
@@ -226,6 +236,71 @@ export default function AllocateTransactionModal({ transaction, onClose, onSaved
                       </div>
                     )}
 
+                    {(row.allocationType === "OWNER_INVESTMENT" || row.allocationType === "PARTNER_INVESTMENT" || row.allocationType === "PARTNER_SETTLEMENT") && (
+                      <div>
+                        <label className="mb-1 block text-xs font-medium">Partner *</label>
+                        <select value={row.partnerId ?? ""} onChange={(e) => updateRow(row.key, { partnerId: e.target.value })} className="w-full rounded-lg border p-2 text-sm">
+                          <option value="">Select Partner</option>
+                          {partners
+                            .filter((p) =>
+                              row.allocationType === "OWNER_INVESTMENT"
+                                ? p.partnerType === "OWNER"
+                                : row.allocationType === "PARTNER_INVESTMENT"
+                                  ? p.partnerType === "PARTNER"
+                                  : true
+                            )
+                            .map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        </select>
+                      </div>
+                    )}
+
+                    {row.allocationType === "LIABILITY_DISBURSEMENT" && (
+                      <div>
+                        <label className="mb-1 block text-xs font-medium">Liability *</label>
+                        <select value={row.liabilityId ?? ""} onChange={(e) => updateRow(row.key, { liabilityId: e.target.value })} className="w-full rounded-lg border p-2 text-sm">
+                          <option value="">Select Liability</option>
+                          {liabilities.map((l) => <option key={l.id} value={l.id}>{l.loanName}</option>)}
+                        </select>
+                      </div>
+                    )}
+
+                    {row.allocationType === "LIABILITY_REPAYMENT" && (
+                      <>
+                        <div>
+                          <label className="mb-1 block text-xs font-medium">Liability *</label>
+                          <select value={row.liabilityId ?? ""} onChange={(e) => updateRow(row.key, { liabilityId: e.target.value })} className="w-full rounded-lg border p-2 text-sm">
+                            <option value="">Select Liability</option>
+                            {liabilities.map((l) => <option key={l.id} value={l.id}>{l.loanName} — {inr(l.outstandingAmount)} outstanding</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs font-medium">Principal Paid *</label>
+                          <input
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            value={row.principalPaid ?? ""}
+                            onChange={(e) => updateRow(row.key, { principalPaid: Number(e.target.value) || 0 })}
+                            className="w-full rounded-lg border p-2 text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-1 block text-xs font-medium">Interest Paid *</label>
+                          <input
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            value={row.interestPaid ?? ""}
+                            onChange={(e) => updateRow(row.key, { interestPaid: Number(e.target.value) || 0 })}
+                            className="w-full rounded-lg border p-2 text-sm"
+                          />
+                        </div>
+                        {Math.abs((Number(row.principalPaid) || 0) + (Number(row.interestPaid) || 0) - row.amount) > 0.01 && (
+                          <p className="md:col-span-3 text-xs text-amber-600">Principal Paid + Interest Paid must equal the Amount (₹{row.amount}).</p>
+                        )}
+                      </>
+                    )}
+
                     {SITE_SCOPED_TYPES.includes(row.allocationType) && (
                       <div>
                         <label className="mb-1 block text-xs font-medium">
@@ -238,7 +313,7 @@ export default function AllocateTransactionModal({ transaction, onClose, onSaved
                       </div>
                     )}
 
-                    {!["RUNNING_BILL_RECEIPT", "VENDOR_PAYMENT", "LABOUR", "SITE_EXPENSE"].includes(row.allocationType) && (
+                    {!["RUNNING_BILL_RECEIPT", "VENDOR_PAYMENT", "LABOUR", "SITE_EXPENSE", "LIABILITY_DISBURSEMENT", "LIABILITY_REPAYMENT", ...PARTNER_SCOPED_TYPES].includes(row.allocationType) && (
                       <div>
                         <label className="mb-1 block text-xs font-medium">Party Name</label>
                         <input value={row.partyName ?? ""} onChange={(e) => updateRow(row.key, { partyName: e.target.value })} className="w-full rounded-lg border p-2 text-sm" />

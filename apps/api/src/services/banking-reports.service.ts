@@ -11,12 +11,6 @@ import { listBankTransactions, listBankAccountsWithBalances } from "./bank-trans
 
 const EXPECTED_PAYMENT_DAYS = 30;
 
-interface ReportDateQuery {
-  fromDate?: string;
-  toDate?: string;
-  projectId?: string;
-}
-
 function escapeCsv(value: string) {
   if (value.includes(",") || value.includes("\"") || value.includes("\n")) {
     return `"${value.replace(/"/g, '""')}"`;

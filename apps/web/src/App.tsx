@@ -126,6 +126,12 @@ import BankingReports from "./pages/banking/BankingReports";
 /* AP AI */
 import ApAi from "./pages/ai/ApAi";
 
+/* Partnership */
+import Partnership from "./pages/partnership/Partnership";
+
+/* Finance */
+import Finance from "./pages/finance/Finance";
+
 /* Reports */
 import Reports from "./pages/reports/Reports";
 import VendorReports from "./pages/reports/VendorReports";
@@ -261,6 +267,12 @@ export default function App() {
 
       {/* AP AI */}
       <Route path="/ai" element={<ApAi />} />
+
+      {/* Partnership */}
+      <Route path="/partnership" element={<Partnership />} />
+
+      {/* Finance */}
+      <Route path="/finance" element={<Finance />} />
 
       {/* Reports */}
       <Route path="/reports" element={<Reports />} />

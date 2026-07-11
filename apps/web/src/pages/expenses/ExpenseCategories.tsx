@@ -9,6 +9,7 @@ import {
   deleteExpenseCategory,
 } from "../../services/expense-categories";
 import type { ExpenseCategory, ExpenseCategoryFormData } from "../../services/expense-categories";
+import EmptyTableRow from "../../components/ui/EmptyTableRow";
 
 const emptyForm: ExpenseCategoryFormData = { name: "", isActive: true };
 
@@ -116,7 +117,7 @@ export default function ExpenseCategories() {
               </thead>
               <tbody>
                 {categories.length === 0 ? (
-                  <tr><td colSpan={3} className="py-10 text-center text-slate-500">No categories yet.</td></tr>
+                  <EmptyTableRow colSpan={3}>No categories yet.</EmptyTableRow>
                 ) : (
                   categories.map((c) => (
                     <tr key={c.id} className={`border-t hover:bg-slate-50 ${!c.isActive ? "opacity-60" : ""}`}>
@@ -129,7 +130,7 @@ export default function ExpenseCategories() {
                       <td className="px-6 py-4">
                         <div className="flex justify-center gap-4">
                           <button onClick={() => startEdit(c)}><Pencil size={18} className="text-green-600" /></button>
-                          <button onClick={() => handleDelete(c.id)}><Trash2 size={18} className="text-red-600" /></button>
+                          <button onClick={() => handleDelete(c.id)} aria-label="Delete"><Trash2 size={18} className="text-red-600" /></button>
                         </div>
                       </td>
                     </tr>

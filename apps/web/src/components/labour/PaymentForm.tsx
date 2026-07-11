@@ -4,6 +4,7 @@ import { PAYMENT_MODE_OPTIONS, PAYMENT_MODE_LABELS } from "../../services/labour
 import type { CompanyBankAccount } from "../../services/company-bank-accounts";
 import { getSites } from "../../services/sites";
 import type { Site } from "../../services/sites";
+import { todayISO } from "../../lib/utils";
 
 interface Option {
   id: string;
@@ -24,7 +25,7 @@ export default function PaymentForm({ onSubmit, saving = false, labourers, proje
     projectId: "",
     siteId: "",
     amount: 0,
-    paymentDate: new Date().toISOString().slice(0, 10),
+    paymentDate: todayISO(),
     periodFrom: "",
     periodTo: "",
     mode: "",

@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import type { RunningBill, RunningBillDeductionInput, RunningBillFormData } from "../../services/running-bills";
 import { BILL_TYPE_OPTIONS, BILL_TYPE_LABELS, DEDUCTION_TYPE_OPTIONS, DEDUCTION_TYPE_LABELS } from "../../services/running-bills";
+import { todayISO } from "../../lib/utils";
 
 export interface AbstractPreviewRow {
   boqItemNo: string;
@@ -48,7 +49,7 @@ export default function RunningBillForm({ initialData, source, items, onSubmit, 
   const [site, setSite] = useState(initialData?.site ?? source.site ?? "");
   const [billPeriodFrom, setBillPeriodFrom] = useState(initialData?.billPeriodFrom ?? "");
   const [billPeriodTo, setBillPeriodTo] = useState(initialData?.billPeriodTo ?? "");
-  const [billDate, setBillDate] = useState(initialData?.billDate ?? new Date().toISOString().slice(0, 10));
+  const [billDate, setBillDate] = useState(initialData?.billDate ?? todayISO());
   const [remarks, setRemarks] = useState(initialData?.remarks ?? "");
 
   const [deductions, setDeductions] = useState<DeductionRow[]>(

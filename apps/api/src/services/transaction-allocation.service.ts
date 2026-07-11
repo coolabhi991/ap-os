@@ -1,9 +1,12 @@
 import prisma from "../config/prisma.js";
-import { Prisma, AllocationType, AllocationStatus } from "@prisma/client";
+import { Prisma, AllocationType, AllocationStatus, PartnerType } from "@prisma/client";
 import { recordRunningBillPayment } from "./running-bill.service.js";
 import { recordVendorPayment } from "./vendor-payment.service.js";
 import { createLabourPayment } from "./labour-payment.service.js";
 import { createExpense } from "./expense.service.js";
+import { createPartnerInvestment } from "./partner-investment.service.js";
+import { createPartnerSettlement } from "./partner-settlement.service.js";
+import { recordLiabilityRepayment } from "./liability-repayment.service.js";
 
 /**
  * Transaction Allocation — the only way money moves out of a BankTransaction. Every allocation
@@ -22,10 +25,13 @@ export const ALLOCATION_TYPES = [
   "INTERNAL_TRANSFER",
   "OWNER_INVESTMENT",
   "PARTNER_INVESTMENT",
+  "PARTNER_SETTLEMENT",
   "GST",
   "LOAN",
   "OFFICE_EXPENSE",
   "OTHER",
+  "LIABILITY_DISBURSEMENT",
+  "LIABILITY_REPAYMENT",
 ];
 
 export const ALLOCATION_TYPE_LABELS: Record<string, string> = {
@@ -36,14 +42,26 @@ export const ALLOCATION_TYPE_LABELS: Record<string, string> = {
   INTERNAL_TRANSFER: "Internal Transfer",
   OWNER_INVESTMENT: "Owner Investment",
   PARTNER_INVESTMENT: "Partner Investment",
+  PARTNER_SETTLEMENT: "Partner Settlement",
   GST: "GST",
   LOAN: "Loan",
   OFFICE_EXPENSE: "Office Expense",
   OTHER: "Other",
+  LIABILITY_DISBURSEMENT: "Liability Disbursement",
+  LIABILITY_REPAYMENT: "Liability Repayment",
 };
 
-// The 4 types that auto-create a real ledger row rather than existing only as an allocation.
-const LEDGER_BACKED_TYPES: AllocationType[] = ["RUNNING_BILL_RECEIPT", "VENDOR_PAYMENT", "LABOUR", "SITE_EXPENSE"];
+// The types that auto-create a real ledger row rather than existing only as an allocation.
+const LEDGER_BACKED_TYPES: AllocationType[] = [
+  "RUNNING_BILL_RECEIPT",
+  "VENDOR_PAYMENT",
+  "LABOUR",
+  "SITE_EXPENSE",
+  "OWNER_INVESTMENT",
+  "PARTNER_INVESTMENT",
+  "PARTNER_SETTLEMENT",
+  "LIABILITY_REPAYMENT",
+];
 
 const AMOUNT_TOLERANCE = 0.01;
 
@@ -58,6 +76,10 @@ export interface AllocationRowInput {
   vendorBankAccountId?: string;
   labourId?: string;
   categoryId?: string;
+  partnerId?: string;
+  liabilityId?: string;
+  principalPaid?: number;
+  interestPaid?: number;
 }
 
 const include = {
@@ -66,6 +88,10 @@ const include = {
   vendorPayment: { select: { id: true, paymentNumber: true, vendor: { select: { id: true, name: true } }, vendorBill: { select: { id: true, billNumber: true } } } },
   labourPayment: { select: { id: true, labour: { select: { id: true, name: true } } } },
   expense: { select: { id: true, expenseNumber: true, category: { select: { id: true, name: true } } } },
+  partnerInvestment: { select: { id: true, investmentNumber: true, partner: { select: { id: true, name: true } } } },
+  partnerSettlement: { select: { id: true, settlementNumber: true, partner: { select: { id: true, name: true } } } },
+  liability: { select: { id: true, loanName: true, liabilityType: true } },
+  liabilityRepayment: { select: { id: true, repaymentNumber: true, principalPaid: true, interestPaid: true, liability: { select: { id: true, loanName: true } } } },
   createdBy: { select: { id: true, name: true } },
 };
 
@@ -94,6 +120,26 @@ function toDTO(a: AllocationRow) {
     labourPayment: a.labourPayment ? { id: a.labourPayment.id, labour: a.labourPayment.labour.name } : null,
     expenseId: a.expenseId ?? "",
     expense: a.expense ? { id: a.expense.id, expenseNumber: a.expense.expenseNumber, category: a.expense.category.name } : null,
+    partnerInvestmentId: a.partnerInvestmentId ?? "",
+    partnerInvestment: a.partnerInvestment
+      ? { id: a.partnerInvestment.id, investmentNumber: a.partnerInvestment.investmentNumber, partner: a.partnerInvestment.partner.name }
+      : null,
+    partnerSettlementId: a.partnerSettlementId ?? "",
+    partnerSettlement: a.partnerSettlement
+      ? { id: a.partnerSettlement.id, settlementNumber: a.partnerSettlement.settlementNumber, partner: a.partnerSettlement.partner.name }
+      : null,
+    liabilityId: a.liabilityId ?? "",
+    liability: a.liability,
+    liabilityRepaymentId: a.liabilityRepaymentId ?? "",
+    liabilityRepayment: a.liabilityRepayment
+      ? {
+          id: a.liabilityRepayment.id,
+          repaymentNumber: a.liabilityRepayment.repaymentNumber,
+          principalPaid: a.liabilityRepayment.principalPaid.toString(),
+          interestPaid: a.liabilityRepayment.interestPaid.toString(),
+          liability: a.liabilityRepayment.liability.loanName,
+        }
+      : null,
     createdById: a.createdById,
     createdBy: a.createdBy,
     createdAt: a.createdAt.toISOString(),
@@ -137,7 +183,15 @@ async function createLedgerRecord(
   bankTxn: { id: string; companyBankAccountId: string; transactionDate: Date },
   row: AllocationRowInput,
   allocationType: AllocationType
-): Promise<{ runningBillPaymentId?: string; vendorPaymentId?: string; labourPaymentId?: string; expenseId?: string }> {
+): Promise<{
+  runningBillPaymentId?: string;
+  vendorPaymentId?: string;
+  labourPaymentId?: string;
+  expenseId?: string;
+  partnerInvestmentId?: string;
+  partnerSettlementId?: string;
+  liabilityRepaymentId?: string;
+}> {
   const paymentDate = bankTxn.transactionDate.toISOString().slice(0, 10);
 
   if (allocationType === "RUNNING_BILL_RECEIPT") {
@@ -203,6 +257,58 @@ async function createLedgerRecord(
     return { expenseId: expense.id };
   }
 
+  if (allocationType === "OWNER_INVESTMENT" || allocationType === "PARTNER_INVESTMENT") {
+    if (!row.partnerId?.trim()) throw new Error("Partner is required for an Investment allocation");
+    const expectedType: PartnerType = allocationType === "OWNER_INVESTMENT" ? "OWNER" : "PARTNER";
+    const partner = await prisma.partner.findFirst({ where: { id: row.partnerId, companyId } });
+    if (!partner) throw new Error("Partner not found");
+    if (partner.partnerType !== expectedType) {
+      throw new Error(`Selected partner is not an ${expectedType === "OWNER" ? "Owner" : "Partner"} — pick a matching partner or allocation type`);
+    }
+    const investment = await createPartnerInvestment(companyId, createdById, {
+      partnerId: row.partnerId,
+      amount: row.amount,
+      investmentDate: paymentDate,
+      mode: "COMPANY_BANK",
+      companyBankAccountId: bankTxn.companyBankAccountId,
+      remarks: row.notes,
+    });
+    return { partnerInvestmentId: investment.id };
+  }
+
+  if (allocationType === "PARTNER_SETTLEMENT") {
+    if (!row.partnerId?.trim()) throw new Error("Partner is required for a Settlement allocation");
+    const partner = await prisma.partner.findFirst({ where: { id: row.partnerId, companyId } });
+    if (!partner) throw new Error("Partner not found");
+    const settlement = await createPartnerSettlement(companyId, createdById, {
+      partnerId: row.partnerId,
+      amount: row.amount,
+      settlementDate: paymentDate,
+      mode: "COMPANY_BANK",
+      companyBankAccountId: bankTxn.companyBankAccountId,
+      remarks: row.notes,
+    });
+    return { partnerSettlementId: settlement.id };
+  }
+
+  if (allocationType === "LIABILITY_REPAYMENT") {
+    if (!row.liabilityId?.trim()) throw new Error("Liability is required for a Liability Repayment allocation");
+    const principalPaid = Number(row.principalPaid) || 0;
+    const interestPaid = Number(row.interestPaid) || 0;
+    if (Math.abs(principalPaid + interestPaid - row.amount) > 0.01) {
+      throw new Error("Principal Paid + Interest Paid must equal the allocation amount");
+    }
+    const repayment = await recordLiabilityRepayment(companyId, createdById, {
+      liabilityId: row.liabilityId,
+      principalPaid,
+      interestPaid,
+      paymentDate,
+      companyBankAccountId: bankTxn.companyBankAccountId,
+      remarks: row.notes,
+    });
+    return { liabilityRepaymentId: repayment.id };
+  }
+
   return {};
 }
 
@@ -244,6 +350,12 @@ export async function createAllocations(companyId: string, createdById: string, 
         if (!site) throw new Error("Site not found");
       }
 
+      if (allocationType === "LIABILITY_DISBURSEMENT") {
+        if (!row.liabilityId?.trim()) throw new Error("Liability is required for a Liability Disbursement allocation");
+        const liability = await prisma.liability.findFirst({ where: { id: row.liabilityId, companyId } });
+        if (!liability) throw new Error("Liability not found");
+      }
+
       const ledgerIds = LEDGER_BACKED_TYPES.includes(allocationType)
         ? await createLedgerRecord(companyId, createdById, txn, row, allocationType)
         : {};
@@ -257,6 +369,7 @@ export async function createAllocations(companyId: string, createdById: string, 
           siteId: row.siteId || null,
           partyName: row.partyName || null,
           notes: row.notes || null,
+          ...(allocationType === "LIABILITY_DISBURSEMENT" && { liabilityId: row.liabilityId || null }),
           ...ledgerIds,
           createdById,
         },

@@ -26,6 +26,26 @@ body {
 @theme inline {
   --font-heading: var(--font-sans);
   --font-sans: 'Geist Variable', sans-serif;
+
+  /* Typography scale bump for readability (business-app standard sizing).
+     Only font-size/line-height tokens are touched here — spacing and color
+     tokens are untouched so layout and palette stay exactly as-is. */
+  --text-xs: 0.8125rem;       /* 13px, was 12px */
+  --text-xs--line-height: 1.25rem;
+  --text-sm: 0.9375rem;       /* 15px, was 14px */
+  --text-sm--line-height: 1.5rem;
+  --text-base: 1rem;          /* 16px, unchanged size */
+  --text-base--line-height: 1.625rem; /* airier line-height for body copy */
+  --text-lg: 1.125rem;        /* 18px, unchanged */
+  --text-lg--line-height: 1.75rem;
+  --text-xl: 1.3125rem;       /* 21px, was 20px */
+  --text-xl--line-height: 1.875rem;
+  --text-2xl: 1.5rem;         /* 24px, unchanged */
+  --text-2xl--line-height: 2rem;
+  --text-3xl: 2rem;           /* 32px, was 30px */
+  --text-3xl--line-height: 2.375rem;
+  --text-4xl: 2.375rem;       /* 38px, was 36px */
+  --text-4xl--line-height: 2.625rem;
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -144,5 +164,26 @@ body {
   }
   html {
     @apply font-sans;
+  }
+
+  /* Baseline typography weights so untouched pages read as a modern business
+     app out of the box. Any component that already sets its own font-weight
+     utility class (font-bold, font-semibold, font-medium, etc.) keeps that
+     value — a utility class always beats these element-level defaults. */
+  h1 {
+    font-weight: 600;
+  }
+  h2,
+  h3 {
+    font-weight: 600;
+  }
+  th {
+    font-weight: 600;
+  }
+  label {
+    font-weight: 500;
+  }
+  button {
+    font-weight: 500;
   }
 }

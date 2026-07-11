@@ -3,8 +3,10 @@ import { Download } from "lucide-react";
 import { getSiteCostBySubWorkReport, getSiteMonthlyCostReport, exportSiteCostSummaryCSV } from "../../../services/site-control-center";
 import type { SiteSubWorkRecapRow, MonthlyCostRow } from "../../../services/site-control-center";
 import type { Site } from "../../../services/sites";
+import LoadingState from "../../ui/LoadingState";
+import { formatCurrency as inr } from "../../../lib/utils";
+import EmptyTableRow from "../../ui/EmptyTableRow";
 
-const inr = (v: string | number) => `₹${Number(v).toLocaleString("en-IN")}`;
 
 export default function ReportsTab({ site }: { site: Site }) {
   const [subWorkRows, setSubWorkRows] = useState<SiteSubWorkRecapRow[]>([]);
@@ -33,7 +35,7 @@ export default function ReportsTab({ site }: { site: Site }) {
     }
   };
 
-  if (loading) return <div className="rounded-xl border border-slate-200 bg-white py-16 text-center text-slate-500 shadow-sm">Loading...</div>;
+  if (loading) return <LoadingState />;
   if (error) return <div className="rounded-xl border border-red-200 bg-red-50 px-6 py-5 text-red-700">{error}</div>;
 
   return (
@@ -61,7 +63,7 @@ export default function ReportsTab({ site }: { site: Site }) {
             </thead>
             <tbody>
               {subWorkRows.length === 0 ? (
-                <tr><td colSpan={6} className="py-8 text-center text-slate-500">No Sub Works yet.</td></tr>
+                <EmptyTableRow colSpan={6}>No Sub Works yet.</EmptyTableRow>
               ) : (
                 subWorkRows.map((r) => (
                   <tr key={r.subWorkId} className="border-t">
@@ -91,7 +93,7 @@ export default function ReportsTab({ site }: { site: Site }) {
             </thead>
             <tbody>
               {monthlyRows.length === 0 ? (
-                <tr><td colSpan={2} className="py-8 text-center text-slate-500">No cost data yet.</td></tr>
+                <EmptyTableRow colSpan={2}>No cost data yet.</EmptyTableRow>
               ) : (
                 monthlyRows.map((r) => (
                   <tr key={r.month} className="border-t">

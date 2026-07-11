@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { getVendorLedger } from "../../../services/vendor-payments";
 import type { VendorLedger } from "../../../services/vendor-payments";
+import { formatCurrency as inr } from "../../../lib/utils";
+import EmptyTableRow from "../../ui/EmptyTableRow";
 
-const inr = (v: string | number) => `₹${Number(v).toLocaleString("en-IN")}`;
 
 export default function VendorLedgerTab({ vendorId }: { vendorId: string }) {
   const [ledger, setLedger] = useState<VendorLedger | null>(null);
@@ -53,7 +54,7 @@ export default function VendorLedgerTab({ vendorId }: { vendorId: string }) {
               </thead>
               <tbody>
                 {ledger.entries.length === 0 ? (
-                  <tr><td colSpan={6} className="py-10 text-center text-slate-500">No ledger entries in this range.</td></tr>
+                  <EmptyTableRow colSpan={6}>No ledger entries in this range.</EmptyTableRow>
                 ) : (
                   ledger.entries.map((e, i) => (
                     <tr key={i} className="border-t">

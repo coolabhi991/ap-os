@@ -6,8 +6,9 @@ import { COST_HEAD_LABELS } from "../../../services/project-control-center";
 import type { CostHeadKey } from "../../../services/project-control-center";
 import type { Site } from "../../../services/sites";
 import { SITE_TYPE_LABELS } from "../../../services/sites";
+import LoadingState from "../../ui/LoadingState";
+import { formatCurrency as inr } from "../../../lib/utils";
 
-const inr = (v: string | number) => `₹${Number(v).toLocaleString("en-IN")}`;
 const dateStr = (v: string) => (v ? new Date(v).toLocaleDateString("en-IN") : "—");
 const HEAD_KEYS: CostHeadKey[] = ["material", "labour", "machinery", "fuel", "vendorBills", "siteExpenses", "other"];
 
@@ -24,7 +25,7 @@ export default function OverviewTab({ site }: { site: Site }) {
       .finally(() => setLoading(false));
   }, [site.id]);
 
-  if (loading) return <div className="rounded-xl border border-slate-200 bg-white py-16 text-center text-slate-500 shadow-sm">Loading...</div>;
+  if (loading) return <LoadingState />;
   if (error || !data) return <div className="rounded-xl border border-red-200 bg-red-50 px-6 py-5 text-red-700">{error}</div>;
 
   return (

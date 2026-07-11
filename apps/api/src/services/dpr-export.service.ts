@@ -46,11 +46,6 @@ export async function generateDPRPdf(dpr: DPRDetail, companyName: string): Promi
       doc.moveDown(0.9);
     };
 
-    const kvRow = (label: string, value: string, colWidth = pageWidth / 2) => {
-      doc.fontSize(9).font("Helvetica-Bold").text(`${label}:`, { continued: false, width: colWidth });
-      doc.font("Helvetica");
-    };
-
     const kvGrid = (pairs: Array<[string, string]>) => {
       const half = pageWidth / 2;
       for (let i = 0; i < pairs.length; i += 2) {

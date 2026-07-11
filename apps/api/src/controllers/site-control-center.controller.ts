@@ -13,6 +13,9 @@ import {
   getSiteCostSummaryReport,
   exportSiteCostBySubWorkToCSV,
   getSiteWallet,
+  getSiteBillReceivedReport,
+  getSiteVendorBillsReport,
+  getSiteMoneyFlow,
 } from "../services/site-control-center.service.js";
 
 const notFoundMessage = "Site not found";
@@ -153,5 +156,38 @@ export const getSiteWalletHandler = async (req: AuthRequest, res: Response) => {
   } catch (error) {
     const is404 = error instanceof Error && error.message === notFoundMessage;
     res.status(is404 ? 404 : 500).json({ success: false, message: error instanceof Error ? error.message : "Failed to load site wallet" });
+  }
+};
+
+export const getSiteBillReceivedHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const companyId = req.user!.companyId;
+    const data = await getSiteBillReceivedReport(getSiteId(req), companyId);
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    const is404 = error instanceof Error && error.message === notFoundMessage;
+    res.status(is404 ? 404 : 500).json({ success: false, message: error instanceof Error ? error.message : "Failed to load bill received report" });
+  }
+};
+
+export const getSiteVendorBillsHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const companyId = req.user!.companyId;
+    const data = await getSiteVendorBillsReport(getSiteId(req), companyId);
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    const is404 = error instanceof Error && error.message === notFoundMessage;
+    res.status(is404 ? 404 : 500).json({ success: false, message: error instanceof Error ? error.message : "Failed to load vendor bills report" });
+  }
+};
+
+export const getSiteMoneyFlowHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const companyId = req.user!.companyId;
+    const data = await getSiteMoneyFlow(getSiteId(req), companyId);
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    const is404 = error instanceof Error && error.message === notFoundMessage;
+    res.status(is404 ? 404 : 500).json({ success: false, message: error instanceof Error ? error.message : "Failed to load money flow" });
   }
 };

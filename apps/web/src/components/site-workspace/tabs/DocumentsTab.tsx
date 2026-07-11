@@ -3,6 +3,8 @@ import { Plus, Trash2 } from "lucide-react";
 import { getDocumentsBySite, createDocument, deleteDocument, DOCUMENT_TYPE_OPTIONS, DOCUMENT_TYPE_LABELS } from "../../../services/documents";
 import type { ProjectDocument } from "../../../services/documents";
 import type { Site } from "../../../services/sites";
+import LoadingState from "../../ui/LoadingState";
+import EmptyTableRow from "../../ui/EmptyTableRow";
 
 export default function DocumentsTab({ site }: { site: Site }) {
   const [documents, setDocuments] = useState<ProjectDocument[]>([]);
@@ -99,7 +101,7 @@ export default function DocumentsTab({ site }: { site: Site }) {
         </form>
       )}
 
-      {loading && <div className="rounded-xl border border-slate-200 bg-white py-16 text-center text-slate-500 shadow-sm">Loading...</div>}
+      {loading && <LoadingState />}
       {error && !loading && <div className="rounded-xl border border-red-200 bg-red-50 px-6 py-5 text-red-700">{error}</div>}
 
       {!loading && !error && (
@@ -117,7 +119,7 @@ export default function DocumentsTab({ site }: { site: Site }) {
             </thead>
             <tbody>
               {documents.length === 0 ? (
-                <tr><td colSpan={6} className="py-10 text-center text-slate-500">No documents uploaded yet.</td></tr>
+                <EmptyTableRow colSpan={6}>No documents uploaded yet.</EmptyTableRow>
               ) : (
                 documents.map((d) => (
                   <tr key={d.id} className="border-t">

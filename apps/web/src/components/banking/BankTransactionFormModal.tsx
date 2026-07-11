@@ -4,6 +4,7 @@ import { createBankTransaction, updateBankTransaction, TRANSACTION_CATEGORIES } 
 import type { BankTransaction, BankTransactionFormData } from "../../services/bank-transactions";
 import type { BankAccountBalance } from "../../services/bank-transactions";
 import { getProjects } from "../../services/projects";
+import { todayISO } from "../../lib/utils";
 
 interface Props {
   accounts: BankAccountBalance[];
@@ -15,7 +16,7 @@ interface Props {
 
 export default function BankTransactionFormModal({ accounts, initialData, defaultAccountId, onClose, onSaved }: Props) {
   const [companyBankAccountId, setCompanyBankAccountId] = useState(initialData?.companyBankAccountId ?? defaultAccountId ?? accounts[0]?.id ?? "");
-  const [transactionDate, setTransactionDate] = useState(initialData?.transactionDate ?? new Date().toISOString().slice(0, 10));
+  const [transactionDate, setTransactionDate] = useState(initialData?.transactionDate ?? todayISO());
   const [direction, setDirection] = useState<"deposit" | "withdrawal">(initialData && Number(initialData.withdrawal) > 0 ? "withdrawal" : "deposit");
   const [amount, setAmount] = useState(initialData ? (Number(initialData.deposit) > 0 ? initialData.deposit : initialData.withdrawal) : "");
   const [referenceNumber, setReferenceNumber] = useState(initialData?.referenceNumber ?? "");

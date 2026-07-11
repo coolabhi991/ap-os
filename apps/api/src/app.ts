@@ -40,7 +40,14 @@ import runningBillRoutes from "./routes/running-bill.routes.js";
 import bankTransactionRoutes from "./routes/bank-transaction.routes.js";
 import transactionAllocationRoutes from "./routes/transaction-allocation.routes.js";
 import bankingReportsRoutes from "./routes/banking-reports.routes.js";
+import partnerRoutes from "./routes/partner.routes.js";
+import partnerInvestmentRoutes from "./routes/partner-investment.routes.js";
+import partnerSettlementRoutes from "./routes/partner-settlement.routes.js";
+import partnershipReportsRoutes from "./routes/partnership-reports.routes.js";
 import aiRoutes from "./routes/ai.routes.js";
+import liabilityRoutes from "./routes/liability.routes.js";
+import liabilityRepaymentRoutes from "./routes/liability-repayment.routes.js";
+import financeReportsRoutes from "./routes/finance-reports.routes.js";
 
 const app = express();
 
@@ -98,6 +105,13 @@ app.use("/api/v1/running-bills", runningBillRoutes);
 app.use("/api/v1/bank-transactions", bankTransactionRoutes);
 app.use("/api/v1/transaction-allocations", transactionAllocationRoutes);
 app.use("/api/v1/banking-reports", bankingReportsRoutes);
+app.use("/api/v1/partners", partnerRoutes);
+app.use("/api/v1/partner-investments", partnerInvestmentRoutes);
+app.use("/api/v1/partner-settlements", partnerSettlementRoutes);
+app.use("/api/v1/partnership-reports", partnershipReportsRoutes);
+app.use("/api/v1/liabilities", liabilityRoutes);
+app.use("/api/v1/liability-repayments", liabilityRepaymentRoutes);
+app.use("/api/v1/finance-reports", financeReportsRoutes);
 app.use("/api/v1/ai", aiRoutes);
 
 export default app;

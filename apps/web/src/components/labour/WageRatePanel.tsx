@@ -3,6 +3,7 @@ import { Plus } from "lucide-react";
 
 import { getLabourWageRates, createLabourWageRate } from "../../services/labour-wage-rates";
 import type { LabourWageRate, LabourWageRateFormData } from "../../services/labour-wage-rates";
+import { todayISO } from "../../lib/utils";
 
 interface Props {
   labourId: string;
@@ -12,7 +13,7 @@ interface Props {
 const emptyForm: LabourWageRateFormData = {
   dailyWage: 0,
   overtimeRate: 0,
-  effectiveFrom: new Date().toISOString().slice(0, 10),
+  effectiveFrom: todayISO(),
 };
 
 export default function WageRatePanel({ labourId, onRateAdded }: Props) {

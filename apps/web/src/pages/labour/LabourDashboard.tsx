@@ -6,6 +6,8 @@ import StatCard from "../../components/dashboard/StatCard";
 import { getLabourDashboard } from "../../services/labour-reports";
 import type { LabourDashboardSummary } from "../../services/labour-reports";
 import { ATTENDANCE_STATUS_LABELS } from "../../services/labour-attendance";
+import LoadingState from "../../components/ui/LoadingState";
+import EmptyTableRow from "../../components/ui/EmptyTableRow";
 
 export default function LabourDashboard() {
   const navigate = useNavigate();
@@ -28,7 +30,7 @@ export default function LabourDashboard() {
           <p className="mt-2 text-slate-500">Attendance, wage cost, and pending wages across your workforce.</p>
         </div>
 
-        {loading && <div className="rounded-xl border border-slate-200 bg-white py-16 text-center text-slate-500 shadow-sm">Loading...</div>}
+        {loading && <LoadingState />}
         {error && !loading && <div className="rounded-xl border border-red-200 bg-red-50 px-6 py-5 text-red-700">{error}</div>}
 
         {!loading && !error && summary && (
@@ -50,7 +52,7 @@ export default function LabourDashboard() {
                     </thead>
                     <tbody>
                       {summary.projectWiseCost.length === 0 ? (
-                        <tr><td colSpan={2} className="py-8 text-center text-slate-500">No data.</td></tr>
+                        <EmptyTableRow colSpan={2}>No data.</EmptyTableRow>
                       ) : (
                         summary.projectWiseCost.map((p) => (
                           <tr key={p.projectId} className="border-t">
@@ -73,7 +75,7 @@ export default function LabourDashboard() {
                     </thead>
                     <tbody>
                       {summary.topPendingWages.length === 0 ? (
-                        <tr><td colSpan={2} className="py-8 text-center text-slate-500">No pending wages.</td></tr>
+                        <EmptyTableRow colSpan={2}>No pending wages.</EmptyTableRow>
                       ) : (
                         summary.topPendingWages.map((w) => (
                           <tr key={w.labourId} className="border-t">
@@ -103,7 +105,7 @@ export default function LabourDashboard() {
                   </thead>
                   <tbody>
                     {summary.recentAttendance.length === 0 ? (
-                      <tr><td colSpan={5} className="py-10 text-center text-slate-500">No attendance recorded yet.</td></tr>
+                      <EmptyTableRow colSpan={5}>No attendance recorded yet.</EmptyTableRow>
                     ) : (
                       summary.recentAttendance.map((a) => (
                         <tr key={a.id} className="border-t hover:bg-slate-50 cursor-pointer" onClick={() => navigate("/labour/attendance")}>

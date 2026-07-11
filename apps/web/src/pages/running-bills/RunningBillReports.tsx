@@ -16,6 +16,8 @@ import {
 } from "../../services/running-bills";
 import type { RunningBill, OutstandingBillRow, PaymentRegisterRow, RecoveryRegisterRow, ProjectBillingSummaryRow } from "../../services/running-bills";
 import { getProjects } from "../../services/projects";
+import { formatCurrency as inr } from "../../lib/utils";
+import EmptyTableRow from "../../components/ui/EmptyTableRow";
 
 type ReportTab = "register" | "outstanding" | "payments" | "recovery" | "project-summary";
 
@@ -87,8 +89,7 @@ export default function RunningBillReports() {
     }
   };
 
-  const inr = (v: string | number) => `₹${Number(v).toLocaleString("en-IN")}`;
-
+  
   return (
     <Layout>
       <div className="space-y-6">
@@ -150,7 +151,7 @@ export default function RunningBillReports() {
                 </thead>
                 <tbody>
                   {registerRows.length === 0 ? (
-                    <tr><td colSpan={10} className="py-10 text-center text-slate-500">No data.</td></tr>
+                    <EmptyTableRow colSpan={10}>No data.</EmptyTableRow>
                   ) : (
                     registerRows.map((r) => (
                       <tr key={r.id} className="border-t">
@@ -189,7 +190,7 @@ export default function RunningBillReports() {
                 </thead>
                 <tbody>
                   {outstandingRows.length === 0 ? (
-                    <tr><td colSpan={8} className="py-10 text-center text-slate-500">No outstanding bills.</td></tr>
+                    <EmptyTableRow colSpan={8}>No outstanding bills.</EmptyTableRow>
                   ) : (
                     outstandingRows.map((r) => (
                       <tr key={r.id} className="border-t">
@@ -225,7 +226,7 @@ export default function RunningBillReports() {
                 </thead>
                 <tbody>
                   {paymentRows.length === 0 ? (
-                    <tr><td colSpan={7} className="py-10 text-center text-slate-500">No data.</td></tr>
+                    <EmptyTableRow colSpan={7}>No data.</EmptyTableRow>
                   ) : (
                     paymentRows.map((p) => (
                       <tr key={p.id} className="border-t">
@@ -257,7 +258,7 @@ export default function RunningBillReports() {
                 </thead>
                 <tbody>
                   {recoveryRows.length === 0 ? (
-                    <tr><td colSpan={6} className="py-10 text-center text-slate-500">No data.</td></tr>
+                    <EmptyTableRow colSpan={6}>No data.</EmptyTableRow>
                   ) : (
                     recoveryRows.map((r, i) => (
                       <tr key={`${r.billId}-${i}`} className="border-t">
@@ -289,7 +290,7 @@ export default function RunningBillReports() {
                 </thead>
                 <tbody>
                   {projectSummaryRows.length === 0 ? (
-                    <tr><td colSpan={7} className="py-10 text-center text-slate-500">No data.</td></tr>
+                    <EmptyTableRow colSpan={7}>No data.</EmptyTableRow>
                   ) : (
                     projectSummaryRows.map((r) => (
                       <tr key={r.projectId} className="border-t">

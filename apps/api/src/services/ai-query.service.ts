@@ -13,6 +13,9 @@ import { listMaterialIssues } from "./material-issue.service.js";
 import { listDPRs } from "./dpr.service.js";
 import { getPendingMBReport } from "./measurement-book.service.js";
 import { getLowStockAlerts } from "./inventory.service.js";
+import { listLiabilities } from "./liability.service.js";
+import { listLiabilityRepayments } from "./liability-repayment.service.js";
+import { getInterestPaidReport } from "./finance-reports.service.js";
 
 /**
  * AP AI Foundation — Phase 1: the AI Integration Layer.
@@ -96,9 +99,6 @@ function vendorLink(id: string, name: string): AILink {
 }
 function mbLink(id: string, mbNumber: string): AILink {
   return { label: mbNumber, href: `/measurement-books/${id}`, kind: "measurement-book" };
-}
-function dprLink(id: string, dprNumber: string): AILink {
-  return { label: dprNumber, href: `/dpr/${id}`, kind: "dpr" };
 }
 
 async function findMentionedProject(companyId: string, message: string) {
@@ -622,6 +622,134 @@ async function handleVendorSummary({ companyId, message }: Ctx): Promise<AIRespo
   };
 }
 
+/** Finance #1 — How much Home Loan is outstanding? */
+async function handleHomeLoanOutstanding({ companyId }: Ctx): Promise<AIResponse> {
+  const { data } = await listLiabilities(companyId, { liabilityType: "HOME_LOAN", limit: 100 });
+  const total = data.reduce((s, l) => s + Number(l.outstandingAmount), 0);
+  return {
+    intentId: "home-loan-outstanding",
+    intentLabel: "Home Loan Outstanding",
+    summary: data.length
+      ? `Home Loan outstanding: ${inr(total)} across ${data.length} loan${data.length === 1 ? "" : "s"}.`
+      : "No Home Loan recorded in Finance.",
+    cards: data.map((l) => ({ label: l.loanName, value: inr(l.outstandingAmount), tone: Number(l.outstandingAmount) > 0 ? "warning" : "positive" })),
+    links: [{ label: "Open Finance", href: "/finance", kind: "generic" }],
+  };
+}
+
+/** Finance #2 — How much CC interest paid this year? */
+async function handleCCInterestPaidThisYear({ companyId }: Ctx): Promise<AIResponse> {
+  const d = new Date();
+  const fromDate = new Date(d.getFullYear(), 0, 1).toISOString().slice(0, 10);
+  const report = await getInterestPaidReport(companyId, { fromDate });
+  const ccRow = report.byLiabilityType.find((r) => r.liabilityType === "CREDIT_CARD");
+  const ccInterest = ccRow ? Number(ccRow.interestPaid) : 0;
+  return {
+    intentId: "cc-interest-paid-year",
+    intentLabel: "CC Interest Paid This Year",
+    summary: `Credit Card interest paid this year: ${inr(ccInterest)}.`,
+    cards: [
+      { label: "CC Interest Paid (This Year)", value: inr(ccInterest), tone: "warning" },
+      { label: "Total Interest Paid (All Liabilities, This Year)", value: inr(report.thisYearInterestPaid) },
+    ],
+    links: [{ label: "Open Finance — Interest History", href: "/finance", kind: "generic" }],
+  };
+}
+
+/** Finance #3 — How much Gold Loan is pending? */
+async function handleGoldLoanPending({ companyId }: Ctx): Promise<AIResponse> {
+  const { data } = await listLiabilities(companyId, { liabilityType: "GOLD_LOAN", limit: 100 });
+  const total = data.reduce((s, l) => s + Number(l.outstandingAmount), 0);
+  return {
+    intentId: "gold-loan-pending",
+    intentLabel: "Gold Loan Pending",
+    summary: data.length
+      ? `Gold Loan pending: ${inr(total)} across ${data.length} loan${data.length === 1 ? "" : "s"}.`
+      : "No Gold Loan recorded in Finance.",
+    cards: data.map((l) => ({ label: l.loanName, value: inr(l.outstandingAmount), tone: Number(l.outstandingAmount) > 0 ? "warning" : "positive" })),
+    links: [{ label: "Open Finance", href: "/finance", kind: "generic" }],
+  };
+}
+
+/** Finance #4 — Which bank account paid the Car Loan EMI? */
+async function handleCarLoanEMIBank({ companyId }: Ctx): Promise<AIResponse> {
+  const { data: carLoans } = await listLiabilities(companyId, { liabilityType: "CAR_LOAN", limit: 100 });
+  const carLoanIds = new Set(carLoans.map((l) => l.id));
+  const { data: repayments } = await listLiabilityRepayments(companyId, { liabilityType: "CAR_LOAN", limit: 200 });
+  const relevant = repayments.filter((r) => carLoanIds.has(r.liabilityId));
+  return {
+    intentId: "car-loan-emi-bank",
+    intentLabel: "Car Loan EMI — Bank Account",
+    summary: relevant.length
+      ? `Car Loan EMI has been paid from: ${Array.from(new Set(relevant.map((r) => r.companyBankAccount?.nickname || r.companyBankAccount?.bankName))).join(", ")}.`
+      : "No Car Loan repayments recorded yet.",
+    table: {
+      columns: [
+        { key: "date", label: "Date" },
+        { key: "loan", label: "Loan" },
+        { key: "bank", label: "Bank Account" },
+        { key: "amount", label: "Amount", align: "right" },
+      ],
+      rows: relevant.slice(0, 10).map((r) => ({
+        date: r.paymentDate,
+        loan: r.liability?.loanName ?? "",
+        bank: r.companyBankAccount?.nickname || r.companyBankAccount?.bankName || "",
+        amount: inr(r.totalPaid),
+      })),
+    },
+    links: [{ label: "Open Finance — Repayment History", href: "/finance", kind: "generic" }],
+  };
+}
+
+/** Finance #5 — How much money borrowed from friends? */
+async function handleFriendLoanBorrowed({ companyId }: Ctx): Promise<AIResponse> {
+  const { data } = await listLiabilities(companyId, { liabilityType: "FRIEND_LOAN", limit: 100 });
+  const totalBorrowed = data.reduce((s, l) => s + Number(l.sanctionAmount), 0);
+  const totalOutstanding = data.reduce((s, l) => s + Number(l.outstandingAmount), 0);
+  return {
+    intentId: "friend-loan-borrowed",
+    intentLabel: "Borrowed From Friends",
+    summary: data.length
+      ? `Borrowed from friends: ${inr(totalBorrowed)} total, ${inr(totalOutstanding)} still outstanding.`
+      : "No Friend Loan recorded in Finance.",
+    cards: [
+      { label: "Total Borrowed", value: inr(totalBorrowed) },
+      { label: "Still Outstanding", value: inr(totalOutstanding), tone: Number(totalOutstanding) > 0 ? "warning" : "positive" },
+    ],
+    links: [{ label: "Open Finance", href: "/finance", kind: "generic" }],
+  };
+}
+
+/** Finance #6 — Show all loan repayments this month. */
+async function handleLoanRepaymentsThisMonth({ companyId }: Ctx): Promise<AIResponse> {
+  const { data } = await listLiabilityRepayments(companyId, { fromDate: startOfMonthISO(), toDate: todayISO(), limit: 200 });
+  const total = data.reduce((s, r) => s + Number(r.totalPaid), 0);
+  return {
+    intentId: "loan-repayments-month",
+    intentLabel: "Loan Repayments This Month",
+    summary: data.length
+      ? `${data.length} repayment${data.length === 1 ? "" : "s"} this month totalling ${inr(total)}.`
+      : "No loan repayments recorded this month.",
+    table: {
+      columns: [
+        { key: "date", label: "Date" },
+        { key: "loan", label: "Loan" },
+        { key: "principal", label: "Principal", align: "right" },
+        { key: "interest", label: "Interest", align: "right" },
+        { key: "total", label: "Total", align: "right" },
+      ],
+      rows: data.map((r) => ({
+        date: r.paymentDate,
+        loan: r.liability?.loanName ?? "",
+        principal: inr(r.principalPaid),
+        interest: inr(r.interestPaid),
+        total: inr(r.totalPaid),
+      })),
+    },
+    links: [{ label: "Open Finance — Repayment History", href: "/finance", kind: "generic" }],
+  };
+}
+
 /** #29 — Show today's summary (composite, entirely re-reading intents 3/8/9/10/15's own sources). */
 async function handleTodaysSummary({ companyId }: Ctx): Promise<AIResponse> {
   const [cf, labour, expenseDash, materials, dprs, activeProjects] = await Promise.all([
@@ -675,6 +803,12 @@ const INTENT_HANDLERS: Record<string, (ctx: Ctx) => Promise<AIResponse>> = {
   "project-summary": handleProjectSummary,
   "vendor-summary": handleVendorSummary,
   "todays-summary": handleTodaysSummary,
+  "home-loan-outstanding": handleHomeLoanOutstanding,
+  "cc-interest-paid-year": handleCCInterestPaidThisYear,
+  "gold-loan-pending": handleGoldLoanPending,
+  "car-loan-emi-bank": handleCarLoanEMIBank,
+  "friend-loan-borrowed": handleFriendLoanBorrowed,
+  "loan-repayments-month": handleLoanRepaymentsThisMonth,
 };
 
 /** The First 30 Capabilities — one catalogue entry per user-facing question; several share a handler (e.g. #1/#30, #21/#4, #22/#5, #13/#25/#26) since they read the exact same underlying data. */
@@ -708,6 +842,12 @@ export const AI_INTENTS: AIIntentDefinition[] = [
   { id: "vendor-summary", label: "Show vendor summary", example: "Show vendor summary for", category: "Vendors", keywords: ["show vendor summary", "vendor summary"] },
   { id: "todays-summary", label: "Show today's summary", example: "Show today's summary", category: "Attention", keywords: ["show today's summary", "todays summary", "today's summary"] },
   { id: "owners-attention-2", label: "Owner's Attention", example: "Owner's Attention", category: "Attention", keywords: ["owner's attention", "owners attention"] },
+  { id: "home-loan-outstanding", label: "How much Home Loan is outstanding?", example: "How much Home Loan is outstanding?", category: "Finance", keywords: ["home loan outstanding", "home loan is outstanding", "home loan pending", "how much home loan"] },
+  { id: "cc-interest-paid-year", label: "How much CC interest paid this year?", example: "How much CC interest paid this year?", category: "Finance", keywords: ["cc interest paid this year", "credit card interest paid this year", "cc interest paid", "credit card interest"] },
+  { id: "gold-loan-pending", label: "How much Gold Loan is pending?", example: "How much Gold Loan is pending?", category: "Finance", keywords: ["gold loan pending", "gold loan is pending", "gold loan outstanding", "how much gold loan"] },
+  { id: "car-loan-emi-bank", label: "Which bank account paid the Car Loan EMI?", example: "Which bank account paid the Car Loan EMI?", category: "Finance", keywords: ["bank account paid the car loan", "car loan emi", "which bank paid car loan"] },
+  { id: "friend-loan-borrowed", label: "How much money borrowed from friends?", example: "How much money borrowed from friends?", category: "Finance", keywords: ["borrowed from friends", "money borrowed from friends", "friend loan"] },
+  { id: "loan-repayments-month", label: "Show all loan repayments this month", example: "Show all loan repayments this month", category: "Finance", keywords: ["loan repayments this month", "show all loan repayments", "repayments this month"] },
 ];
 
 // #14/#30 catalogue entry "owners-attention-2" reuses the same handler as "owners-attention".

@@ -13,6 +13,7 @@ import type {
 } from "../../services/material-issues";
 import { getStockLedger } from "../../services/inventory";
 import type { StockLedgerEntry } from "../../services/inventory";
+import EmptyTableRow from "../../components/ui/EmptyTableRow";
 
 type ReportTab = "project" | "material" | "monthly" | "stock-movement";
 
@@ -100,7 +101,7 @@ export default function MaterialIssueReports() {
               <table className="min-w-full">
                 <thead className="bg-slate-100"><tr><th className="px-6 py-4 text-left">Project</th><th className="px-6 py-4 text-right">Total Quantity</th><th className="px-6 py-4 text-right">Count</th></tr></thead>
                 <tbody>
-                  {projectRows.length === 0 ? <tr><td colSpan={3} className="py-10 text-center text-slate-500">No data.</td></tr> : projectRows.map((r) => (
+                  {projectRows.length === 0 ? <EmptyTableRow colSpan={3}>No data.</EmptyTableRow> : projectRows.map((r) => (
                     <tr key={r.projectId} className="border-t"><td className="px-6 py-4">{r.projectName}</td><td className="px-6 py-4 text-right font-medium">{Number(r.totalQuantity).toLocaleString("en-IN")}</td><td className="px-6 py-4 text-right">{r.count}</td></tr>
                   ))}
                 </tbody>
@@ -110,7 +111,7 @@ export default function MaterialIssueReports() {
               <table className="min-w-full">
                 <thead className="bg-slate-100"><tr><th className="px-6 py-4 text-left">Material</th><th className="px-6 py-4 text-right">Total Quantity</th><th className="px-6 py-4 text-right">Count</th></tr></thead>
                 <tbody>
-                  {materialRows.length === 0 ? <tr><td colSpan={3} className="py-10 text-center text-slate-500">No data.</td></tr> : materialRows.map((r) => (
+                  {materialRows.length === 0 ? <EmptyTableRow colSpan={3}>No data.</EmptyTableRow> : materialRows.map((r) => (
                     <tr key={r.inventoryId} className="border-t"><td className="px-6 py-4">{r.itemName}</td><td className="px-6 py-4 text-right font-medium">{Number(r.totalQuantity).toLocaleString("en-IN")} {r.unit}</td><td className="px-6 py-4 text-right">{r.count}</td></tr>
                   ))}
                 </tbody>
@@ -120,7 +121,7 @@ export default function MaterialIssueReports() {
               <table className="min-w-full">
                 <thead className="bg-slate-100"><tr><th className="px-6 py-4 text-left">Month</th><th className="px-6 py-4 text-right">Total Quantity</th><th className="px-6 py-4 text-right">Count</th></tr></thead>
                 <tbody>
-                  {monthlyRows.length === 0 ? <tr><td colSpan={3} className="py-10 text-center text-slate-500">No data.</td></tr> : monthlyRows.map((r) => (
+                  {monthlyRows.length === 0 ? <EmptyTableRow colSpan={3}>No data.</EmptyTableRow> : monthlyRows.map((r) => (
                     <tr key={r.month} className="border-t"><td className="px-6 py-4">{r.month}</td><td className="px-6 py-4 text-right font-medium">{Number(r.totalQuantity).toLocaleString("en-IN")}</td><td className="px-6 py-4 text-right">{r.count}</td></tr>
                   ))}
                 </tbody>
@@ -130,7 +131,7 @@ export default function MaterialIssueReports() {
               <table className="min-w-full">
                 <thead className="bg-slate-100"><tr><th className="px-6 py-4 text-left">Date</th><th className="px-6 py-4 text-left">Material</th><th className="px-6 py-4 text-right">Quantity</th><th className="px-6 py-4 text-right">Balance After</th><th className="px-6 py-4 text-left">Reference</th></tr></thead>
                 <tbody>
-                  {stockMovementRows.length === 0 ? <tr><td colSpan={5} className="py-10 text-center text-slate-500">No issue movements found.</td></tr> : stockMovementRows.map((e) => (
+                  {stockMovementRows.length === 0 ? <EmptyTableRow colSpan={5}>No issue movements found.</EmptyTableRow> : stockMovementRows.map((e) => (
                     <tr key={e.id} className="border-t">
                       <td className="px-6 py-4">{new Date(e.movementDate).toLocaleDateString()}</td>
                       <td className="px-6 py-4">{e.item?.itemName ?? "—"}</td>

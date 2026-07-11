@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { VendorBillFormData } from "../../services/vendor-bills";
 import { getSubWorks } from "../../services/sub-works";
 import type { SubWork } from "../../services/sub-works";
+import { todayISO } from "../../lib/utils";
 
 interface Option {
   id: string;
@@ -64,7 +65,7 @@ export default function VendorBillForm({
     materialReceiptId: initialData?.materialReceiptId ?? "",
     subWorkId: initialData?.subWorkId ?? "",
     billNumber: initialData?.billNumber ?? "",
-    billDate: initialData?.billDate ?? new Date().toISOString().slice(0, 10),
+    billDate: initialData?.billDate ?? todayISO(),
     dueDate: initialData?.dueDate ?? "",
     billAmount: initialData?.billAmount !== undefined ? String(initialData.billAmount) : "0",
     taxableAmount: initialData?.taxableAmount !== undefined ? String(initialData.taxableAmount) : "0",

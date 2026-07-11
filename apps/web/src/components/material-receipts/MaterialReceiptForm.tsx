@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { MRFormData, ReceiptItem, ReceivablePO } from "../../services/material-receipts";
 import { MR_STATUS_LABELS, QUALITY_STATUS_OPTIONS } from "../../services/material-receipts";
 import type { POItem } from "../../services/purchase-orders";
+import { todayISO } from "../../lib/utils";
 
 interface Props {
   initialData?: Partial<MRFormData>;
@@ -54,7 +55,7 @@ export default function MaterialReceiptForm({
     purchaseOrderId: initialData?.purchaseOrderId ?? "",
     projectId: initialData?.projectId ?? "",
     vendorId: initialData?.vendorId ?? "",
-    receivedDate: initialData?.receivedDate ?? new Date().toISOString().slice(0, 10),
+    receivedDate: initialData?.receivedDate ?? todayISO(),
     challanNumber: initialData?.challanNumber ?? "",
     supplierInvoiceNumber: initialData?.supplierInvoiceNumber ?? "",
     vehicleNumber: initialData?.vehicleNumber ?? "",

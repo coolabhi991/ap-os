@@ -10,8 +10,8 @@ import ProjectHealthTable from "../components/control-center/ProjectHealthTable"
 import { getControlCenter } from "../services/control-center";
 import type { ControlCenterData } from "../services/control-center";
 import { RB_STATUS_LABELS, RB_STATUS_COLORS } from "../services/running-bills";
+import { formatCurrency as inr } from "../lib/utils";
 
-const inr = (v: string | number) => `₹${Number(v).toLocaleString("en-IN")}`;
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -49,7 +49,7 @@ export default function Dashboard() {
         {!loading && !error && data && (
           <>
             {/* Financial KPIs */}
-            <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-5">
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
               <StatCard title="Contract Value" value={inr(data.kpis.totalContractValue)} subtitle={`${data.kpis.activeProjectCount} active project${data.kpis.activeProjectCount === 1 ? "" : "s"}`} />
               <StatCard title="Cash + Bank Balance" value={inr(data.kpis.totalCashAndBankBalance)} />
               <StatCard title="Receivable" value={inr(data.kpis.totalReceivable)} subtitle={`${data.receivables.count} outstanding Running Bill${data.receivables.count === 1 ? "" : "s"}`} />
@@ -81,14 +81,14 @@ export default function Dashboard() {
                 ))}
               </div>
               <div className="mt-4 grid gap-4 md:grid-cols-2">
-                <div className="flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4">
+                <div className="flex items-center gap-3 rounded-xl border border-blue-200 bg-blue-50 p-5">
                   <IndianRupee size={18} className="text-blue-700" />
                   <div>
                     <p className="text-xs text-blue-700">Expected Inflow</p>
                     <p className="text-lg font-bold text-blue-700">{inr(data.cashFlow.expectedInflow)}</p>
                   </div>
                 </div>
-                <div className="flex items-center gap-3 rounded-xl border border-orange-200 bg-orange-50 p-4">
+                <div className="flex items-center gap-3 rounded-xl border border-orange-200 bg-orange-50 p-5">
                   <Scale size={18} className="text-orange-700" />
                   <div>
                     <p className="text-xs text-orange-700">Expected Outflow</p>
@@ -110,12 +110,12 @@ export default function Dashboard() {
                     <p className="py-6 text-center text-sm text-slate-500">No outstanding Running Bills.</p>
                   ) : (
                     data.receivables.preview.map((r) => (
-                      <div key={r.id} className="flex items-center justify-between rounded-lg border border-slate-100 px-4 py-3 hover:bg-slate-50">
-                        <div>
-                          <p className="text-sm font-medium">{r.billNumber}</p>
-                          <p className="text-xs text-slate-500">{r.project?.name ?? "—"} · {r.daysOutstanding}d outstanding</p>
+                      <div key={r.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 px-4 py-3 hover:bg-slate-50">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">{r.billNumber}</p>
+                          <p className="truncate text-xs text-slate-500">{r.project?.name ?? "—"} · {r.daysOutstanding}d outstanding</p>
                         </div>
-                        <p className="font-semibold text-amber-600">{inr(r.outstandingAmount)}</p>
+                        <p className="shrink-0 font-semibold text-amber-600">{inr(r.outstandingAmount)}</p>
                       </div>
                     ))
                   )}
@@ -132,12 +132,12 @@ export default function Dashboard() {
                     <p className="py-6 text-center text-sm text-slate-500">No outstanding Vendor Bills.</p>
                   ) : (
                     data.payables.preview.map((p) => (
-                      <div key={p.id} className="flex items-center justify-between rounded-lg border border-slate-100 px-4 py-3 hover:bg-slate-50">
-                        <div>
-                          <p className="text-sm font-medium">{p.billNumber}</p>
-                          <p className="text-xs text-slate-500">{p.vendor?.name ?? "—"} {p.isOverdue && <span className="text-red-600">· {p.daysOverdue}d overdue</span>}</p>
+                      <div key={p.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 px-4 py-3 hover:bg-slate-50">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">{p.billNumber}</p>
+                          <p className="truncate text-xs text-slate-500">{p.vendor?.name ?? "—"} {p.isOverdue && <span className="text-red-600">· {p.daysOverdue}d overdue</span>}</p>
                         </div>
-                        <p className="font-semibold text-amber-600">{inr(p.outstandingBalance)}</p>
+                        <p className="shrink-0 font-semibold text-amber-600">{inr(p.outstandingBalance)}</p>
                       </div>
                     ))
                   )}
@@ -163,12 +163,12 @@ export default function Dashboard() {
                   <p className="py-6 text-center text-sm text-slate-500">No Running Bills raised yet.</p>
                 ) : (
                   data.runningBills.recent.map((b) => (
-                    <div key={b.id} className="flex cursor-pointer items-center justify-between rounded-lg border border-slate-100 px-4 py-3 hover:bg-slate-50" onClick={() => navigate(`/running-bills/${b.id}`)}>
-                      <div>
-                        <p className="text-sm font-medium">{b.billNumber}</p>
-                        <p className="text-xs text-slate-500">{b.project?.name ?? "—"} · {b.billDate}</p>
+                    <div key={b.id} className="flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-slate-100 px-4 py-3 hover:bg-slate-50" onClick={() => navigate(`/running-bills/${b.id}`)}>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">{b.billNumber}</p>
+                        <p className="truncate text-xs text-slate-500">{b.project?.name ?? "—"} · {b.billDate}</p>
                       </div>
-                      <div className="flex items-center gap-3">
+                      <div className="flex shrink-0 items-center gap-3">
                         <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${RB_STATUS_COLORS[b.status]}`}>{RB_STATUS_LABELS[b.status] ?? b.status}</span>
                         <p className="font-semibold">{inr(b.netPayable)}</p>
                       </div>

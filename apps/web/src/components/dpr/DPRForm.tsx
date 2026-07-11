@@ -14,6 +14,7 @@ import { getSubWorks } from "../../services/sub-works";
 import type { SubWork } from "../../services/sub-works";
 import { getSites } from "../../services/sites";
 import type { Site } from "../../services/sites";
+import { formatCurrency as inr, todayISO } from "../../lib/utils";
 
 interface Option {
   id: string;
@@ -40,13 +41,12 @@ interface Props {
   engineers: Option[];
 }
 
-const inr = (v: string | number) => `₹${Number(v).toLocaleString("en-IN")}`;
 
 export default function DPRForm({ initialData, onSubmit, saving = false, projects, contractors, engineers }: Props) {
   const [projectId, setProjectId] = useState(initialData?.projectId ?? "");
   const [siteId, setSiteId] = useState(initialData?.siteId ?? "");
   const [subWorkId, setSubWorkId] = useState(initialData?.subWorkId ?? "");
-  const [reportDate, setReportDate] = useState(initialData?.reportDate ?? new Date().toISOString().slice(0, 10));
+  const [reportDate, setReportDate] = useState(initialData?.reportDate ?? todayISO());
   const [site, setSite] = useState(initialData?.site ?? "");
   const [engineerId, setEngineerId] = useState(initialData?.engineerId ?? "");
   const [contractorId, setContractorId] = useState(initialData?.contractorId ?? "");

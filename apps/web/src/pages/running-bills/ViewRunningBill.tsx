@@ -21,8 +21,9 @@ import {
 import type { RunningBill, PaymentRegisterRow, RunningBillEmailLog } from "../../services/running-bills";
 import { getDocumentsByRunningBill, createDocument, deleteDocument, RUNNING_BILL_ATTACHMENT_TYPE_OPTIONS, DOCUMENT_TYPE_LABELS } from "../../services/documents";
 import type { ProjectDocument } from "../../services/documents";
+import { formatCurrency as inr } from "../../lib/utils";
+import EmptyTableRow from "../../components/ui/EmptyTableRow";
 
-const inr = (v: string | number) => `₹${Number(v).toLocaleString("en-IN")}`;
 
 function Field({ label, value }: { label: string; value: string }) {
   return (
@@ -331,7 +332,7 @@ export default function ViewRunningBill() {
               </thead>
               <tbody>
                 {payments.length === 0 ? (
-                  <tr><td colSpan={6} className="py-8 text-center text-slate-500">No payments recorded yet.</td></tr>
+                  <EmptyTableRow colSpan={6}>No payments recorded yet.</EmptyTableRow>
                 ) : (
                   payments.map((p) => (
                     <tr key={p.id} className="border-t">
@@ -397,7 +398,7 @@ export default function ViewRunningBill() {
               </thead>
               <tbody>
                 {documents.length === 0 ? (
-                  <tr><td colSpan={4} className="py-8 text-center text-slate-500">No attachments yet.</td></tr>
+                  <EmptyTableRow colSpan={4}>No attachments yet.</EmptyTableRow>
                 ) : (
                   documents.map((d) => (
                     <tr key={d.id} className="border-t">
@@ -427,7 +428,7 @@ export default function ViewRunningBill() {
               </thead>
               <tbody>
                 {emailLogs.length === 0 ? (
-                  <tr><td colSpan={4} className="py-8 text-center text-slate-500">No emails sent yet.</td></tr>
+                  <EmptyTableRow colSpan={4}>No emails sent yet.</EmptyTableRow>
                 ) : (
                   emailLogs.map((log) => (
                     <tr key={log.id} className="border-t">

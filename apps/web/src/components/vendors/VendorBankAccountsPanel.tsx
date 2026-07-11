@@ -165,7 +165,7 @@ export default function VendorBankAccountsPanel({ vendorId }: Props) {
                 </div>
                 <div className="flex gap-3">
                   <button onClick={() => startEdit(a)}><Pencil size={16} className="text-green-600" /></button>
-                  <button onClick={() => handleDelete(a.id)}><Trash2 size={16} className="text-red-600" /></button>
+                  <button onClick={() => handleDelete(a.id)} aria-label="Delete"><Trash2 size={16} className="text-red-600" /></button>
                 </div>
               </div>
             </div>

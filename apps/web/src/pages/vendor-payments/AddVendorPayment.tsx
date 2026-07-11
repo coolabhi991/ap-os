@@ -9,6 +9,7 @@ import { getCompanyBankAccounts } from "../../services/company-bank-accounts";
 import type { CompanyBankAccount } from "../../services/company-bank-accounts";
 import { getVendorBankAccounts } from "../../services/vendor-bank-accounts";
 import type { VendorBankAccount } from "../../services/vendor-bank-accounts";
+import { todayISO } from "../../lib/utils";
 
 export default function AddVendorPayment() {
   const navigate = useNavigate();
@@ -20,7 +21,7 @@ export default function AddVendorPayment() {
   const [vendorBillId, setVendorBillId] = useState(preselectedBillId);
   const [amount, setAmount] = useState("");
   const [mode, setMode] = useState("");
-  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().slice(0, 10));
+  const [paymentDate, setPaymentDate] = useState(todayISO());
   const [remarks, setRemarks] = useState("");
 
   const [companyAccounts, setCompanyAccounts] = useState<CompanyBankAccount[]>([]);

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import { getDocumentsByVendor, createDocument, deleteDocument, VENDOR_ATTACHMENT_TYPE_OPTIONS, DOCUMENT_TYPE_LABELS } from "../../../services/documents";
 import type { ProjectDocument } from "../../../services/documents";
+import EmptyTableRow from "../../ui/EmptyTableRow";
 
 export default function VendorDocumentsTab({ vendorId }: { vendorId: string }) {
   const [documents, setDocuments] = useState<ProjectDocument[]>([]);
@@ -99,7 +100,7 @@ export default function VendorDocumentsTab({ vendorId }: { vendorId: string }) {
           </thead>
           <tbody>
             {documents.length === 0 ? (
-              <tr><td colSpan={4} className="py-8 text-center text-slate-500">No documents uploaded yet.</td></tr>
+              <EmptyTableRow colSpan={4}>No documents uploaded yet.</EmptyTableRow>
             ) : (
               documents.map((d) => (
                 <tr key={d.id} className="border-t">
@@ -109,7 +110,7 @@ export default function VendorDocumentsTab({ vendorId }: { vendorId: string }) {
                   </td>
                   <td className="px-4 py-3 text-slate-500">{d.notes || "—"}</td>
                   <td className="px-4 py-3 text-right">
-                    <button onClick={() => handleDelete(d.id)} className="rounded p-1.5 text-red-600 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button>
+                    <button onClick={() => handleDelete(d.id)} aria-label="Delete" className="rounded p-1.5 text-red-600 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button>
                   </td>
                 </tr>
               ))

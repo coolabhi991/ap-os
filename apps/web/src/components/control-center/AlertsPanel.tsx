@@ -23,12 +23,12 @@ export default function AlertsPanel({ alerts }: { alerts: ControlCenterAlert[] }
             <p className="text-sm font-medium">Nothing needs your attention — all clear.</p>
           </div>
         ) : (
-          alerts.map((a, i) => {
+          alerts.map((a) => {
             const style = SEVERITY_STYLES[a.severity] ?? SEVERITY_STYLES.low;
             const Icon = style.icon;
             return (
               <button
-                key={i}
+                key={`${a.category}-${a.link}-${a.message}`}
                 onClick={() => navigate(a.link)}
                 className={`flex w-full items-start gap-3 rounded-xl border px-4 py-3 text-left transition hover:-translate-y-0.5 ${style.border}`}
               >

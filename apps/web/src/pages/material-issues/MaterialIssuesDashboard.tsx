@@ -7,6 +7,8 @@ import MaterialIssueTable from "../../components/material-issues/MaterialIssueTa
 
 import { getMaterialIssueDashboard, deleteMaterialIssue } from "../../services/material-issues";
 import type { MaterialIssueDashboardSummary } from "../../services/material-issues";
+import LoadingState from "../../components/ui/LoadingState";
+import EmptyTableRow from "../../components/ui/EmptyTableRow";
 
 export default function MaterialIssuesDashboard() {
   const navigate = useNavigate();
@@ -43,7 +45,7 @@ export default function MaterialIssuesDashboard() {
           <p className="mt-2 text-slate-500">Consumption activity across projects and materials.</p>
         </div>
 
-        {loading && <div className="rounded-xl border border-slate-200 bg-white py-16 text-center text-slate-500 shadow-sm">Loading...</div>}
+        {loading && <LoadingState />}
         {error && !loading && <div className="rounded-xl border border-red-200 bg-red-50 px-6 py-5 text-red-700">{error}</div>}
 
         {!loading && !error && summary && (
@@ -65,7 +67,7 @@ export default function MaterialIssuesDashboard() {
                     </thead>
                     <tbody>
                       {summary.byProject.length === 0 ? (
-                        <tr><td colSpan={2} className="py-8 text-center text-slate-500">No data.</td></tr>
+                        <EmptyTableRow colSpan={2}>No data.</EmptyTableRow>
                       ) : (
                         summary.byProject.map((p) => (
                           <tr key={p.projectId} className="border-t">
@@ -88,7 +90,7 @@ export default function MaterialIssuesDashboard() {
                     </thead>
                     <tbody>
                       {summary.byMaterial.length === 0 ? (
-                        <tr><td colSpan={2} className="py-8 text-center text-slate-500">No data.</td></tr>
+                        <EmptyTableRow colSpan={2}>No data.</EmptyTableRow>
                       ) : (
                         summary.byMaterial.slice(0, 8).map((m) => (
                           <tr key={m.inventoryId} className="border-t">

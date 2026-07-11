@@ -34,6 +34,8 @@ import type {
 import { getBankAccountsWithBalances, ALLOCATION_STATUS_LABELS, ALLOCATION_STATUS_COLORS } from "../../services/bank-transactions";
 import type { BankAccountBalance } from "../../services/bank-transactions";
 import { getProjects } from "../../services/projects";
+import { formatCurrency as inr } from "../../lib/utils";
+import EmptyTableRow from "../../components/ui/EmptyTableRow";
 
 type ReportTab = "bank-book" | "cash-book" | "reconciliation" | "cash-flow" | "receivables" | "payables" | "outstanding-summary";
 
@@ -47,7 +49,6 @@ const TABS: { key: ReportTab; label: string }[] = [
   { key: "outstanding-summary", label: "Outstanding Summary" },
 ];
 
-const inr = (v: string | number) => `₹${Number(v).toLocaleString("en-IN")}`;
 
 export default function BankingReports() {
   const [tab, setTab] = useState<ReportTab>("bank-book");
@@ -182,7 +183,7 @@ export default function BankingReports() {
                     </thead>
                     <tbody>
                       {bankBook.entries.length === 0 ? (
-                        <tr><td colSpan={7} className="py-10 text-center text-slate-500">No transactions in this range.</td></tr>
+                        <EmptyTableRow colSpan={7}>No transactions in this range.</EmptyTableRow>
                       ) : (
                         bankBook.entries.map((e) => (
                           <tr key={e.id} className="border-t">
@@ -240,7 +241,7 @@ export default function BankingReports() {
                     </thead>
                     <tbody>
                       {cashBook.entries.length === 0 ? (
-                        <tr><td colSpan={6} className="py-10 text-center text-slate-500">No cash movements in this range.</td></tr>
+                        <EmptyTableRow colSpan={6}>No cash movements in this range.</EmptyTableRow>
                       ) : (
                         cashBook.entries.map((e, i) => (
                           <tr key={i} className="border-t">
@@ -292,7 +293,7 @@ export default function BankingReports() {
                     </thead>
                     <tbody>
                       {reconciliation.transactions.length === 0 ? (
-                        <tr><td colSpan={6} className="py-10 text-center text-slate-500">No data.</td></tr>
+                        <EmptyTableRow colSpan={6}>No data.</EmptyTableRow>
                       ) : (
                         reconciliation.transactions.map((t) => (
                           <tr key={t.id} className="border-t">
@@ -361,7 +362,7 @@ export default function BankingReports() {
                     </thead>
                     <tbody>
                       {receivables.length === 0 ? (
-                        <tr><td colSpan={8} className="py-10 text-center text-slate-500">No outstanding Running Bills.</td></tr>
+                        <EmptyTableRow colSpan={8}>No outstanding Running Bills.</EmptyTableRow>
                       ) : (
                         receivables.map((r) => (
                           <tr key={r.id} className="border-t">
@@ -402,7 +403,7 @@ export default function BankingReports() {
                     </thead>
                     <tbody>
                       {payables.length === 0 ? (
-                        <tr><td colSpan={7} className="py-10 text-center text-slate-500">No outstanding Vendor Bills.</td></tr>
+                        <EmptyTableRow colSpan={7}>No outstanding Vendor Bills.</EmptyTableRow>
                       ) : (
                         payables.map((p) => (
                           <tr key={p.id} className="border-t">

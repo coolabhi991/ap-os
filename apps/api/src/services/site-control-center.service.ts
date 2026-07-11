@@ -440,3 +440,88 @@ export async function getSiteWallet(siteId: string, companyId: string) {
     },
   };
 }
+
+/**
+ * Bill Received (Client) — read straight off the existing RunningBill + RunningBillPayment
+ * ledgers (Banking's Running Bill Receipt allocations write to RunningBillPayment; nothing here
+ * is a second copy of that data). Bank Account is every distinct account a receipt against this
+ * bill has actually landed in.
+ */
+export async function getSiteBillReceivedReport(siteId: string, companyId: string) {
+  await verifySiteOwnership(siteId, companyId);
+
+  const bills = await prisma.runningBill.findMany({
+    where: { companyId, siteId },
+    include: { payments: { include: { companyBankAccount: { select: { id: true, nickname: true, bankName: true } } } } },
+    orderBy: { billDate: "desc" },
+  });
+
+  return bills.map((b) => ({
+    id: b.id,
+    raNumber: b.billNumber,
+    billDate: b.billDate.toISOString().slice(0, 10),
+    billAmount: b.netPayable.toString(),
+    receivedAmount: b.amountReceived.toString(),
+    pendingAmount: b.outstandingAmount.toString(),
+    status: b.status,
+    bankAccounts: Array.from(
+      new Set(b.payments.map((p) => p.companyBankAccount?.nickname || p.companyBankAccount?.bankName).filter((x): x is string => !!x))
+    ),
+  }));
+}
+
+/** Vendor Bills for a Site — read straight off the existing VendorBill ledger, scoped through this Site's own Sub Works (VendorBill has no direct siteId — it's tagged to a Sub Work, same as everywhere else Vendor Bills are attributed). */
+export async function getSiteVendorBillsReport(siteId: string, companyId: string) {
+  await verifySiteOwnership(siteId, companyId);
+
+  const subWorkIds = (await prisma.subWork.findMany({ where: { companyId, siteId }, select: { id: true } })).map((s) => s.id);
+  if (!subWorkIds.length) return [];
+
+  const bills = await prisma.vendorBill.findMany({
+    where: { companyId, subWorkId: { in: subWorkIds } },
+    include: { vendor: { select: { id: true, name: true } } },
+    orderBy: { billDate: "desc" },
+  });
+
+  return bills.map((b) => ({
+    id: b.id,
+    billNumber: b.billNumber,
+    billDate: b.billDate.toISOString().slice(0, 10),
+    vendor: b.vendor.name,
+    totalAmount: b.totalAmount.toString(),
+    paidAmount: b.paidAmount.toString(),
+    outstandingBalance: b.outstandingBalance.toString(),
+    status: b.status,
+  }));
+}
+
+/** Money Flow — the chronological timeline behind Site Wallet's totals: every allocation that has moved money in or out of this Site, oldest logic reused as-is from TransactionAllocation (never a second ledger). */
+export async function getSiteMoneyFlow(siteId: string, companyId: string) {
+  await verifySiteOwnership(siteId, companyId);
+
+  const rows = await prisma.transactionAllocation.findMany({
+    where: { companyId, siteId },
+    include: {
+      bankTransaction: { select: { transactionDate: true, companyBankAccount: { select: { nickname: true, bankName: true } } } },
+      runningBillPayment: { select: { paymentNumber: true, runningBill: { select: { billNumber: true } } } },
+      expense: { select: { expenseNumber: true, category: { select: { name: true } } } },
+      labourPayment: { select: { labour: { select: { name: true } } } },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  return rows.map((r) => ({
+    id: r.id,
+    date: r.bankTransaction.transactionDate.toISOString().slice(0, 10),
+    allocationType: r.allocationType,
+    direction: r.allocationType === "RUNNING_BILL_RECEIPT" ? "IN" : "OUT",
+    amount: r.amount.toString(),
+    bankAccount: r.bankTransaction.companyBankAccount.nickname || r.bankTransaction.companyBankAccount.bankName,
+    reference:
+      (r.runningBillPayment && `RA ${r.runningBillPayment.runningBill.billNumber} — ${r.runningBillPayment.paymentNumber}`) ||
+      (r.expense && `${r.expense.category.name} — ${r.expense.expenseNumber}`) ||
+      (r.labourPayment && `Labour — ${r.labourPayment.labour.name}`) ||
+      r.notes ||
+      "",
+  }));
+}

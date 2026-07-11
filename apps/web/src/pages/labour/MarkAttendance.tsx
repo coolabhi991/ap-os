@@ -12,6 +12,8 @@ import { getSubWorks } from "../../services/sub-works";
 import type { SubWork } from "../../services/sub-works";
 import { getSites } from "../../services/sites";
 import type { Site } from "../../services/sites";
+import { todayISO } from "../../lib/utils";
+import EmptyTableRow from "../../components/ui/EmptyTableRow";
 
 interface RowState {
   labourId: string;
@@ -29,7 +31,7 @@ export default function MarkAttendance() {
   const [subWorkId, setSubWorkId] = useState("");
   const [subWorks, setSubWorks] = useState<SubWork[]>([]);
   const [groupId, setGroupId] = useState("");
-  const [attendanceDate, setAttendanceDate] = useState(new Date().toISOString().slice(0, 10));
+  const [attendanceDate, setAttendanceDate] = useState(todayISO());
   const [labourers, setLabourers] = useState<Labour[]>([]);
   const [rows, setRows] = useState<Record<string, RowState>>({});
   const [loadingLabour, setLoadingLabour] = useState(false);
@@ -177,7 +179,7 @@ export default function MarkAttendance() {
                 </thead>
                 <tbody className="divide-y">
                   {labourers.length === 0 ? (
-                    <tr><td colSpan={4} className="py-8 text-center text-slate-500">No active workers found.</td></tr>
+                    <EmptyTableRow colSpan={4}>No active workers found.</EmptyTableRow>
                   ) : (
                     labourers.map((l) => (
                       <tr key={l.id}>

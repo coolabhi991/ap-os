@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import Layout from "../../components/layout/Layout";
+import EmptyTableRow from "../../components/ui/EmptyTableRow";
 import {
   getProjectExpenseSummary,
   getCategoryExpenseSummary,
@@ -142,7 +143,7 @@ export default function ExpenseReports() {
               <table className="min-w-full">
                 <thead className="bg-slate-100"><tr><th className="px-6 py-4 text-left">Project</th><th className="px-6 py-4 text-right">Total Amount</th><th className="px-6 py-4 text-right">Count</th></tr></thead>
                 <tbody>
-                  {projectRows.length === 0 ? <tr><td colSpan={3} className="py-10 text-center text-slate-500">No data.</td></tr> : projectRows.map((r) => (
+                  {projectRows.length === 0 ? <EmptyTableRow colSpan={3}>No data.</EmptyTableRow> : projectRows.map((r) => (
                     <tr key={r.projectId} className="border-t"><td className="px-6 py-4">{r.projectName}</td><td className="px-6 py-4 text-right font-medium">₹{Number(r.totalAmount).toLocaleString("en-IN")}</td><td className="px-6 py-4 text-right">{r.count}</td></tr>
                   ))}
                 </tbody>
@@ -152,7 +153,7 @@ export default function ExpenseReports() {
               <table className="min-w-full">
                 <thead className="bg-slate-100"><tr><th className="px-6 py-4 text-left">Category</th><th className="px-6 py-4 text-right">Total Amount</th><th className="px-6 py-4 text-right">Count</th></tr></thead>
                 <tbody>
-                  {categoryRows.length === 0 ? <tr><td colSpan={3} className="py-10 text-center text-slate-500">No data.</td></tr> : categoryRows.map((r) => (
+                  {categoryRows.length === 0 ? <EmptyTableRow colSpan={3}>No data.</EmptyTableRow> : categoryRows.map((r) => (
                     <tr key={r.categoryId} className="border-t"><td className="px-6 py-4">{r.categoryName}</td><td className="px-6 py-4 text-right font-medium">₹{Number(r.totalAmount).toLocaleString("en-IN")}</td><td className="px-6 py-4 text-right">{r.count}</td></tr>
                   ))}
                 </tbody>
@@ -162,7 +163,7 @@ export default function ExpenseReports() {
               <table className="min-w-full">
                 <thead className="bg-slate-100"><tr><th className="px-6 py-4 text-left">Month</th><th className="px-6 py-4 text-right">Total Amount</th><th className="px-6 py-4 text-right">Count</th></tr></thead>
                 <tbody>
-                  {monthlyRows.length === 0 ? <tr><td colSpan={3} className="py-10 text-center text-slate-500">No data.</td></tr> : monthlyRows.map((r) => (
+                  {monthlyRows.length === 0 ? <EmptyTableRow colSpan={3}>No data.</EmptyTableRow> : monthlyRows.map((r) => (
                     <tr key={r.month} className="border-t"><td className="px-6 py-4">{r.month}</td><td className="px-6 py-4 text-right font-medium">₹{Number(r.totalAmount).toLocaleString("en-IN")}</td><td className="px-6 py-4 text-right">{r.count}</td></tr>
                   ))}
                 </tbody>
@@ -172,7 +173,7 @@ export default function ExpenseReports() {
               <table className="min-w-full">
                 <thead className="bg-slate-100"><tr><th className="px-6 py-4 text-left">Vendor</th><th className="px-6 py-4 text-right">Outstanding Credit</th><th className="px-6 py-4 text-right">Count</th></tr></thead>
                 <tbody>
-                  {vendorCreditRows.length === 0 ? <tr><td colSpan={3} className="py-10 text-center text-slate-500">No data.</td></tr> : vendorCreditRows.map((r) => (
+                  {vendorCreditRows.length === 0 ? <EmptyTableRow colSpan={3}>No data.</EmptyTableRow> : vendorCreditRows.map((r) => (
                     <tr key={r.vendorId} className="border-t"><td className="px-6 py-4">{r.vendorName}</td><td className="px-6 py-4 text-right font-medium text-amber-700">₹{Number(r.totalAmount).toLocaleString("en-IN")}</td><td className="px-6 py-4 text-right">{r.count}</td></tr>
                   ))}
                 </tbody>
@@ -182,7 +183,7 @@ export default function ExpenseReports() {
               <table className="min-w-full">
                 <thead className="bg-slate-100"><tr><th className="px-6 py-4 text-left">Project</th><th className="px-6 py-4 text-right">Total Amount</th><th className="px-6 py-4 text-right">Total Hours</th><th className="px-6 py-4 text-right">Count</th></tr></thead>
                 <tbody>
-                  {machineryProjectRows.length === 0 ? <tr><td colSpan={4} className="py-10 text-center text-slate-500">No data.</td></tr> : machineryProjectRows.map((r) => (
+                  {machineryProjectRows.length === 0 ? <EmptyTableRow colSpan={4}>No data.</EmptyTableRow> : machineryProjectRows.map((r) => (
                     <tr key={r.projectId} className="border-t"><td className="px-6 py-4">{r.projectName}</td><td className="px-6 py-4 text-right font-medium">₹{Number(r.totalAmount).toLocaleString("en-IN")}</td><td className="px-6 py-4 text-right">{r.totalHours}</td><td className="px-6 py-4 text-right">{r.count}</td></tr>
                   ))}
                 </tbody>
@@ -192,7 +193,7 @@ export default function ExpenseReports() {
               <table className="min-w-full">
                 <thead className="bg-slate-100"><tr><th className="px-6 py-4 text-left">Site</th><th className="px-6 py-4 text-right">Total Amount</th><th className="px-6 py-4 text-right">Total Hours</th><th className="px-6 py-4 text-right">Count</th></tr></thead>
                 <tbody>
-                  {machinerySiteRows.length === 0 ? <tr><td colSpan={4} className="py-10 text-center text-slate-500">No data.</td></tr> : machinerySiteRows.map((r) => (
+                  {machinerySiteRows.length === 0 ? <EmptyTableRow colSpan={4}>No data.</EmptyTableRow> : machinerySiteRows.map((r) => (
                     <tr key={r.site} className="border-t"><td className="px-6 py-4">{r.site}</td><td className="px-6 py-4 text-right font-medium">₹{Number(r.totalAmount).toLocaleString("en-IN")}</td><td className="px-6 py-4 text-right">{r.totalHours}</td><td className="px-6 py-4 text-right">{r.count}</td></tr>
                   ))}
                 </tbody>
@@ -202,7 +203,7 @@ export default function ExpenseReports() {
               <table className="min-w-full">
                 <thead className="bg-slate-100"><tr><th className="px-6 py-4 text-left">Vendor</th><th className="px-6 py-4 text-right">Total Amount</th><th className="px-6 py-4 text-right">Total Hours</th><th className="px-6 py-4 text-right">Count</th></tr></thead>
                 <tbody>
-                  {machineryVendorRows.length === 0 ? <tr><td colSpan={4} className="py-10 text-center text-slate-500">No data.</td></tr> : machineryVendorRows.map((r) => (
+                  {machineryVendorRows.length === 0 ? <EmptyTableRow colSpan={4}>No data.</EmptyTableRow> : machineryVendorRows.map((r) => (
                     <tr key={r.vendorId} className="border-t"><td className="px-6 py-4">{r.vendorName}</td><td className="px-6 py-4 text-right font-medium">₹{Number(r.totalAmount).toLocaleString("en-IN")}</td><td className="px-6 py-4 text-right">{r.totalHours}</td><td className="px-6 py-4 text-right">{r.count}</td></tr>
                   ))}
                 </tbody>
@@ -212,7 +213,7 @@ export default function ExpenseReports() {
               <table className="min-w-full">
                 <thead className="bg-slate-100"><tr><th className="px-6 py-4 text-left">Month</th><th className="px-6 py-4 text-right">Total Amount</th><th className="px-6 py-4 text-right">Total Hours</th><th className="px-6 py-4 text-right">Count</th></tr></thead>
                 <tbody>
-                  {machineryMonthlyRows.length === 0 ? <tr><td colSpan={4} className="py-10 text-center text-slate-500">No data.</td></tr> : machineryMonthlyRows.map((r) => (
+                  {machineryMonthlyRows.length === 0 ? <EmptyTableRow colSpan={4}>No data.</EmptyTableRow> : machineryMonthlyRows.map((r) => (
                     <tr key={r.month} className="border-t"><td className="px-6 py-4">{r.month}</td><td className="px-6 py-4 text-right font-medium">₹{Number(r.totalAmount).toLocaleString("en-IN")}</td><td className="px-6 py-4 text-right">{r.totalHours}</td><td className="px-6 py-4 text-right">{r.count}</td></tr>
                   ))}
                 </tbody>
@@ -222,7 +223,7 @@ export default function ExpenseReports() {
               <table className="min-w-full">
                 <thead className="bg-slate-100"><tr><th className="px-6 py-4 text-left">Machine Type</th><th className="px-6 py-4 text-right">Total Hours</th><th className="px-6 py-4 text-right">Total Amount</th><th className="px-6 py-4 text-right">Count</th></tr></thead>
                 <tbody>
-                  {machineryHoursRows.length === 0 ? <tr><td colSpan={4} className="py-10 text-center text-slate-500">No data.</td></tr> : machineryHoursRows.map((r) => (
+                  {machineryHoursRows.length === 0 ? <EmptyTableRow colSpan={4}>No data.</EmptyTableRow> : machineryHoursRows.map((r) => (
                     <tr key={r.machineType} className="border-t"><td className="px-6 py-4">{MACHINE_TYPE_LABELS[r.machineType] ?? r.machineType}</td><td className="px-6 py-4 text-right font-medium">{r.totalHours}</td><td className="px-6 py-4 text-right">₹{Number(r.totalAmount).toLocaleString("en-IN")}</td><td className="px-6 py-4 text-right">{r.count}</td></tr>
                   ))}
                 </tbody>

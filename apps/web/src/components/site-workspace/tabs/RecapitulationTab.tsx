@@ -7,8 +7,10 @@ import {
 } from "../../../services/site-control-center";
 import type { SiteRecapLive, SiteRecapRevision } from "../../../services/site-control-center";
 import type { Site } from "../../../services/sites";
+import LoadingState from "../../ui/LoadingState";
+import { formatCurrency as inr } from "../../../lib/utils";
+import EmptyTableRow from "../../ui/EmptyTableRow";
 
-const inr = (v: string | number) => `₹${Number(v).toLocaleString("en-IN")}`;
 
 function RecapSnapshotView({ snapshot }: { snapshot: SiteRecapLive }) {
   return (
@@ -47,7 +49,7 @@ function RecapSnapshotView({ snapshot }: { snapshot: SiteRecapLive }) {
           </thead>
           <tbody>
             {snapshot.subWorks.length === 0 ? (
-              <tr><td colSpan={7} className="py-8 text-center text-slate-500">No Sub Works yet.</td></tr>
+              <EmptyTableRow colSpan={7}>No Sub Works yet.</EmptyTableRow>
             ) : (
               snapshot.subWorks.map((sw) => (
                 <tr key={sw.subWorkId} className="border-t">
@@ -109,7 +111,7 @@ export default function RecapitulationTab({ site }: { site: Site }) {
     }
   };
 
-  if (loading) return <div className="rounded-xl border border-slate-200 bg-white py-16 text-center text-slate-500 shadow-sm">Loading...</div>;
+  if (loading) return <LoadingState />;
   if (error || !live) return <div className="rounded-xl border border-red-200 bg-red-50 px-6 py-5 text-red-700">{error}</div>;
 
   const currentRevision = revisions.find((r) => r.isCurrent);
@@ -170,7 +172,7 @@ export default function RecapitulationTab({ site }: { site: Site }) {
             </thead>
             <tbody>
               {revisions.length === 0 ? (
-                <tr><td colSpan={6} className="py-8 text-center text-slate-500">No revisions saved yet.</td></tr>
+                <EmptyTableRow colSpan={6}>No revisions saved yet.</EmptyTableRow>
               ) : (
                 revisions.map((r) => (
                   <tr key={r.id} className="border-t">

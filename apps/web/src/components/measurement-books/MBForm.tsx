@@ -6,6 +6,7 @@ import { getSubWorks } from "../../services/sub-works";
 import type { SubWork } from "../../services/sub-works";
 import { getSites } from "../../services/sites";
 import type { Site } from "../../services/sites";
+import { todayISO } from "../../lib/utils";
 
 interface Option {
   id: string;
@@ -55,7 +56,7 @@ export default function MBForm({ initialData, onSubmit, saving = false, projects
   const [siteId, setSiteId] = useState(initialData?.siteId ?? "");
   const [subWorkId, setSubWorkId] = useState(initialData?.subWorkId ?? "");
   const [mbNumber, setMbNumber] = useState(initialData?.mbNumber ?? "");
-  const [mbDate, setMbDate] = useState(initialData?.mbDate ?? new Date().toISOString().slice(0, 10));
+  const [mbDate, setMbDate] = useState(initialData?.mbDate ?? todayISO());
   const [site, setSite] = useState(initialData?.site ?? "");
   const [engineerId, setEngineerId] = useState(initialData?.engineerId ?? "");
   const [contractorId, setContractorId] = useState(initialData?.contractorId ?? "");

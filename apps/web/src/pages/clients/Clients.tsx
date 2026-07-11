@@ -8,6 +8,7 @@ import ClientTable from "../../components/clients/ClientTable";
 
 import { getClients, deleteClient } from "../../services/clients";
 import type { Client } from "../../services/clients";
+import LoadingState from "../../components/ui/LoadingState";
 
 export default function Clients() {
   const navigate = useNavigate();
@@ -73,9 +74,7 @@ export default function Clients() {
         />
 
         {loading && (
-          <div className="rounded-xl border border-slate-200 bg-white py-16 text-center text-slate-500 shadow-sm">
-            Loading clients...
-          </div>
+          <LoadingState label="Loading clients..." />
         )}
 
         {error && !loading && (

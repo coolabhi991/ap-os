@@ -56,7 +56,7 @@ export default function ClientForm({
 
         <div>
           <label className="mb-2 block font-medium">
-            Company Name
+            Company Name *
           </label>
           <input
             name="companyName"

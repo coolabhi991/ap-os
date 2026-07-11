@@ -217,11 +217,14 @@ enum BankTransactionSource {
 }
 
 /**
- * The 11 purposes a bank Deposit/Withdrawal can be allocated to. RUNNING_BILL_RECEIPT/
- * VENDOR_PAYMENT/LABOUR/SITE_EXPENSE each auto-create their real ledger row (RunningBillPayment/
- * VendorPayment/LabourPayment/Expense) — see TransactionAllocation. The remaining 7 types have
- * no dedicated ledger yet (Partnership/Loan/GST/Office books are a future phase), so the
- * allocation row itself IS the ledger entry for those.
+ * The 12 purposes a bank Deposit/Withdrawal can be allocated to. RUNNING_BILL_RECEIPT/
+ * VENDOR_PAYMENT/LABOUR/SITE_EXPENSE/OWNER_INVESTMENT/PARTNER_INVESTMENT/PARTNER_SETTLEMENT each
+ * auto-create their real ledger row (RunningBillPayment/VendorPayment/LabourPayment/Expense/
+ * PartnerInvestment/PartnerSettlement) — see TransactionAllocation. OWNER_INVESTMENT and
+ * PARTNER_INVESTMENT both create a PartnerInvestment row (the Partner's own partnerType
+ * distinguishes an Owner from a Partner — there's no separate "OwnerInvestment" table). The
+ * remaining 4 types (Internal Transfer/GST/Loan/Office Expense/Other) have no dedicated ledger
+ * yet, so the allocation row itself IS the ledger entry for those.
  */
 enum AllocationType {
   RUNNING_BILL_RECEIPT
@@ -231,9 +234,59 @@ enum AllocationType {
   INTERNAL_TRANSFER
   OWNER_INVESTMENT
   PARTNER_INVESTMENT
+  PARTNER_SETTLEMENT
   GST
   LOAN
   OFFICE_EXPENSE
+  OTHER
+  LIABILITY_DISBURSEMENT
+  LIABILITY_REPAYMENT
+}
+
+enum LiabilityType {
+  HOME_LOAN
+  CAR_LOAN
+  GOLD_LOAN
+  BANK_LOAN
+  CASH_CREDIT
+  OVERDRAFT
+  CREDIT_CARD
+  FRIEND_LOAN
+  RELATIVE_LOAN
+  PRIVATE_FINANCE
+  PERSONAL_LOAN
+  OTHER
+}
+
+enum LiabilityInterestType {
+  MONTHLY
+  ANNUAL
+  FIXED
+  FLOATING
+  NONE
+}
+
+enum LiabilitySecurity {
+  HOUSE
+  GOLD
+  VEHICLE
+  NONE
+  OTHER
+}
+
+enum LiabilityStatus {
+  ACTIVE
+  CLOSED
+}
+
+enum PartnerType {
+  OWNER
+  PARTNER
+}
+
+enum SettlementType {
+  PROFIT_SHARE
+  INVESTMENT_RETURN
   OTHER
 }
 
@@ -295,10 +348,15 @@ model Company {
   runningBillEmailLogs  RunningBillEmailLog[]
   bankTransactions      BankTransaction[]
   transactionAllocations TransactionAllocation[]
+  partners              Partner[]
+  partnerInvestments    PartnerInvestment[]
+  partnerSettlements    PartnerSettlement[]
   projectContractInfos  ProjectContractInfo[]
   sites                 Site[]
   siteRecapRevisions    SiteRecapRevision[]
   siteVisits            SiteVisit[]
+  liabilities           Liability[]
+  liabilityRepayments   LiabilityRepayment[]
 }
 
 model CompanyBankAccount {
@@ -330,6 +388,9 @@ model CompanyBankAccount {
   labourPayments      LabourPayment[]
   runningBillPayments RunningBillPayment[]
   bankTransactions    BankTransaction[]
+  partnerInvestments  PartnerInvestment[]
+  partnerSettlements  PartnerSettlement[]
+  liabilityRepayments LiabilityRepayment[]
 
   @@index([companyId])
 }
@@ -376,8 +437,11 @@ model User {
   runningBillEmailsSent      RunningBillEmailLog[] @relation("RunningBillEmailSentBy")
   bankTransactionsCreated    BankTransaction[]     @relation("BankTransactionCreatedBy")
   transactionAllocationsCreated TransactionAllocation[]
+  partnerInvestmentsCreated  PartnerInvestment[]
+  partnerSettlementsCreated  PartnerSettlement[]
   siteRecapRevisionsCreated  SiteRecapRevision[]
   siteVisitsCreated          SiteVisit[]
+  liabilityRepaymentsCreated LiabilityRepayment[]
 }
 
 model Client {
@@ -1841,6 +1905,20 @@ model TransactionAllocation {
   labourPayment        LabourPayment?      @relation(fields: [labourPaymentId], references: [id])
   expenseId            String?             @unique
   expense              Expense?            @relation(fields: [expenseId], references: [id])
+  partnerInvestmentId  String?             @unique
+  partnerInvestment    PartnerInvestment?  @relation(fields: [partnerInvestmentId], references: [id])
+  partnerSettlementId  String?             @unique
+  partnerSettlement    PartnerSettlement?  @relation(fields: [partnerSettlementId], references: [id])
+
+  // LIABILITY_DISBURSEMENT tags a deposit directly with the Liability it came from (a straight
+  // pass-through pointer, mirroring how siteId tags an allocation — no dedicated ledger row is
+  // needed since the BankTransaction itself already holds the amount/date/account).
+  // LIABILITY_REPAYMENT instead creates a real LiabilityRepayment row (principal/interest split),
+  // linked back here 1:1 exactly like runningBillPaymentId/vendorPaymentId above.
+  liabilityId          String?
+  liability            Liability?          @relation(fields: [liabilityId], references: [id])
+  liabilityRepaymentId String?             @unique
+  liabilityRepayment   LiabilityRepayment? @relation(fields: [liabilityRepaymentId], references: [id])
 
   createdById String
   createdBy   User     @relation(fields: [createdById], references: [id])
@@ -1850,7 +1928,173 @@ model TransactionAllocation {
   @@index([bankTransactionId])
   @@index([siteId])
   @@index([allocationType])
+  @@index([liabilityId])
 }
+
+/**
+ * Partner Master — Owners and Partners are both rows here (partnerType distinguishes them),
+ * global to the Company, never tied to a Project or Site. sharePercent drives the Profit Sharing
+ * report (a computed report, never a stored profit figure — see partnership-reports.service.ts).
+ */
+model Partner {
+  id           String      @id @default(cuid())
+  companyId    String
+  company      Company     @relation(fields: [companyId], references: [id])
+  name         String
+  partnerType  PartnerType @default(PARTNER)
+  phone        String?
+  email        String?
+  address      String?
+  panNumber    String?
+  sharePercent Decimal     @default(0) @db.Decimal(5, 2)
+  isActive     Boolean     @default(true)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  investments PartnerInvestment[]
+  settlements PartnerSettlement[]
+
+  @@index([companyId])
+  @@index([partnerType])
+}
+
+/**
+ * A Partner's capital contribution into the company — always global, never Site-scoped at the
+ * point of investment (that money is only later attributed to a Site once it's spent, via a
+ * SITE_EXPENSE/LABOUR TransactionAllocation out of the same bank account it landed in). Created
+ * either directly (a cash investment) or via allocating a bank deposit
+ * (OWNER_INVESTMENT/PARTNER_INVESTMENT) — mirrors the VendorPayment/LabourPayment dual-path
+ * pattern exactly.
+ */
+model PartnerInvestment {
+  id                   String              @id @default(cuid())
+  companyId            String
+  company              Company             @relation(fields: [companyId], references: [id])
+  partnerId            String
+  partner              Partner             @relation(fields: [partnerId], references: [id])
+  investmentNumber     String              @unique
+  amount               Decimal             @db.Decimal(14, 2)
+  investmentDate       DateTime            @default(now())
+  mode                 String
+  companyBankAccountId String?
+  companyBankAccount   CompanyBankAccount? @relation(fields: [companyBankAccountId], references: [id])
+  referenceNumber      String?
+  remarks              String?
+  createdById          String
+  createdBy            User                @relation(fields: [createdById], references: [id])
+  createdAt            DateTime            @default(now())
+
+  allocation TransactionAllocation?
+
+  @@index([companyId])
+  @@index([partnerId])
+}
+
+/**
+ * Money paid OUT to a Partner — a profit distribution or a return of capital. The counterpart
+ * of PartnerInvestment; same dual-path (direct entry or PARTNER_SETTLEMENT allocation).
+ */
+model PartnerSettlement {
+  id                   String              @id @default(cuid())
+  companyId            String
+  company              Company             @relation(fields: [companyId], references: [id])
+  partnerId            String
+  partner              Partner             @relation(fields: [partnerId], references: [id])
+  settlementNumber     String              @unique
+  settlementType       SettlementType      @default(OTHER)
+  amount               Decimal             @db.Decimal(14, 2)
+  settlementDate       DateTime            @default(now())
+  mode                 String
+  companyBankAccountId String?
+  companyBankAccount   CompanyBankAccount? @relation(fields: [companyBankAccountId], references: [id])
+  referenceNumber      String?
+  remarks              String?
+  createdById          String
+  createdBy            User                @relation(fields: [createdById], references: [id])
+  createdAt            DateTime            @default(now())
+
+  allocation TransactionAllocation?
+
+  @@index([companyId])
+  @@index([partnerId])
+}
+
+/**
+ * Finance Module — Liability Master. Every borrowing the company carries (Home/Car/Gold/Bank
+ * Loan, Cash Credit, Overdraft, Credit Card, Friend/Relative/Private/Personal loans). Global to
+ * the Company, never Site-scoped at this layer — same rule as Partner: money is only attributed
+ * to a Site once it's spent, via the existing TransactionAllocation engine (siteId already lives
+ * on that model). outstandingAmount is a real stored column (not purely derived) because it is
+ * the master's own starting position for a liability entered mid-life (a loan already partly
+ * repaid before AP OS existed) — it is then only ever decremented by recordLiabilityRepayment in
+ * liability-repayment.service.ts, exactly like RunningBill.amountReceived/outstandingAmount.
+ */
+model Liability {
+  id                String                @id @default(cuid())
+  companyId         String
+  company           Company               @relation(fields: [companyId], references: [id])
+  loanName          String
+  liabilityType     LiabilityType
+  lenderName        String?
+  bankName          String?
+  branch            String?
+  accountNumber     String?
+  sanctionAmount    Decimal               @db.Decimal(14, 2)
+  outstandingAmount Decimal               @db.Decimal(14, 2)
+  interestType      LiabilityInterestType @default(NONE)
+  interestRate      Decimal               @default(0) @db.Decimal(6, 3)
+  emiAmount         Decimal               @default(0) @db.Decimal(12, 2)
+  emiDate           Int?
+  startDate         DateTime
+  endDate           DateTime?
+  security          LiabilitySecurity     @default(NONE)
+  status            LiabilityStatus       @default(ACTIVE)
+  notes             String?
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
+
+  repayments  LiabilityRepayment[]
+  allocations TransactionAllocation[]
+
+  @@index([companyId])
+  @@index([liabilityType])
+  @@index([status])
+}
+
+/**
+ * A single repayment against a Liability — always created from Bank Statement → Transaction
+ * Allocation (see transaction-allocation.service.ts's LIABILITY_REPAYMENT case), never entered
+ * directly; there is deliberately no public "create repayment" endpoint. principalPaid reduces
+ * Liability.outstandingAmount; interestPaid is a pure cost with no effect on the balance —
+ * together they must equal totalPaid, which must equal the originating allocation's amount
+ * (validated in liability-repayment.service.ts), so this is never a second copy of the bank
+ * transaction's own figure.
+ */
+model LiabilityRepayment {
+  id                    String             @id @default(cuid())
+  companyId             String
+  company               Company            @relation(fields: [companyId], references: [id])
+  liabilityId           String
+  liability             Liability          @relation(fields: [liabilityId], references: [id])
+  repaymentNumber       String             @unique
+  paymentDate           DateTime
+  principalPaid         Decimal            @db.Decimal(12, 2)
+  interestPaid          Decimal            @db.Decimal(12, 2)
+  totalPaid             Decimal            @db.Decimal(12, 2)
+  companyBankAccountId  String
+  companyBankAccount    CompanyBankAccount @relation(fields: [companyBankAccountId], references: [id])
+  remarks               String?
+  createdById           String
+  createdBy             User               @relation(fields: [createdById], references: [id])
+  createdAt             DateTime           @default(now())
+
+  allocation TransactionAllocation?
+
+  @@index([companyId])
+  @@index([liabilityId])
+  @@index([paymentDate])
+}
+
 model Document {
   id                    String               @id @default(cuid())
   companyId             String

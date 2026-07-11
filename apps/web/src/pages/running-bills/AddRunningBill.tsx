@@ -9,6 +9,7 @@ import type { BillableMB, RunningBillFormData } from "../../services/running-bil
 import { getMB } from "../../services/measurement-books";
 import type { MB } from "../../services/measurement-books";
 import { getProjects } from "../../services/projects";
+import LoadingState from "../../components/ui/LoadingState";
 
 export default function AddRunningBill() {
   const navigate = useNavigate();
@@ -80,7 +81,7 @@ export default function AddRunningBill() {
           </div>
 
           {loadingList ? (
-            <div className="rounded-xl border border-slate-200 bg-white py-16 text-center text-slate-500 shadow-sm">Loading...</div>
+            <LoadingState />
           ) : billableMBs.length === 0 ? (
             <div className="rounded-xl border border-slate-200 bg-white py-16 text-center text-slate-500 shadow-sm">
               No unbilled Approved Measurement Books found. Approve a Measurement Book first.

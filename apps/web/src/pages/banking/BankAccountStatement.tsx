@@ -14,6 +14,7 @@ import {
 } from "../../services/bank-transactions";
 import type { BankAccountBalance, BankTransaction } from "../../services/bank-transactions";
 import { ACCOUNT_TYPE_LABELS } from "../../services/company-bank-accounts";
+import EmptyTableRow from "../../components/ui/EmptyTableRow";
 
 export default function BankAccountStatement() {
   const { id } = useParams<{ id: string }>();
@@ -124,7 +125,7 @@ export default function BankAccountStatement() {
             </thead>
             <tbody>
               {transactions.length === 0 ? (
-                <tr><td colSpan={8} className="py-10 text-center text-slate-500">No transactions on this account yet.</td></tr>
+                <EmptyTableRow colSpan={8}>No transactions on this account yet.</EmptyTableRow>
               ) : (
                 transactions.map((t) => (
                   <tr key={t.id} className="border-t hover:bg-slate-50">

@@ -9,8 +9,6 @@ interface RegisterUserInput {
   password: string;
 }
 
-type RoleName = UserRole;
-
 async function ensureRole(companyId: string, roleName: UserRole) {
   const existingRole = await prisma.role.findFirst({
     where: {

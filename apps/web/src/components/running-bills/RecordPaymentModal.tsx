@@ -3,6 +3,7 @@ import { X } from "lucide-react";
 import { recordRunningBillPayment, PAYMENT_MODES } from "../../services/running-bills";
 import { getCompanyBankAccounts } from "../../services/company-bank-accounts";
 import type { CompanyBankAccount } from "../../services/company-bank-accounts";
+import { todayISO } from "../../lib/utils";
 
 interface Props {
   runningBillId: string;
@@ -13,7 +14,7 @@ interface Props {
 
 export default function RecordPaymentModal({ runningBillId, outstandingAmount, onClose, onRecorded }: Props) {
   const [amount, setAmount] = useState(outstandingAmount);
-  const [paymentDate, setPaymentDate] = useState(new Date().toISOString().slice(0, 10));
+  const [paymentDate, setPaymentDate] = useState(todayISO());
   const [mode, setMode] = useState("BANK");
   const [companyBankAccountId, setCompanyBankAccountId] = useState("");
   const [referenceNumber, setReferenceNumber] = useState("");

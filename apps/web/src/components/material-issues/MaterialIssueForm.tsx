@@ -3,6 +3,7 @@ import type { MaterialIssueFormData, MaterialIssue } from "../../services/materi
 import type { InventoryItem } from "../../services/inventory";
 import { getSubWorks } from "../../services/sub-works";
 import type { SubWork } from "../../services/sub-works";
+import { todayISO } from "../../lib/utils";
 
 interface Option {
   id: string;
@@ -33,7 +34,7 @@ export default function MaterialIssueForm({
     inventoryId: initialData?.inventoryId ?? "",
     subWorkId: initialData?.subWorkId ?? "",
     quantity: initialData?.quantity ?? 0,
-    issuedDate: initialData?.issuedDate ?? new Date().toISOString().slice(0, 10),
+    issuedDate: initialData?.issuedDate ?? todayISO(),
     purpose: initialData?.purpose ?? "",
     issuedTo: initialData?.issuedTo ?? "",
     approvedBy: initialData?.approvedBy ?? "",

@@ -1,5 +1,7 @@
 import { useNavigate } from "react-router-dom";
 import type { ProjectHealthRow } from "../../services/control-center";
+import { formatCurrency as inr } from "../../lib/utils";
+import EmptyTableRow from "../ui/EmptyTableRow";
 
 const VARIANCE_LABELS: Record<string, string> = { ahead: "Ahead", "on-track": "On Track", behind: "Behind" };
 const VARIANCE_COLORS: Record<string, string> = {
@@ -8,7 +10,6 @@ const VARIANCE_COLORS: Record<string, string> = {
   behind: "bg-red-100 text-red-700",
 };
 
-const inr = (v: string | number) => `₹${Number(v).toLocaleString("en-IN")}`;
 
 export default function ProjectHealthTable({ projects }: { projects: ProjectHealthRow[] }) {
   const navigate = useNavigate();
@@ -38,7 +39,7 @@ export default function ProjectHealthTable({ projects }: { projects: ProjectHeal
           </thead>
           <tbody>
             {projects.length === 0 ? (
-              <tr><td colSpan={8} className="py-8 text-center text-slate-500">No active projects.</td></tr>
+              <EmptyTableRow colSpan={8}>No active projects.</EmptyTableRow>
             ) : (
               projects.map((p) => (
                 <tr key={p.id} className="cursor-pointer border-t hover:bg-slate-50" onClick={() => navigate(`/projects/${p.id}`)}>

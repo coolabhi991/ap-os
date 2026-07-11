@@ -12,6 +12,7 @@ import { getSubWorks } from "../../services/sub-works";
 import type { SubWork } from "../../services/sub-works";
 import { getSites } from "../../services/sites";
 import type { Site } from "../../services/sites";
+import { todayISO } from "../../lib/utils";
 
 interface Option {
   id: string;
@@ -43,7 +44,7 @@ export default function ExpenseForm({
     categoryId: initialData?.categoryId ?? "",
     vendorId: initialData?.vendorId ?? "",
     subWorkId: initialData?.subWorkId ?? "",
-    expenseDate: initialData?.expenseDate ?? new Date().toISOString().slice(0, 10),
+    expenseDate: initialData?.expenseDate ?? todayISO(),
     description: initialData?.description ?? "",
     amount: initialData?.amount ?? 0,
     paymentMode: initialData?.paymentMode ?? "",

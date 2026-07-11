@@ -5,6 +5,7 @@ import Layout from "../../components/layout/Layout";
 import { getVendors } from "../../services/vendors";
 import { getVendorLedger } from "../../services/vendor-payments";
 import type { VendorLedger as VendorLedgerData } from "../../services/vendor-payments";
+import LoadingState from "../../components/ui/LoadingState";
 
 export default function VendorLedger() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -73,9 +74,7 @@ export default function VendorLedger() {
         )}
 
         {loading && (
-          <div className="rounded-xl border border-slate-200 bg-white py-16 text-center text-slate-500 shadow-sm">
-            Loading ledger...
-          </div>
+          <LoadingState label="Loading ledger..." />
         )}
 
         {error && !loading && (

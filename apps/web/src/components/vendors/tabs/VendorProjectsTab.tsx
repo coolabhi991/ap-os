@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { getVendorProjectBreakdown } from "../../../services/vendor-payments";
 import type { VendorProjectBreakdownRow } from "../../../services/vendor-payments";
+import { formatCurrency as inr } from "../../../lib/utils";
+import EmptyTableRow from "../../ui/EmptyTableRow";
 
-const inr = (v: string | number) => `₹${Number(v).toLocaleString("en-IN")}`;
 
 export default function VendorProjectsTab({ vendorId }: { vendorId: string }) {
   const navigate = useNavigate();
@@ -36,7 +37,7 @@ export default function VendorProjectsTab({ vendorId }: { vendorId: string }) {
         </thead>
         <tbody>
           {rows.length === 0 ? (
-            <tr><td colSpan={6} className="py-10 text-center text-slate-500">No bills raised against this vendor for any project yet.</td></tr>
+            <EmptyTableRow colSpan={6}>No bills raised against this vendor for any project yet.</EmptyTableRow>
           ) : (
             rows.map((r, i) => (
               <tr

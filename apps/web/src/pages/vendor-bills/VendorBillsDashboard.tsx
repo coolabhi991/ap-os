@@ -7,6 +7,7 @@ import VendorBillTable from "../../components/vendor-bills/VendorBillTable";
 
 import { getVendorBillDashboard, deleteVendorBill } from "../../services/vendor-bills";
 import type { VendorBillDashboardSummary } from "../../services/vendor-bills";
+import LoadingState from "../../components/ui/LoadingState";
 
 export default function VendorBillsDashboard() {
   const navigate = useNavigate();
@@ -44,9 +45,7 @@ export default function VendorBillsDashboard() {
         </div>
 
         {loading && (
-          <div className="rounded-xl border border-slate-200 bg-white py-16 text-center text-slate-500 shadow-sm">
-            Loading vendor bills dashboard...
-          </div>
+          <LoadingState label="Loading vendor bills dashboard..." />
         )}
 
         {error && !loading && (

@@ -81,6 +81,53 @@ export async function getSiteWallet(siteId: string): Promise<SiteWallet> {
   return response.data.data;
 }
 
+export interface SiteBillReceivedRow {
+  id: string;
+  raNumber: string;
+  billDate: string;
+  billAmount: string;
+  receivedAmount: string;
+  pendingAmount: string;
+  status: string;
+  bankAccounts: string[];
+}
+
+export async function getSiteBillReceivedReport(siteId: string): Promise<SiteBillReceivedRow[]> {
+  const response = await api.get<{ success: boolean; data: SiteBillReceivedRow[] }>("/site-control-center/bill-received", { params: { siteId } });
+  return response.data.data;
+}
+
+export interface SiteVendorBillRow {
+  id: string;
+  billNumber: string;
+  billDate: string;
+  vendor: string;
+  totalAmount: string;
+  paidAmount: string;
+  outstandingBalance: string;
+  status: string;
+}
+
+export async function getSiteVendorBillsReport(siteId: string): Promise<SiteVendorBillRow[]> {
+  const response = await api.get<{ success: boolean; data: SiteVendorBillRow[] }>("/site-control-center/vendor-bills", { params: { siteId } });
+  return response.data.data;
+}
+
+export interface SiteMoneyFlowRow {
+  id: string;
+  date: string;
+  allocationType: string;
+  direction: "IN" | "OUT";
+  amount: string;
+  bankAccount: string;
+  reference: string;
+}
+
+export async function getSiteMoneyFlow(siteId: string): Promise<SiteMoneyFlowRow[]> {
+  const response = await api.get<{ success: boolean; data: SiteMoneyFlowRow[] }>("/site-control-center/money-flow", { params: { siteId } });
+  return response.data.data;
+}
+
 export async function getSiteRecapLive(siteId: string): Promise<SiteRecapLive> {
   const response = await api.get<{ success: boolean; data: SiteRecapLive }>("/site-control-center/recap/live", { params: { siteId } });
   return response.data.data;
