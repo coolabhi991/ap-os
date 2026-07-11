@@ -1,4 +1,5 @@
 import { Request, Response } from "express";
+import { AuthRequest } from "../middleware/auth.middleware.js";
 import {
   createUser,
   getUsers,
@@ -24,9 +25,9 @@ export const create = async (req: Request, res: Response) => {
   }
 };
 
-export const list = async (_req: Request, res: Response) => {
+export const list = async (req: AuthRequest, res: Response) => {
   try {
-    const users = await getUsers();
+    const users = await getUsers(req.user!.companyId);
 
     res.status(200).json({
       success: true,

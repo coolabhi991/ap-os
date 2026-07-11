@@ -75,8 +75,9 @@ export async function createUser(data: CreateUserInput) {
   };
 }
 
-export async function getUsers() {
+export async function getUsers(companyId: string) {
   const users = await prisma.user.findMany({
+    where: { companyId },
     select: {
       id: true,
       name: true,

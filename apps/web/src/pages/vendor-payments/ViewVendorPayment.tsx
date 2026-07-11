@@ -75,6 +75,7 @@ export default function ViewVendorPayment() {
               <Row label="Payment Date" value={new Date(payment.paymentDate).toLocaleString()} />
               <Row label="Mode" value={payment.mode ? (PAYMENT_MODE_LABELS[payment.mode] ?? payment.mode) : ""} />
               <Row label="Reference / UTR / Cheque No." value={payment.referenceNumber} />
+              {payment.paidToOtherParty && <Row label="Paid To (Third Party)" value={`${payment.paidToName}${payment.paidToReason ? ` — ${payment.paidToReason}` : ""}`} />}
               <Row label="Status" value={payment.status} />
               <Row label="Remarks" value={payment.remarks} />
               {payment.attachmentFileName && (

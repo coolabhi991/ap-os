@@ -14,15 +14,15 @@ const notFoundMessage = "Sub Work not found";
 export const getSubWorksHandler = async (req: AuthRequest, res: Response) => {
   try {
     const companyId = req.user!.companyId;
-    const projectId = req.query.projectId as string;
-    if (!projectId) {
-      res.status(400).json({ success: false, message: "projectId query param is required" });
+    const { projectId, siteId } = req.query;
+    if (!projectId && !siteId) {
+      res.status(400).json({ success: false, message: "siteId (or projectId) query param is required" });
       return;
     }
-    const data = await listSubWorks(companyId, projectId);
+    const data = await listSubWorks(companyId, { projectId: projectId as string, siteId: siteId as string });
     res.status(200).json({ success: true, data });
   } catch (error) {
-    const is404 = error instanceof Error && error.message === "Project not found";
+    const is404 = error instanceof Error && (error.message === "Project not found" || error.message === "Site not found");
     res.status(is404 ? 404 : 500).json({ success: false, message: error instanceof Error ? error.message : "Failed to load sub works" });
   }
 };
@@ -76,8 +76,8 @@ export const deleteSubWorkHandler = async (req: AuthRequest, res: Response) => {
 export const reorderSubWorksHandler = async (req: AuthRequest, res: Response) => {
   try {
     const companyId = req.user!.companyId;
-    const { projectId, order } = req.body as { projectId: string; order: { id: string; sortOrder: number }[] };
-    const data = await reorderSubWorks(companyId, projectId, order ?? []);
+    const { siteId, order } = req.body as { siteId: string; order: { id: string; sortOrder: number }[] };
+    const data = await reorderSubWorks(companyId, siteId, order ?? []);
     res.status(200).json({ success: true, data });
   } catch (error) {
     res.status(400).json({ success: false, message: error instanceof Error ? error.message : "Failed to reorder sub works" });

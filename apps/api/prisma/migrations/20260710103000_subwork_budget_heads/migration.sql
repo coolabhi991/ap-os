@@ -1,0 +1,10 @@
+-- AlterTable
+ALTER TABLE "public"."SubWork" DROP COLUMN "budgetAmount",
+ADD COLUMN     "budgetFuel" DECIMAL(14,2) NOT NULL DEFAULT 0,
+ADD COLUMN     "budgetLabour" DECIMAL(14,2) NOT NULL DEFAULT 0,
+ADD COLUMN     "budgetMachinery" DECIMAL(14,2) NOT NULL DEFAULT 0,
+ADD COLUMN     "budgetMaterial" DECIMAL(14,2) NOT NULL DEFAULT 0,
+ADD COLUMN     "budgetOther" DECIMAL(14,2) NOT NULL DEFAULT 0,
+ADD COLUMN     "budgetSiteExpenses" DECIMAL(14,2) NOT NULL DEFAULT 0,
+ADD COLUMN     "budgetVendorBills" DECIMAL(14,2) NOT NULL DEFAULT 0;
+

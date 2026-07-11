@@ -5,6 +5,7 @@ export interface Expense {
   companyId: string;
   projectId: string;
   project: { id: string; name: string } | null;
+  siteId: string;
   categoryId: string;
   category: { id: string; name: string } | null;
   vendorId: string;
@@ -33,6 +34,7 @@ export interface Expense {
 
 export interface ExpenseFormData {
   projectId: string;
+  siteId: string;
   categoryId: string;
   vendorId: string;
   subWorkId: string;
@@ -52,6 +54,7 @@ export interface ExpenseFormData {
 export interface ExpenseListQuery {
   search?: string;
   projectId?: string;
+  siteId?: string;
   vendorId?: string;
   categoryId?: string;
   paymentMode?: string;

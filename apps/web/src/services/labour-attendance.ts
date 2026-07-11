@@ -5,6 +5,7 @@ export interface LabourAttendance {
   companyId: string;
   projectId: string;
   project: { id: string; name: string } | null;
+  siteId: string;
   labourId: string;
   labour: { id: string; name: string; category: string; contractorId: string | null; groupId: string | null } | null;
   subWorkId: string;
@@ -32,11 +33,13 @@ export interface AttendanceEntryInput {
 
 export interface MarkAttendanceInput extends AttendanceEntryInput {
   projectId: string;
+  siteId: string;
   attendanceDate: string;
 }
 
 export interface BulkMarkAttendanceInput {
   projectId: string;
+  siteId: string;
   subWorkId?: string;
   attendanceDate: string;
   entries: AttendanceEntryInput[];
@@ -51,6 +54,7 @@ export interface AttendanceUpdateInput {
 export interface LabourAttendanceListQuery {
   search?: string;
   projectId?: string;
+  siteId?: string;
   labourId?: string;
   groupId?: string;
   status?: string;

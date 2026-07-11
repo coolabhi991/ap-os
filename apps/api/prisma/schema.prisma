@@ -30,6 +30,42 @@ enum SubWorkStatus {
   CANCELLED
 }
 
+enum SiteType {
+  OWN_SITE
+  PARTNERSHIP_SITE
+  AGENCY_SITE
+}
+
+enum SiteVisitStatus {
+  PLANNED
+  COMPLETED
+  CANCELLED
+}
+
+enum Shift {
+  DAY
+  NIGHT
+}
+
+enum VisitorType {
+  EXECUTIVE_ENGINEER
+  DEPUTY_ENGINEER
+  ASSISTANT_ENGINEER
+  JUNIOR_ENGINEER
+  CONSULTANT
+  CLIENT
+  OTHER
+}
+
+enum SiteProblemType {
+  RAIN
+  LABOUR_SHORTAGE
+  MATERIAL_SHORTAGE
+  MACHINERY_BREAKDOWN
+  DRAWING_PENDING
+  OTHER
+}
+
 enum ProcurementStatus {
   DRAFT
   PENDING_APPROVAL
@@ -63,12 +99,28 @@ enum DocumentType {
   PHOTO
   REPORT
   OTHER
+  PROGRESS_PHOTO
+  SITE_PHOTO
+  SCANNED_MB
+  ABSTRACT_SHEET
+  TEST_REPORT
+  GOVERNMENT_LETTER
+  WORK_ORDER
+  AGREEMENT
+  BOQ
+  TECHNICAL_SANCTION
+  ADMINISTRATIVE_APPROVAL
 }
 
+/**
+ * SUPERVISOR and OPERATOR were added for DPR's Labour Summary breakdown — see DailyProgressReport.
+ */
 enum LabourCategory {
   SKILLED
   SEMI_SKILLED
   UNSKILLED
+  SUPERVISOR
+  OPERATOR
 }
 
 enum AttendanceStatus {
@@ -86,12 +138,18 @@ enum EquipmentStatus {
   DECOMMISSIONED
 }
 
+/**
+ * DRAFT/SUBMITTED are manually set by the engineer. PASSED is a manual certification action
+ * (must be SUBMITTED first). PARTLY_PAID/FULLY_PAID are never set directly — they're derived
+ * automatically from amountReceived vs netPayable the moment a payment is recorded against a
+ * PASSED bill (see deriveRunningBillStatus in running-bill.service.ts).
+ */
 enum BillStatus {
   DRAFT
   SUBMITTED
-  APPROVED
-  PAID
-  CANCELLED
+  PASSED
+  PARTLY_PAID
+  FULLY_PAID
 }
 
 enum BillType {
@@ -100,11 +158,20 @@ enum BillType {
   ADVANCE_BILL
 }
 
-enum MeasurementStatus {
+enum DeductionType {
+  SECURITY_DEPOSIT
+  GST
+  LABOUR_CESS
+  ROYALTY
+  TDS
+  MOBILIZATION_RECOVERY
+  OTHER
+}
+
+enum MeasurementBookStatus {
   DRAFT
-  VERIFIED
+  SUBMITTED
   APPROVED
-  REVISED
 }
 
 enum InventoryStatus {
@@ -128,6 +195,28 @@ enum VendorBillStatus {
   CANCELLED
 }
 
+enum BankAccountType {
+  BANK
+  CASH
+}
+
+/**
+ * UNMATCHED: no linked payment record. MATCHED: linked and the amounts agree exactly.
+ * PARTIALLY_MATCHED: linked (by account+date+reference proximity) but the amounts differ
+ * (bank charges, rounding, a split receipt, ...) — flagged for manual review, never silently
+ * treated as fully reconciled.
+ */
+enum ReconciliationStatus {
+  UNMATCHED
+  PARTIALLY_MATCHED
+  MATCHED
+}
+
+enum BankTransactionSource {
+  MANUAL
+  IMPORTED
+}
+
 model Company {
   id        String   @id @default(cuid())
   name      String
@@ -144,42 +233,57 @@ model Company {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  users                User[]
-  roles                Role[]
-  clients              Client[]
-  projectTypes         ProjectType[]
-  projects             Project[]
-  vendors              Vendor[]
-  purchaseRequisitions PurchaseRequisition[]
-  purchaseOrders       PurchaseOrder[]
-  materialReceipts     MaterialReceipt[]
-  inventoryEntries     Inventory[]
-  materialIssues       MaterialIssue[]
-  stockLedgerEntries   StockLedgerEntry[]
-  labours              Labour[]
-  equipments           Equipment[]
-  runningBills         RunningBill[]
-  measurementBooks     MeasurementBook[]
-  expenses             Expense[]
-  payments             Payment[]
-  documents            Document[]
-  vendorBills          VendorBill[]
-  vendorBankAccounts   VendorBankAccount[]
-  bankAccounts         CompanyBankAccount[]
-  vendorPayments       VendorPayment[]
-  expenseCategories    ExpenseCategory[]
-  labourGroups         LabourGroup[]
-  labourWageRates      LabourWageRate[]
-  labourAttendances    LabourAttendance[]
-  labourAdvances       LabourAdvance[]
-  labourPayments       LabourPayment[]
-  subWorks             SubWork[]
+  users                 User[]
+  roles                 Role[]
+  clients               Client[]
+  projectTypes          ProjectType[]
+  projects              Project[]
+  vendors               Vendor[]
+  purchaseRequisitions  PurchaseRequisition[]
+  purchaseOrders        PurchaseOrder[]
+  materialReceipts      MaterialReceipt[]
+  inventoryEntries      Inventory[]
+  materialIssues        MaterialIssue[]
+  stockLedgerEntries    StockLedgerEntry[]
+  labours               Labour[]
+  equipments            Equipment[]
+  runningBills          RunningBill[]
+  measurementBooks      MeasurementBook[]
+  expenses              Expense[]
+  payments              Payment[]
+  documents             Document[]
+  vendorBills           VendorBill[]
+  vendorBankAccounts    VendorBankAccount[]
+  bankAccounts          CompanyBankAccount[]
+  vendorPayments        VendorPayment[]
+  expenseCategories     ExpenseCategory[]
+  labourGroups          LabourGroup[]
+  labourWageRates       LabourWageRate[]
+  labourAttendances     LabourAttendance[]
+  labourAdvances        LabourAdvance[]
+  labourPayments        LabourPayment[]
+  subWorks              SubWork[]
+  dailyProgressReports  DailyProgressReport[]
+  dprVisitors           DPRVisitor[]
+  dprSiteProblems       DPRSiteProblem[]
+  dprEmailLogs          DPREmailLog[]
+  measurementBookItems  MeasurementBookItem[]
+  mbEmailLogs           MBEmailLog[]
+  runningBillItems      RunningBillItem[]
+  runningBillDeductions RunningBillDeduction[]
+  runningBillPayments   RunningBillPayment[]
+  runningBillEmailLogs  RunningBillEmailLog[]
+  bankTransactions      BankTransaction[]
+  projectContractInfos  ProjectContractInfo[]
+  sites                 Site[]
+  siteRecapRevisions    SiteRecapRevision[]
+  siteVisits            SiteVisit[]
 }
 
 model CompanyBankAccount {
-  id              String   @id @default(cuid())
+  id              String          @id @default(cuid())
   companyId       String
-  company         Company  @relation(fields: [companyId], references: [id])
+  company         Company         @relation(fields: [companyId], references: [id])
   nickname        String?
   beneficiaryName String?
   bankName        String
@@ -187,15 +291,24 @@ model CompanyBankAccount {
   ifscCode        String
   branch          String?
   upiId           String?
-  isPrimary       Boolean  @default(false)
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  // BANK is a real bank account; CASH represents "Cash in Hand". accountType is orthogonal to
+  // isPrimary/isActive ("Account Status") which already existed. Current Balance is never
+  // stored — it's always openingBalance + sum(BankTransaction.deposit) - sum(withdrawal),
+  // computed on demand in bank-transaction.service.ts, mirroring the "never store a derivable
+  // total" convention used by SubWork's budget/actual-cost fields.
+  accountType     BankAccountType @default(BANK)
+  openingBalance  Decimal         @default(0) @db.Decimal(14, 2)
+  isPrimary       Boolean         @default(false)
+  isActive        Boolean         @default(true)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
 
-  vendorPayments VendorPayment[]
-  expenses       Expense[]
-  labourAdvances LabourAdvance[]
-  labourPayments LabourPayment[]
+  vendorPayments      VendorPayment[]
+  expenses            Expense[]
+  labourAdvances      LabourAdvance[]
+  labourPayments      LabourPayment[]
+  runningBillPayments RunningBillPayment[]
+  bankTransactions    BankTransaction[]
 
   @@index([companyId])
 }
@@ -225,12 +338,24 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  createdExpenses          Expense[]
-  createdMaterialIssues    MaterialIssue[]
-  createdLabours           Labour[]
-  createdLabourAttendances LabourAttendance[]
-  createdLabourAdvances    LabourAdvance[]
-  createdLabourPayments    LabourPayment[]
+  createdExpenses            Expense[]
+  createdMaterialIssues      MaterialIssue[]
+  createdLabours             Labour[]
+  createdLabourAttendances   LabourAttendance[]
+  createdLabourAdvances      LabourAdvance[]
+  createdLabourPayments      LabourPayment[]
+  dprsAsEngineer             DailyProgressReport[] @relation("DPREngineer")
+  dprsCreated                DailyProgressReport[] @relation("DPRCreatedBy")
+  dprEmailsSent              DPREmailLog[]         @relation("DPREmailSentBy")
+  mbsAsEngineer              MeasurementBook[]     @relation("MBEngineer")
+  mbsCreated                 MeasurementBook[]     @relation("MBCreatedBy")
+  mbEmailsSent               MBEmailLog[]          @relation("MBEmailSentBy")
+  runningBillsCreated        RunningBill[]         @relation("RunningBillCreatedBy")
+  runningBillPaymentsCreated RunningBillPayment[]  @relation("RunningBillPaymentCreatedBy")
+  runningBillEmailsSent      RunningBillEmailLog[] @relation("RunningBillEmailSentBy")
+  bankTransactionsCreated    BankTransaction[]     @relation("BankTransactionCreatedBy")
+  siteRecapRevisionsCreated  SiteRecapRevision[]
+  siteVisitsCreated          SiteVisit[]
 }
 
 model Client {
@@ -314,6 +439,152 @@ model Project {
   labourAdvances       LabourAdvance[]
   labourPayments       LabourPayment[]
   subWorks             SubWork[]
+  dailyProgressReports DailyProgressReport[]
+  runningBillPayments  RunningBillPayment[]
+  bankTransactions     BankTransaction[]
+  contractInfo         ProjectContractInfo?
+  sites                Site[]
+}
+
+/**
+ * Site — the operational unit inside a Project (Project → Sites → Site Workspace).
+ * A Project can have multiple physical work sites (e.g. separate work orders/villages
+ * under one client contract); every day-to-day operational record (Sub Work, DPR,
+ * Measurement Book, Running Bill, Expense, Labour Attendance) is scoped to a Site, not
+ * directly to the Project. Contract/statutory figures below are entered once per Site
+ * (mirrors ProjectContractInfo's role at the Project level, but these are the values the
+ * Site Workspace Overview tab actually displays and edits).
+ */
+model Site {
+  id                   String        @id @default(cuid())
+  companyId            String
+  company              Company       @relation(fields: [companyId], references: [id])
+  projectId            String
+  project              Project       @relation(fields: [projectId], references: [id])
+  name                 String
+  village              String?
+  taluka               String?
+  district             String?
+  engineer             String?
+  siteType             SiteType      @default(OWN_SITE)
+  status               ProjectStatus @default(PLANNING)
+  contractValue        Decimal       @default(0) @db.Decimal(14, 2)
+  emdValue             Decimal       @default(0) @db.Decimal(14, 2)
+  securityDeposit      Decimal       @default(0) @db.Decimal(14, 2)
+  performanceGuarantee Decimal       @default(0) @db.Decimal(14, 2)
+  workOrderDate        DateTime?
+  completionDate       DateTime?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+
+  subWorks             SubWork[]
+  dailyProgressReports DailyProgressReport[]
+  measurementBooks     MeasurementBook[]
+  runningBills         RunningBill[]
+  expenses             Expense[]
+  labourAttendances    LabourAttendance[]
+  documents            Document[]
+  recapRevisions       SiteRecapRevision[]
+  siteVisits           SiteVisit[]
+
+  @@index([companyId])
+  @@index([projectId])
+  @@index([status])
+}
+
+/**
+ * Recapitulation Sheet snapshots for a Site — unlimited revisions, exactly one marked
+ * Current at a time. A new revision is always INSERTed, never UPDATEd over a prior one
+ * (createSiteRecapRevision wraps the insert + "flip previous current off" in a
+ * transaction). `snapshot` freezes the full recap payload (budget/actual/variance per
+ * cost head, per Sub Work) as it existed at save time, so historical revisions stay
+ * accurate even as later transactions change the live numbers.
+ */
+model SiteRecapRevision {
+  id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id])
+  siteId      String
+  site        Site     @relation(fields: [siteId], references: [id])
+  revisionNo  Int
+  isCurrent   Boolean  @default(true)
+  label       String?
+  notes       String?
+  snapshot    Json
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@unique([siteId, revisionNo])
+  @@index([companyId])
+  @@index([siteId])
+  @@index([isCurrent])
+}
+
+/**
+ * Site Visit Register — one row per planned/completed visit. Planned/Completed/Pending
+ * counts on the Site Visits tab are always derived by counting `status`, never stored
+ * separately (same "never duplicate a derived total" rule used everywhere else).
+ */
+model SiteVisit {
+  id          String          @id @default(cuid())
+  companyId   String
+  company     Company         @relation(fields: [companyId], references: [id])
+  siteId      String
+  site        Site            @relation(fields: [siteId], references: [id])
+  visitDate   DateTime        @default(now())
+  visitedBy   String?
+  purpose     String?
+  remarks     String?
+  photos      Json?
+  status      SiteVisitStatus @default(PLANNED)
+  createdById String
+  createdBy   User            @relation(fields: [createdById], references: [id])
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([companyId])
+  @@index([siteId])
+  @@index([status])
+  @@index([visitDate])
+}
+
+/**
+ * The master contract record for a Project — Work Order / Agreement / Tender references,
+ * the government department hierarchy, and the statutory percentages (Security Deposit,
+ * Performance Guarantee, GST). Deliberately a separate 1:1 table rather than more columns on
+ * Project: these fields are specific to the new "Contract Information" tab and mostly apply
+ * only to government/PWD-style contracts, so keeping them off the base Project row matches the
+ * existing convention of isolating tab-specific data (e.g. SubWork's budget fields). Contract
+ * Value itself is NOT duplicated here — it stays solely on Project.contractValue and is
+ * read/written through it, per the "one source of truth" rule used everywhere else in this app.
+ */
+model ProjectContractInfo {
+  id                          String    @id @default(cuid())
+  companyId                   String
+  company                     Company   @relation(fields: [companyId], references: [id])
+  projectId                   String    @unique
+  project                     Project   @relation(fields: [projectId], references: [id])
+  workOrderNumber             String?
+  workOrderDate               DateTime?
+  agreementNumber             String?
+  agreementDate               DateTime?
+  tenderNumber                String?
+  department                  String?
+  division                    String?
+  subDivision                 String?
+  clientEngineer              String?
+  estimateAmount              Decimal?  @db.Decimal(14, 2)
+  workStartDate               DateTime?
+  completionDate              DateTime?
+  defectLiabilityPeriod       String?
+  securityDepositPercent      Decimal?  @db.Decimal(5, 2)
+  performanceGuaranteePercent Decimal?  @db.Decimal(5, 2)
+  gstPercent                  Decimal?  @db.Decimal(5, 2)
+  createdAt                   DateTime  @default(now())
+  updatedAt                   DateTime  @updatedAt
+
+  @@index([companyId])
 }
 
 /**
@@ -325,34 +596,191 @@ model Project {
  * duplicate ledger of financial data.
  */
 model SubWork {
-  id           String        @id @default(cuid())
-  companyId    String
-  company      Company       @relation(fields: [companyId], references: [id])
-  projectId    String
-  project      Project       @relation(fields: [projectId], references: [id])
-  name              String
-  budgetAmount      Decimal       @default(0) @db.Decimal(14, 2)
-  startDate         DateTime?
-  endDate           DateTime?
-  status            SubWorkStatus @default(PLANNED)
-  remarks           String?
-  sortOrder         Int           @default(0)
+  id                 String        @id @default(cuid())
+  companyId          String
+  company            Company       @relation(fields: [companyId], references: [id])
+  projectId          String
+  project            Project       @relation(fields: [projectId], references: [id])
+  siteId             String
+  site               Site          @relation(fields: [siteId], references: [id])
+  name               String
+  startDate          DateTime?
+  endDate            DateTime?
+  status             SubWorkStatus @default(PLANNED)
+  remarks            String?
+  sortOrder          Int           @default(0)
+  // Planned budget, broken down by cost head — entered by the engineer/PM. The total budget
+  // is NEVER stored; it is always computed on demand as the sum of these 7 fields, in both
+  // sub-work.service.ts (SubWork DTO) and project-control-center.service.ts. Mirrors the
+  // existing rule that Actual Cost is never stored either — both totals are always derived.
+  budgetMaterial     Decimal       @default(0) @db.Decimal(14, 2)
+  budgetLabour       Decimal       @default(0) @db.Decimal(14, 2)
+  budgetMachinery    Decimal       @default(0) @db.Decimal(14, 2)
+  budgetFuel         Decimal       @default(0) @db.Decimal(14, 2)
+  budgetSiteExpenses Decimal       @default(0) @db.Decimal(14, 2)
+  budgetVendorBills  Decimal       @default(0) @db.Decimal(14, 2)
+  budgetOther        Decimal       @default(0) @db.Decimal(14, 2)
   // Physical Progress is entered manually by the engineer — it is NEVER derived from cost.
   // Financial Progress (Actual Cost / Budget) is always computed on demand in
   // project-control-center.service.ts and intentionally not stored here.
-  physicalProgress  Int           @default(0)
-  progressUpdatedAt DateTime?
-  createdAt         DateTime      @default(now())
-  updatedAt         DateTime      @updatedAt
+  physicalProgress   Int           @default(0)
+  progressUpdatedAt  DateTime?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
 
-  materialIssues    MaterialIssue[]
-  expenses          Expense[]
-  vendorBills       VendorBill[]
-  labourAttendances LabourAttendance[]
+  materialIssues       MaterialIssue[]
+  expenses             Expense[]
+  vendorBills          VendorBill[]
+  labourAttendances    LabourAttendance[]
+  dailyProgressReports DailyProgressReport[]
+  measurementBooks     MeasurementBook[]
+  runningBills         RunningBill[]
 
   @@index([companyId])
   @@index([projectId])
+  @@index([siteId])
   @@index([status])
+}
+
+/**
+ * Daily Progress Report — the official daily site diary. Deliberately stores almost nothing
+ * that already lives elsewhere: Labour/Machinery/Material figures are pulled live from
+ * LabourAttendance/Expense/MaterialReceipt/MaterialIssue at read time (see dpr.service.ts).
+ * The 4 labour-count fields and manualMachineryEntries below are the ONLY sanctioned
+ * exceptions — they hold an editable snapshot (auto-filled from live data, then optionally
+ * hand-adjusted by the engineer), never a second source of truth.
+ */
+model DailyProgressReport {
+  id           String   @id @default(cuid())
+  companyId    String
+  company      Company  @relation(fields: [companyId], references: [id])
+  projectId    String
+  project      Project  @relation(fields: [projectId], references: [id])
+  siteId       String
+  siteRecord   Site     @relation(fields: [siteId], references: [id])
+  subWorkId    String?
+  subWork      SubWork? @relation(fields: [subWorkId], references: [id])
+  dprNumber    String   @unique
+  reportDate   DateTime @default(now())
+  site         String?
+  engineerId   String?
+  engineer     User?    @relation("DPREngineer", fields: [engineerId], references: [id])
+  contractorId String?
+  contractor   Vendor?  @relation(fields: [contractorId], references: [id])
+  weather      String?
+  shift        Shift    @default(DAY)
+  remarks      String?
+
+  // Work Progress
+  workDone               String?
+  plannedWork            String?
+  physicalProgressUpdate Int?
+  delayReason            String?
+  instructions           String?
+
+  // Labour Summary — auto-filled from LabourAttendance at creation time, editable thereafter.
+  // Total Labour is intentionally never stored — always the sum of these 4, computed in dpr.service.ts.
+  labourSkilled          Int     @default(0)
+  labourUnskilled        Int     @default(0)
+  labourSupervisor       Int     @default(0)
+  labourOperator         Int     @default(0)
+  labourManuallyAdjusted Boolean @default(false)
+
+  // Machinery Summary is normally pulled live from Expense (category "Machinery") for this
+  // date/project — these manual entries exist only for machines used but not yet logged as
+  // a Site Expense, so the DPR isn't blocked waiting on bookkeeping.
+  manualMachineryEntries Json?
+
+  isDeleted   Boolean   @default(false)
+  deletedAt   DateTime?
+  createdById String
+  createdBy   User      @relation("DPRCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  visitors     DPRVisitor[]
+  siteProblems DPRSiteProblem[]
+  documents    Document[]
+  emailLogs    DPREmailLog[]
+
+  @@unique([companyId, projectId, reportDate, shift])
+  @@index([companyId])
+  @@index([projectId])
+  @@index([siteId])
+  @@index([subWorkId])
+  @@index([reportDate])
+  @@index([isDeleted])
+}
+
+model DPRVisitor {
+  id          String              @id @default(cuid())
+  companyId   String
+  company     Company             @relation(fields: [companyId], references: [id])
+  dprId       String
+  dpr         DailyProgressReport @relation(fields: [dprId], references: [id])
+  visitorType VisitorType
+  name        String?
+  remarks     String?
+  createdAt   DateTime            @default(now())
+
+  @@index([companyId])
+  @@index([dprId])
+}
+
+model DPRSiteProblem {
+  id          String              @id @default(cuid())
+  companyId   String
+  company     Company             @relation(fields: [companyId], references: [id])
+  dprId       String
+  dpr         DailyProgressReport @relation(fields: [dprId], references: [id])
+  problemType SiteProblemType
+  description String?
+  createdAt   DateTime            @default(now())
+
+  @@index([companyId])
+  @@index([dprId])
+}
+
+/**
+ * Audit log of DPR emails sent — recipients/attachments actually delivered, for traceability.
+ */
+model DPREmailLog {
+  id            String              @id @default(cuid())
+  companyId     String
+  company       Company             @relation(fields: [companyId], references: [id])
+  dprId         String
+  dpr           DailyProgressReport @relation(fields: [dprId], references: [id])
+  recipients    Json
+  includedExcel Boolean             @default(false)
+  sentById      String
+  sentBy        User                @relation("DPREmailSentBy", fields: [sentById], references: [id])
+  sentAt        DateTime            @default(now())
+  status        String              @default("SENT")
+  errorMessage  String?
+
+  @@index([companyId])
+  @@index([dprId])
+}
+
+/**
+ * Audit log of Measurement Book emails sent — recipients/attachments actually delivered, for traceability.
+ */
+model MBEmailLog {
+  id                String          @id @default(cuid())
+  companyId         String
+  company           Company         @relation(fields: [companyId], references: [id])
+  measurementBookId String
+  measurementBook   MeasurementBook @relation(fields: [measurementBookId], references: [id])
+  recipients        Json
+  includedExcel     Boolean         @default(false)
+  sentById          String
+  sentBy            User            @relation("MBEmailSentBy", fields: [sentById], references: [id])
+  sentAt            DateTime        @default(now())
+  status            String          @default("SENT")
+  errorMessage      String?
+
+  @@index([companyId])
+  @@index([measurementBookId])
 }
 
 model Vendor {
@@ -387,6 +815,8 @@ model Vendor {
   bankAccounts         VendorBankAccount[]
   vendorPayments       VendorPayment[]
   contractedLabour     Labour[]
+  dprsAsContractor     DailyProgressReport[]
+  mbsAsContractor      MeasurementBook[]
 
   @@index([companyId])
   @@index([status])
@@ -736,6 +1166,8 @@ model LabourAttendance {
   company              Company          @relation(fields: [companyId], references: [id])
   projectId            String
   project              Project          @relation(fields: [projectId], references: [id])
+  siteId               String
+  site                 Site             @relation(fields: [siteId], references: [id])
   labourId             String
   labour               Labour           @relation(fields: [labourId], references: [id])
   subWorkId            String?
@@ -757,6 +1189,7 @@ model LabourAttendance {
   @@unique([labourId, attendanceDate])
   @@index([companyId])
   @@index([projectId])
+  @@index([siteId])
   @@index([labourId])
   @@index([subWorkId])
   @@index([attendanceDate])
@@ -855,82 +1288,262 @@ model Equipment {
   @@index([status])
 }
 
+/**
+ * Measurement Book (MB) — deliberately NOT a full engineering measurement book. Government
+ * engineers maintain the official detailed MB on paper/their own system; AP OS only tracks
+ * the official MB Number, the Abstract Sheet (BOQ rows with auto-calculated quantity/amount),
+ * and attachments. Quantity/Effective Rate/Amount on each MeasurementBookItem are the ONLY
+ * numbers a future Running Bill module may read — it must never recompute them itself.
+ */
 model MeasurementBook {
-  id               String            @id @default(cuid())
-  companyId        String
-  company          Company           @relation(fields: [companyId], references: [id])
-  projectId        String?
-  project          Project?          @relation(fields: [projectId], references: [id])
-  mbNumber         String            @unique
-  mbDate           DateTime?
-  pageNumber       String?
-  boqItem          String?
-  itemDescription  String?
-  unit             String?
-  previousQuantity Decimal           @default(0) @db.Decimal(12, 4)
-  currentQuantity  Decimal           @default(0) @db.Decimal(12, 4)
-  totalQuantity    Decimal           @default(0) @db.Decimal(12, 4)
-  boqRate          Decimal           @default(0) @db.Decimal(14, 2)
-  extraItemRate    Decimal           @default(0) @db.Decimal(14, 2)
-  previousAmount   Decimal           @default(0) @db.Decimal(14, 2)
-  currentAmount    Decimal           @default(0) @db.Decimal(14, 2)
-  totalAmount      Decimal           @default(0) @db.Decimal(14, 2)
-  measuredBy       String?
-  checkedBy        String?
-  verifiedBy       String?
-  approvedBy       String?
-  status           MeasurementStatus @default(DRAFT)
-  remarks          String?
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
+  id           String                @id @default(cuid())
+  companyId    String
+  company      Company               @relation(fields: [companyId], references: [id])
+  projectId    String
+  project      Project               @relation(fields: [projectId], references: [id])
+  siteId       String
+  siteRecord   Site                  @relation(fields: [siteId], references: [id])
+  subWorkId    String?
+  subWork      SubWork?              @relation(fields: [subWorkId], references: [id])
+  // Manually entered by the engineer (the government-issued official MB number) — unique per
+  // company, not globally, since different departments run their own independent numbering.
+  mbNumber     String
+  mbDate       DateTime              @default(now())
+  site         String?
+  engineerId   String?
+  engineer     User?                 @relation("MBEngineer", fields: [engineerId], references: [id])
+  contractorId String?
+  contractor   Vendor?               @relation(fields: [contractorId], references: [id])
+  status       MeasurementBookStatus @default(DRAFT)
+  remarks      String?
 
-  runningBills RunningBill[]
+  createdById String
+  createdBy   User     @relation("MBCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
+  items       MeasurementBookItem[]
+  documents   Document[]
+  // One Approved MB can be linked to at most one Running Bill — enforced by the @unique
+  // on RunningBill.measurementBookId, not here (the "many" side of a Prisma 1:1 relation
+  // always declares the field as optional-singular, the unique constraint lives on the FK).
+  runningBill RunningBill?
+  emailLogs   MBEmailLog[]
+
+  @@unique([companyId, mbNumber])
   @@index([companyId])
   @@index([projectId])
+  @@index([siteId])
+  @@index([subWorkId])
   @@index([status])
 }
 
-model RunningBill {
-  id                      String           @id @default(cuid())
-  companyId               String
-  company                 Company          @relation(fields: [companyId], references: [id])
-  projectId               String?
-  project                 Project?         @relation(fields: [projectId], references: [id])
-  measurementBookId       String?
-  measurementBook         MeasurementBook? @relation(fields: [measurementBookId], references: [id])
-  billType                BillType         @default(RA_BILL)
-  billNumber              String           @unique
-  billPeriodFrom          DateTime?
-  billPeriodTo            DateTime?
-  grossAmount             Decimal          @default(0) @db.Decimal(14, 2)
-  previousCertifiedAmount Decimal          @default(0) @db.Decimal(14, 2)
-  currentCertifiedAmount  Decimal          @default(0) @db.Decimal(14, 2)
-  totalCertifiedAmount    Decimal          @default(0) @db.Decimal(14, 2)
-  securityDeposit         Decimal          @default(0) @db.Decimal(14, 2)
-  royaltyRecovery         Decimal          @default(0) @db.Decimal(14, 2)
-  mobilizationRecovery    Decimal          @default(0) @db.Decimal(14, 2)
-  otherRecovery           Decimal          @default(0) @db.Decimal(14, 2)
-  gstAmount               Decimal          @default(0) @db.Decimal(14, 2)
-  netPayable              Decimal          @default(0) @db.Decimal(14, 2)
-  amountReceived          Decimal          @default(0) @db.Decimal(14, 2)
-  outstandingAmount       Decimal          @default(0) @db.Decimal(14, 2)
-  submissionDate          DateTime?
-  approvalDate            DateTime?
-  paymentDate             DateTime?
-  submittedBy             String?
-  checkedBy               String?
-  approvedBy              String?
-  status                  BillStatus       @default(DRAFT)
-  remarks                 String?
-  createdAt               DateTime         @default(now())
-  updatedAt               DateTime         @updatedAt
+/**
+ * One Abstract Sheet row (unlimited per MB). Quantity/Effective Rate/Amount are always
+ * server-recomputed from Length/Breadth/Height, BOQ Rate, and Payment % — the engineer
+ * never enters them directly, and the client's calculated values are never trusted.
+ */
+model MeasurementBookItem {
+  id                String          @id @default(cuid())
+  companyId         String
+  company           Company         @relation(fields: [companyId], references: [id])
+  measurementBookId String
+  measurementBook   MeasurementBook @relation(fields: [measurementBookId], references: [id])
+  sortOrder         Int             @default(0)
+  boqItemNo         String
+  boqDescription    String
+  unit              String
+  length            Decimal?        @db.Decimal(12, 4)
+  breadth           Decimal?        @db.Decimal(12, 4)
+  height            Decimal?        @db.Decimal(12, 4)
+  quantity          Decimal         @default(0) @db.Decimal(14, 4)
+  boqRate           Decimal         @default(0) @db.Decimal(14, 2)
+  paymentPercent    Decimal         @default(100) @db.Decimal(5, 2)
+  effectiveRate     Decimal         @default(0) @db.Decimal(14, 2)
+  amount            Decimal         @default(0) @db.Decimal(14, 2)
+  remarks           String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
 
   @@index([companyId])
-  @@index([projectId])
   @@index([measurementBookId])
+}
+
+/**
+ * Running Bill — the client-billing module. Deliberately NOT a separate "Client Billing"
+ * module: every Running Bill is generated from exactly one APPROVED Measurement Book
+ * (measurementBookId is @unique, enforcing "one Approved MB -> at most one Running Bill"
+ * at the DB level). Quantities/rates/payment% are never re-entered here — they're copied
+ * from the MB's items into RunningBillItem at creation time (see running-bill.service.ts),
+ * mirroring the existing rule that computed/sourced figures are snapshotted once, not
+ * re-derived from a moving source on every read.
+ */
+model RunningBill {
+  id                      String          @id @default(cuid())
+  companyId               String
+  company                 Company         @relation(fields: [companyId], references: [id])
+  projectId               String
+  project                 Project         @relation(fields: [projectId], references: [id])
+  siteId                  String
+  siteRecord              Site            @relation(fields: [siteId], references: [id])
+  subWorkId               String?
+  subWork                 SubWork?        @relation(fields: [subWorkId], references: [id])
+  measurementBookId       String          @unique
+  measurementBook         MeasurementBook @relation(fields: [measurementBookId], references: [id])
+  billNumber              String
+  billType                BillType        @default(RA_BILL)
+  site                    String?
+  billPeriodFrom          DateTime?
+  billPeriodTo            DateTime?
+  billDate                DateTime        @default(now())
+  // Cumulative-to-date certified value of the work, before deductions. current = total - previous
+  // (this bill's own net-new certified value); total/previous are the running cumulative figures
+  // across every Running Bill raised so far for this project (see computeItemCalc in the service).
+  previousCertifiedAmount Decimal         @default(0) @db.Decimal(14, 2)
+  currentCertifiedAmount  Decimal         @default(0) @db.Decimal(14, 2)
+  totalCertifiedAmount    Decimal         @default(0) @db.Decimal(14, 2)
+  totalDeductions         Decimal         @default(0) @db.Decimal(14, 2)
+  netPayable              Decimal         @default(0) @db.Decimal(14, 2)
+  amountReceived          Decimal         @default(0) @db.Decimal(14, 2)
+  outstandingAmount       Decimal         @default(0) @db.Decimal(14, 2)
+  status                  BillStatus      @default(DRAFT)
+  submittedAt             DateTime?
+  passedAt                DateTime?
+  remarks                 String?
+
+  createdById String
+  createdBy   User     @relation("RunningBillCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  items      RunningBillItem[]
+  deductions RunningBillDeduction[]
+  payments   RunningBillPayment[]
+  documents  Document[]
+  emailLogs  RunningBillEmailLog[]
+
+  @@unique([companyId, billNumber])
+  @@index([companyId])
+  @@index([projectId])
+  @@index([siteId])
+  @@index([subWorkId])
   @@index([status])
   @@index([billType])
+}
+
+/**
+ * One Abstract row per BOQ item, copied from the linked Measurement Book's items at creation
+ * time. previousQuantity is the cumulative quantity already certified for this boqItemNo across
+ * every earlier Running Bill on the same project (computed server-side, never client-supplied) —
+ * see computeItemCalc/previous-quantity lookup in running-bill.service.ts.
+ */
+model RunningBillItem {
+  id               String      @id @default(cuid())
+  companyId        String
+  company          Company     @relation(fields: [companyId], references: [id])
+  runningBillId    String
+  runningBill      RunningBill @relation(fields: [runningBillId], references: [id])
+  sortOrder        Int         @default(0)
+  boqItemNo        String
+  boqDescription   String
+  unit             String
+  previousQuantity Decimal     @default(0) @db.Decimal(14, 4)
+  currentQuantity  Decimal     @default(0) @db.Decimal(14, 4)
+  totalQuantity    Decimal     @default(0) @db.Decimal(14, 4)
+  boqRate          Decimal     @default(0) @db.Decimal(14, 2)
+  paymentPercent   Decimal     @default(100) @db.Decimal(5, 2)
+  effectiveRate    Decimal     @default(0) @db.Decimal(14, 2)
+  previousAmount   Decimal     @default(0) @db.Decimal(14, 2)
+  currentAmount    Decimal     @default(0) @db.Decimal(14, 2)
+  totalAmount      Decimal     @default(0) @db.Decimal(14, 2)
+  remarks          String?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  @@index([companyId])
+  @@index([runningBillId])
+  @@index([boqItemNo])
+}
+
+/**
+ * Named (Security Deposit/GST/Labour Cess/Royalty/TDS/Mobilization Recovery) or custom (OTHER + label) deduction row — unlimited per bill.
+ */
+model RunningBillDeduction {
+  id            String        @id @default(cuid())
+  companyId     String
+  company       Company       @relation(fields: [companyId], references: [id])
+  runningBillId String
+  runningBill   RunningBill   @relation(fields: [runningBillId], references: [id])
+  type          DeductionType @default(OTHER)
+  label         String
+  amount        Decimal       @default(0) @db.Decimal(14, 2)
+  remarks       String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([companyId])
+  @@index([runningBillId])
+}
+
+/**
+ * Payment Received against a Running Bill — a dedicated ledger (mirrors VendorPayment for
+ * Vendor Bills) rather than the generic Payment table, so the client-receipts ledger stays
+ * self-contained. Multiple payments per bill are expected; RunningBill.amountReceived/
+ * outstandingAmount/status are updated transactionally whenever one is recorded (see
+ * recordRunningBillPayment in running-bill.service.ts) — this is the Bank Reconciliation
+ * hook: companyBankAccountId records which company account the money landed in.
+ */
+model RunningBillPayment {
+  id                   String              @id @default(cuid())
+  companyId            String
+  company              Company             @relation(fields: [companyId], references: [id])
+  runningBillId        String
+  runningBill          RunningBill         @relation(fields: [runningBillId], references: [id])
+  projectId            String
+  project              Project             @relation(fields: [projectId], references: [id])
+  companyBankAccountId String?
+  companyBankAccount   CompanyBankAccount? @relation(fields: [companyBankAccountId], references: [id])
+  paymentNumber        String              @unique
+  paymentDate          DateTime            @default(now())
+  amount               Decimal             @db.Decimal(14, 2)
+  mode                 String?
+  referenceNumber      String?
+  remarks              String?
+
+  createdById String
+  createdBy   User     @relation("RunningBillPaymentCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Reverse side of BankTransaction.runningBillPaymentId — set once Bank Reconciliation
+  // links this receipt to an actual bank statement line. Never populated by this module.
+  bankTransaction BankTransaction?
+
+  @@index([companyId])
+  @@index([runningBillId])
+  @@index([projectId])
+  @@index([companyBankAccountId])
+}
+
+/**
+ * Audit log of Running Bill emails sent — mirrors MBEmailLog/DPREmailLog.
+ */
+model RunningBillEmailLog {
+  id            String      @id @default(cuid())
+  companyId     String
+  company       Company     @relation(fields: [companyId], references: [id])
+  runningBillId String
+  runningBill   RunningBill @relation(fields: [runningBillId], references: [id])
+  recipients    Json
+  includedExcel Boolean     @default(false)
+  sentById      String
+  sentBy        User        @relation("RunningBillEmailSentBy", fields: [sentById], references: [id])
+  sentAt        DateTime    @default(now())
+  status        String      @default("SENT")
+  errorMessage  String?
+
+  @@index([companyId])
+  @@index([runningBillId])
 }
 
 /**
@@ -945,6 +1558,8 @@ model Expense {
   company              Company             @relation(fields: [companyId], references: [id])
   projectId            String
   project              Project             @relation(fields: [projectId], references: [id])
+  siteId               String
+  site                 Site                @relation(fields: [siteId], references: [id])
   categoryId           String
   category             ExpenseCategory     @relation(fields: [categoryId], references: [id])
   vendorId             String?
@@ -979,6 +1594,7 @@ model Expense {
   @@index([companyId])
   @@index([machineType])
   @@index([projectId])
+  @@index([siteId])
   @@index([categoryId])
   @@index([vendorId])
   @@index([subWorkId])
@@ -1090,9 +1706,20 @@ model VendorPayment {
   attachmentFileName   String?
   attachmentFileUrl    String?
   remarks              String?
+  // The vendor's outstanding balance is reduced exactly the same way regardless of these three
+  // fields — they are display/audit metadata only, never an input to the payment math. Set when
+  // the money was physically handed to someone other than the vendor itself (e.g. a site
+  // supervisor collecting cash on the vendor's behalf); paidToName is who actually received it.
+  paidToOtherParty     Boolean             @default(false)
+  paidToName           String?
+  paidToReason         String?
   status               PaymentStatus       @default(PAID)
   createdAt            DateTime            @default(now())
   updatedAt            DateTime            @updatedAt
+
+  // Reverse side of BankTransaction.vendorPaymentId — set once Bank Reconciliation links
+  // this payment to an actual bank statement withdrawal. Never populated by this module.
+  bankTransaction BankTransaction?
 
   @@index([companyId])
   @@index([vendorId])
@@ -1102,12 +1729,61 @@ model VendorPayment {
   @@index([status])
 }
 
+/**
+ * Banking & Reconciliation — the bank/cash statement ledger. This is deliberately NOT where
+ * money-movement amounts live for Running Bill receipts or Vendor payments; those stay solely
+ * on RunningBillPayment/VendorPayment (never duplicated here). A BankTransaction represents an
+ * actual bank statement line (entered manually or imported from Excel/CSV) and is reconciled
+ * against the matching RunningBillPayment (deposit) or VendorPayment (withdrawal) via the two
+ * optional @unique links below — see autoReconcile in bank-transaction.service.ts. Current
+ * Balance for the owning CompanyBankAccount is always openingBalance + sum(deposit) -
+ * sum(withdrawal) over these rows, computed on demand, never stored.
+ */
+model BankTransaction {
+  id                   String                @id @default(cuid())
+  companyId            String
+  company              Company               @relation(fields: [companyId], references: [id])
+  companyBankAccountId String
+  companyBankAccount   CompanyBankAccount    @relation(fields: [companyBankAccountId], references: [id])
+  transactionDate      DateTime
+  deposit              Decimal               @default(0) @db.Decimal(14, 2)
+  withdrawal           Decimal               @default(0) @db.Decimal(14, 2)
+  referenceNumber      String?
+  description          String?
+  category             String?
+  projectId            String?
+  project              Project?              @relation(fields: [projectId], references: [id])
+  runningBillPaymentId String?               @unique
+  runningBillPayment   RunningBillPayment?   @relation(fields: [runningBillPaymentId], references: [id])
+  vendorPaymentId      String?               @unique
+  vendorPayment        VendorPayment?        @relation(fields: [vendorPaymentId], references: [id])
+  reconciliationStatus ReconciliationStatus  @default(UNMATCHED)
+  source               BankTransactionSource @default(MANUAL)
+  // Groups the rows created by one Excel/CSV import call, purely for audit/undo — no separate
+  // ImportBatch model, matching the "no abstraction beyond what's needed" convention.
+  importBatchId        String?
+
+  createdById String
+  createdBy   User     @relation("BankTransactionCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([companyBankAccountId])
+  @@index([transactionDate])
+  @@index([reconciliationStatus])
+  @@index([projectId])
+  @@index([importBatchId])
+}
+
 model Document {
   id                    String               @id @default(cuid())
   companyId             String
   company               Company              @relation(fields: [companyId], references: [id])
   projectId             String?
   project               Project?             @relation(fields: [projectId], references: [id])
+  siteId                String?
+  site                  Site?                @relation(fields: [siteId], references: [id])
   clientId              String?
   client                Client?              @relation(fields: [clientId], references: [id])
   vendorId              String?
@@ -1118,6 +1794,12 @@ model Document {
   purchaseRequisition   PurchaseRequisition? @relation(fields: [purchaseRequisitionId], references: [id])
   materialReceiptId     String?
   materialReceipt       MaterialReceipt?     @relation(fields: [materialReceiptId], references: [id])
+  dprId                 String?
+  dpr                   DailyProgressReport? @relation(fields: [dprId], references: [id])
+  measurementBookId     String?
+  measurementBook       MeasurementBook?     @relation(fields: [measurementBookId], references: [id])
+  runningBillId         String?
+  runningBill           RunningBill?         @relation(fields: [runningBillId], references: [id])
   documentType          DocumentType         @default(OTHER)
   documentNumber        String               @unique
   fileName              String?
@@ -1126,4 +1808,11 @@ model Document {
   uploadedAt            DateTime             @default(now())
   createdAt             DateTime             @default(now())
   updatedAt             DateTime             @updatedAt
+
+  @@index([companyId])
+  @@index([projectId])
+  @@index([siteId])
+  @@index([dprId])
+  @@index([measurementBookId])
+  @@index([runningBillId])
 }

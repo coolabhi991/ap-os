@@ -1,9 +1,11 @@
-import { Request, Response } from "express";
-import { getDashboard } from "../services/dashboard.service.js";
+import { Response } from "express";
+import { AuthRequest } from "../middleware/auth.middleware.js";
+import { getControlCenter } from "../services/dashboard.service.js";
 
-export const dashboard = async (_req: Request, res: Response) => {
+export const dashboard = async (req: AuthRequest, res: Response) => {
   try {
-    const data = await getDashboard();
+    const companyId = req.user!.companyId;
+    const data = await getControlCenter(companyId);
 
     res.status(200).json({
       success: true,
@@ -13,7 +15,7 @@ export const dashboard = async (_req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message:
-        error instanceof Error ? error.message : "Failed to load dashboard",
+        error instanceof Error ? error.message : "Failed to load the control center",
     });
   }
 };

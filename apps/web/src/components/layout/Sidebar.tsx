@@ -4,11 +4,7 @@ import {
   Users,
   Building2,
   HardHat,
-  ShoppingCart,
-  ClipboardList,
   Truck,
-  Boxes,
-  PackageMinus,
   Wallet,
   Banknote,
   HandCoins,
@@ -18,6 +14,9 @@ import {
   Settings,
   Sparkles,
   ChevronRight,
+  NotebookPen,
+  Ruler,
+  ArrowLeftRight,
 } from "lucide-react";
 
 import { NavLink } from "react-router-dom";
@@ -27,6 +26,11 @@ const menus = [
     name: "Dashboard",
     path: "/dashboard",
     icon: LayoutDashboard,
+  },
+  {
+    name: "AP AI",
+    path: "/ai",
+    icon: Sparkles,
   },
   {
     name: "Projects",
@@ -49,29 +53,9 @@ const menus = [
     icon: HardHat,
   },
   {
-    name: "Requisitions",
-    path: "/purchase-requisitions",
-    icon: ShoppingCart,
-  },
-  {
-    name: "Purchase Orders",
-    path: "/purchase-orders",
-    icon: ClipboardList,
-  },
-  {
     name: "Material Receipts",
     path: "/material-receipts",
     icon: Truck,
-  },
-  {
-    name: "Inventory",
-    path: "/inventory",
-    icon: Boxes,
-  },
-  {
-    name: "Material Issues",
-    path: "/material-issues",
-    icon: PackageMinus,
   },
   {
     name: "Vendor Bills",
@@ -89,8 +73,18 @@ const menus = [
     icon: HandCoins,
   },
   {
-    name: "Billing",
-    path: "#",
+    name: "Daily Progress Reports",
+    path: "/dpr",
+    icon: NotebookPen,
+  },
+  {
+    name: "Measurement Books",
+    path: "/measurement-books",
+    icon: Ruler,
+  },
+  {
+    name: "Running Bills",
+    path: "/running-bills",
     icon: Receipt,
   },
   {
@@ -99,8 +93,13 @@ const menus = [
     icon: Landmark,
   },
   {
+    name: "Banking",
+    path: "/banking",
+    icon: ArrowLeftRight,
+  },
+  {
     name: "Reports",
-    path: "#",
+    path: "/reports",
     icon: BarChart3,
   },
   {

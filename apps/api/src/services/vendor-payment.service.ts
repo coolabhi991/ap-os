@@ -25,6 +25,9 @@ export interface RecordVendorPaymentInput {
   attachmentFileName?: string;
   attachmentFileUrl?: string;
   remarks?: string;
+  paidToOtherParty?: boolean;
+  paidToName?: string;
+  paidToReason?: string;
 }
 
 export interface VendorPaymentListQuery {
@@ -80,6 +83,9 @@ function toDTO(p: PaymentRow) {
     attachmentFileName: p.attachmentFileName ?? "",
     attachmentFileUrl: p.attachmentFileUrl ?? "",
     remarks: p.remarks ?? "",
+    paidToOtherParty: p.paidToOtherParty,
+    paidToName: p.paidToName ?? "",
+    paidToReason: p.paidToReason ?? "",
     status: p.status,
     createdAt: p.createdAt.toISOString(),
     updatedAt: p.updatedAt.toISOString(),
@@ -100,6 +106,9 @@ export async function recordVendorPayment(companyId: string, input: RecordVendor
     attachmentFileName: input.attachmentFileName,
     attachmentFileUrl: input.attachmentFileUrl,
     remarks: input.remarks,
+    paidToOtherParty: input.paidToOtherParty,
+    paidToName: input.paidToName,
+    paidToReason: input.paidToReason,
   });
 
   const payment = await prisma.vendorPayment.findFirst({
@@ -188,6 +197,8 @@ export async function getVendorLedger(companyId: string, vendorId: string, query
         paymentNumber: true,
         paymentDate: true,
         amount: true,
+        paidToOtherParty: true,
+        paidToName: true,
         vendorBill: { select: { billNumber: true } },
       },
       orderBy: { paymentDate: "asc" },
@@ -207,7 +218,9 @@ export async function getVendorLedger(companyId: string, vendorId: string, query
     ...payments.map((p) => ({
       date: p.paymentDate.toISOString(),
       type: "PAYMENT" as const,
-      reference: `${p.paymentNumber} (${p.vendorBill.billNumber})`,
+      // Banking must still show the actual beneficiary — never silently attribute a
+      // third-party payment to the vendor as if they received it directly.
+      reference: `${p.paymentNumber} (${p.vendorBill.billNumber})${p.paidToOtherParty ? ` — paid to ${p.paidToName}` : ""}`,
       debit: 0,
       credit: Number(p.amount),
     })),
@@ -236,6 +249,51 @@ export async function getVendorLedger(companyId: string, vendorId: string, query
     outstandingBalance: (totalBilled - totalPaid).toString(),
     entries: ledgerEntries,
   };
+}
+
+/**
+ * Vendor Ledger's "Projects" tab — one row per project this vendor has billed against.
+ * Work Done = sum(billAmount) (the vendor's invoiced base value of work/goods delivered);
+ * Bill Amount = sum(totalAmount) (the final invoiced amount including GST). Both are read
+ * straight off VendorBill's already-stored, already-computed fields — nothing is recalculated.
+ */
+export async function getVendorProjectBreakdown(companyId: string, vendorId: string) {
+  const vendor = await prisma.vendor.findFirst({ where: { id: vendorId, companyId } });
+  if (!vendor) throw new Error("Vendor not found");
+
+  const bills = await prisma.vendorBill.findMany({
+    where: { companyId, vendorId, status: { not: "CANCELLED" } },
+    select: {
+      billAmount: true,
+      totalAmount: true,
+      paidAmount: true,
+      outstandingBalance: true,
+      project: { select: { id: true, name: true } },
+    },
+  });
+
+  const byProject = new Map<string, { project: { id: string; name: string } | null; workDone: number; billAmount: number; paidAmount: number; outstanding: number; billCount: number }>();
+  for (const b of bills) {
+    const key = b.project?.id ?? "unassigned";
+    const bucket = byProject.get(key) ?? { project: b.project, workDone: 0, billAmount: 0, paidAmount: 0, outstanding: 0, billCount: 0 };
+    bucket.workDone += Number(b.billAmount);
+    bucket.billAmount += Number(b.totalAmount);
+    bucket.paidAmount += Number(b.paidAmount);
+    bucket.outstanding += Number(b.outstandingBalance);
+    bucket.billCount += 1;
+    byProject.set(key, bucket);
+  }
+
+  return Array.from(byProject.values())
+    .sort((a, b) => b.billAmount - a.billAmount)
+    .map((b) => ({
+      project: b.project,
+      workDone: b.workDone.toFixed(2),
+      billAmount: b.billAmount.toFixed(2),
+      paidAmount: b.paidAmount.toFixed(2),
+      outstanding: b.outstanding.toFixed(2),
+      billCount: b.billCount,
+    }));
 }
 
 export async function getVendorPaymentDashboard(companyId: string) {

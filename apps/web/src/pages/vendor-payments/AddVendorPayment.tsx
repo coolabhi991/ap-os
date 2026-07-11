@@ -32,6 +32,9 @@ export default function AddVendorPayment() {
   const [referenceNumber, setReferenceNumber] = useState("");
   const [attachmentFileName, setAttachmentFileName] = useState("");
   const [attachmentFileUrl, setAttachmentFileUrl] = useState("");
+  const [paidToOtherParty, setPaidToOtherParty] = useState(false);
+  const [paidToName, setPaidToName] = useState("");
+  const [paidToReason, setPaidToReason] = useState("");
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -92,6 +95,10 @@ export default function AddVendorPayment() {
       setError("Select the vendor bank account receiving this payment.");
       return;
     }
+    if (paidToOtherParty && !paidToName.trim()) {
+      setError("Enter who the payment was actually paid to.");
+      return;
+    }
     try {
       setSaving(true);
       setError(null);
@@ -106,6 +113,9 @@ export default function AddVendorPayment() {
         attachmentFileName: attachmentFileName || undefined,
         attachmentFileUrl: attachmentFileUrl || undefined,
         remarks: remarks || undefined,
+        paidToOtherParty,
+        paidToName: paidToOtherParty ? paidToName : undefined,
+        paidToReason: paidToOtherParty ? paidToReason || undefined : undefined,
       });
       navigate("/vendor-payments");
     } catch (err) {
@@ -230,6 +240,39 @@ export default function AddVendorPayment() {
                   {selectedBill && !loadingVendorAccounts && vendorAccounts.length === 0 && (
                     <p className="mt-1 text-sm text-amber-600">This vendor has no bank accounts on file. Add one from the vendor's detail page.</p>
                   )}
+                </div>
+              </>
+            )}
+
+            <div className="md:col-span-2">
+              <label className="flex items-center gap-2 font-medium">
+                <input type="checkbox" checked={paidToOtherParty} onChange={(e) => setPaidToOtherParty(e.target.checked)} />
+                Paid to another person
+              </label>
+            </div>
+
+            {paidToOtherParty && (
+              <>
+                <div>
+                  <label className="mb-2 block font-medium">Paid To *</label>
+                  <input
+                    type="text"
+                    value={paidToName}
+                    onChange={(e) => setPaidToName(e.target.value)}
+                    placeholder="Name of the actual recipient"
+                    required
+                    className="w-full rounded-lg border p-3"
+                  />
+                </div>
+                <div>
+                  <label className="mb-2 block font-medium">Reason</label>
+                  <input
+                    type="text"
+                    value={paidToReason}
+                    onChange={(e) => setPaidToReason(e.target.value)}
+                    placeholder="e.g. collected on vendor's behalf"
+                    className="w-full rounded-lg border p-3"
+                  />
                 </div>
               </>
             )}

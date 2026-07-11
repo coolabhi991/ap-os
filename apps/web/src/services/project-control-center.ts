@@ -34,6 +34,8 @@ export interface ProjectOverview {
   pendingPayments: { amount: string };
   materialStock: { totalItems: number; lowStockItems: number };
   labourToday: { count: number };
+  budgetHeads: CostHeads;
+  costHeads: CostHeads;
 }
 
 export type VarianceStatus = "ahead" | "on-track" | "behind";
@@ -63,6 +65,7 @@ export interface SubWorkRecap extends ProgressComparison {
   budget: string;
   actual: string;
   difference: string;
+  budgetHeads: CostHeads;
   costHeads: CostHeads;
 }
 
@@ -105,6 +108,8 @@ export interface BudgetVsActual extends ProgressComparison {
   budget: string;
   actual: string;
   difference: string;
+  budgetHeads: CostHeads;
+  costHeads: CostHeads;
 }
 
 export interface CostBySubWorkRow extends ProgressComparison {
@@ -114,6 +119,8 @@ export interface CostBySubWorkRow extends ProgressComparison {
   budget: string;
   actual: string;
   difference: string;
+  budgetHeads: CostHeads;
+  costHeads: CostHeads;
 }
 
 export interface MonthlyCostRow {

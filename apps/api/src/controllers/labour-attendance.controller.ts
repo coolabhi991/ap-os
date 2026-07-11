@@ -13,10 +13,11 @@ import {
 const notFoundMessage = "Attendance record not found";
 
 function parseListQuery(req: AuthRequest) {
-  const { search, projectId, labourId, groupId, status, fromDate, toDate, page, limit, sortBy, sortOrder } = req.query;
+  const { search, projectId, siteId, labourId, groupId, status, fromDate, toDate, page, limit, sortBy, sortOrder } = req.query;
   return {
     search: search as string,
     projectId: projectId as string,
+    siteId: siteId as string,
     labourId: labourId as string,
     groupId: groupId as string,
     status: status as string,

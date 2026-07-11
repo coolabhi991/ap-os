@@ -38,7 +38,8 @@ export default function PaymentHistoryTable({ payments = [] }: Props) {
                 <td className="px-6 py-4 text-xs text-slate-500">
                   {p.companyBankAccount && <div>From: {p.companyBankAccount.nickname || p.companyBankAccount.bankName}</div>}
                   {p.vendorBankAccount && <div>To: {p.vendorBankAccount.nickname || p.vendorBankAccount.bankName}</div>}
-                  {!p.companyBankAccount && !p.vendorBankAccount && "—"}
+                  {p.paidToOtherParty && <div className="font-medium text-amber-600">Paid to: {p.paidToName}</div>}
+                  {!p.companyBankAccount && !p.vendorBankAccount && !p.paidToOtherParty && "—"}
                 </td>
                 <td className="px-6 py-4 text-slate-500">{p.remarks || "—"}</td>
               </tr>

@@ -10,6 +10,8 @@ import {
 import type { CompanyBankAccount } from "../../services/company-bank-accounts";
 import { getSubWorks } from "../../services/sub-works";
 import type { SubWork } from "../../services/sub-works";
+import { getSites } from "../../services/sites";
+import type { Site } from "../../services/sites";
 
 interface Option {
   id: string;
@@ -37,6 +39,7 @@ export default function ExpenseForm({
 }: Props) {
   const [form, setForm] = useState<ExpenseFormData>({
     projectId: initialData?.projectId ?? "",
+    siteId: initialData?.siteId ?? "",
     categoryId: initialData?.categoryId ?? "",
     vendorId: initialData?.vendorId ?? "",
     subWorkId: initialData?.subWorkId ?? "",
@@ -74,6 +77,22 @@ export default function ExpenseForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.projectId]);
 
+  const [sites, setSites] = useState<Site[]>([]);
+  useEffect(() => {
+    if (!form.projectId) {
+      setSites([]);
+      return;
+    }
+    getSites(form.projectId)
+      .then((result) => {
+        setSites(result);
+        // Auto-select when the project has exactly one Site — the common case.
+        if (result.length === 1) set("siteId", result[0].id);
+      })
+      .catch(() => setSites([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.projectId]);
+
   // Total Amount is always auto-calculated from Hours × Rate Per Hour for Machinery expenses.
   useEffect(() => {
     if (isMachinery) {
@@ -85,6 +104,7 @@ export default function ExpenseForm({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.projectId) return setError("Select a project.");
+    if (!form.siteId) return setError("Select a site.");
     if (!form.categoryId) return setError("Select a category.");
     if (!form.paymentMode) return setError("Select a payment mode.");
     if (isCompanyBank && !form.companyBankAccountId) return setError("Select the company bank account this expense was paid from.");
@@ -111,12 +131,26 @@ export default function ExpenseForm({
             <label className="mb-2 block font-medium">Project *</label>
             <select
               value={form.projectId}
-              onChange={(e) => setForm((f) => ({ ...f, projectId: e.target.value, subWorkId: "" }))}
+              onChange={(e) => setForm((f) => ({ ...f, projectId: e.target.value, siteId: "", subWorkId: "" }))}
               required
               className="w-full rounded-lg border p-3"
             >
               <option value="">Select Project</option>
               {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-2 block font-medium">Site *</label>
+            <select
+              value={form.siteId}
+              onChange={(e) => set("siteId", e.target.value)}
+              disabled={!form.projectId}
+              required
+              className="w-full rounded-lg border p-3 disabled:bg-slate-50"
+            >
+              <option value="">Select Site</option>
+              {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
 

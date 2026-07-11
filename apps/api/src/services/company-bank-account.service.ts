@@ -1,4 +1,7 @@
 import prisma from "../config/prisma.js";
+import { BankAccountType } from "@prisma/client";
+
+export const ACCOUNT_TYPES = ["BANK", "CASH"];
 
 export interface CompanyBankAccountFormInput {
   nickname?: string;
@@ -8,8 +11,14 @@ export interface CompanyBankAccountFormInput {
   ifscCode: string;
   branch?: string;
   upiId?: string;
+  accountType?: string;
+  openingBalance?: number;
   isPrimary?: boolean;
   isActive?: boolean;
+}
+
+function parseAccountType(t: string | undefined): BankAccountType {
+  return t && ACCOUNT_TYPES.includes(t.toUpperCase()) ? (t.toUpperCase() as BankAccountType) : "BANK";
 }
 
 function toDTO(a: {
@@ -22,6 +31,8 @@ function toDTO(a: {
   ifscCode: string;
   branch: string | null;
   upiId: string | null;
+  accountType: BankAccountType;
+  openingBalance: { toString(): string };
   isPrimary: boolean;
   isActive: boolean;
   createdAt: Date;
@@ -37,6 +48,8 @@ function toDTO(a: {
     ifscCode: a.ifscCode,
     branch: a.branch ?? "",
     upiId: a.upiId ?? "",
+    accountType: a.accountType,
+    openingBalance: a.openingBalance.toString(),
     isPrimary: a.isPrimary,
     isActive: a.isActive,
     createdAt: a.createdAt.toISOString(),
@@ -58,14 +71,27 @@ export async function getCompanyBankAccountById(id: string, companyId: string) {
   return toDTO(account);
 }
 
-function validate(input: CompanyBankAccountFormInput) {
+/** bankName/accountNumber/ifscCode stay NOT NULL columns — a CASH account fills them with fixed placeholder values instead of relaxing the schema. */
+function resolveBankFields(input: CompanyBankAccountFormInput, accountType: BankAccountType) {
+  if (accountType === "CASH") {
+    return { bankName: "Cash", accountNumber: "CASH", ifscCode: "CASH" };
+  }
   if (!input.bankName?.trim()) throw new Error("Bank name is required");
   if (!input.accountNumber?.trim()) throw new Error("Account number is required");
   if (!input.ifscCode?.trim()) throw new Error("IFSC code is required");
+  return { bankName: input.bankName.trim(), accountNumber: input.accountNumber.trim(), ifscCode: input.ifscCode.trim() };
+}
+
+function resolveOpeningBalance(input: CompanyBankAccountFormInput) {
+  const value = input.openingBalance ?? 0;
+  if (!Number.isFinite(value)) throw new Error("Opening balance must be a number");
+  return value;
 }
 
 export async function createCompanyBankAccount(companyId: string, input: CompanyBankAccountFormInput) {
-  validate(input);
+  const accountType = parseAccountType(input.accountType);
+  const bankFields = resolveBankFields(input, accountType);
+  const openingBalance = resolveOpeningBalance(input);
 
   const account = await prisma.$transaction(async (tx) => {
     if (input.isPrimary) {
@@ -77,11 +103,11 @@ export async function createCompanyBankAccount(companyId: string, input: Company
         companyId,
         nickname: input.nickname || null,
         beneficiaryName: input.beneficiaryName || null,
-        bankName: input.bankName.trim(),
-        accountNumber: input.accountNumber.trim(),
-        ifscCode: input.ifscCode.trim(),
+        ...bankFields,
         branch: input.branch || null,
         upiId: input.upiId || null,
+        accountType,
+        openingBalance,
         isPrimary: input.isPrimary ?? false,
         isActive: input.isActive ?? true,
       },
@@ -94,7 +120,9 @@ export async function createCompanyBankAccount(companyId: string, input: Company
 export async function updateCompanyBankAccount(id: string, companyId: string, input: CompanyBankAccountFormInput) {
   const existing = await prisma.companyBankAccount.findFirst({ where: { id, companyId } });
   if (!existing) throw new Error("Company bank account not found");
-  validate(input);
+  const accountType = parseAccountType(input.accountType ?? existing.accountType);
+  const bankFields = resolveBankFields(input, accountType);
+  const openingBalance = resolveOpeningBalance(input);
 
   const account = await prisma.$transaction(async (tx) => {
     if (input.isPrimary) {
@@ -109,11 +137,11 @@ export async function updateCompanyBankAccount(id: string, companyId: string, in
       data: {
         nickname: input.nickname || null,
         beneficiaryName: input.beneficiaryName || null,
-        bankName: input.bankName.trim(),
-        accountNumber: input.accountNumber.trim(),
-        ifscCode: input.ifscCode.trim(),
+        ...bankFields,
         branch: input.branch || null,
         upiId: input.upiId || null,
+        accountType,
+        openingBalance,
         isPrimary: input.isPrimary ?? existing.isPrimary,
         isActive: input.isActive ?? existing.isActive,
       },

@@ -27,6 +27,7 @@ export interface LabourPayment {
 export interface LabourPaymentFormData {
   labourId: string;
   projectId: string;
+  siteId: string;
   amount: number;
   paymentDate: string;
   periodFrom: string;

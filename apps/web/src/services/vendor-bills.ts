@@ -12,6 +12,9 @@ export interface VendorBillPayment {
   companyBankAccount: { id: string; nickname: string | null; bankName: string; accountNumber: string } | null;
   vendorBankAccount: { id: string; nickname: string | null; bankName: string; accountNumber: string } | null;
   remarks: string;
+  paidToOtherParty: boolean;
+  paidToName: string;
+  paidToReason: string;
   status: string;
 }
 
@@ -97,6 +100,9 @@ export interface RecordPaymentInput {
   attachmentFileName?: string;
   attachmentFileUrl?: string;
   remarks?: string;
+  paidToOtherParty?: boolean;
+  paidToName?: string;
+  paidToReason?: string;
 }
 
 export interface VendorBillDashboardSummary {

@@ -10,6 +10,8 @@ import { getLabourGroups } from "../../services/labour-groups";
 import type { LabourGroup } from "../../services/labour-groups";
 import { getSubWorks } from "../../services/sub-works";
 import type { SubWork } from "../../services/sub-works";
+import { getSites } from "../../services/sites";
+import type { Site } from "../../services/sites";
 
 interface RowState {
   labourId: string;
@@ -22,6 +24,8 @@ export default function MarkAttendance() {
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
   const [groups, setGroups] = useState<LabourGroup[]>([]);
   const [projectId, setProjectId] = useState("");
+  const [siteId, setSiteId] = useState("");
+  const [sites, setSites] = useState<Site[]>([]);
   const [subWorkId, setSubWorkId] = useState("");
   const [subWorks, setSubWorks] = useState<SubWork[]>([]);
   const [groupId, setGroupId] = useState("");
@@ -45,6 +49,18 @@ export default function MarkAttendance() {
       return;
     }
     getSubWorks(projectId).then(setSubWorks).catch(() => setSubWorks([]));
+  }, [projectId]);
+
+  useEffect(() => {
+    setSiteId("");
+    if (!projectId) {
+      setSites([]);
+      return;
+    }
+    getSites(projectId).then((result) => {
+      setSites(result);
+      if (result.length === 1) setSiteId(result[0].id);
+    }).catch(() => setSites([]));
   }, [projectId]);
 
   useEffect(() => {
@@ -72,12 +88,16 @@ export default function MarkAttendance() {
       setError("Select a project.");
       return;
     }
+    if (!siteId) {
+      setError("Select a site.");
+      return;
+    }
     try {
       setSaving(true);
       setError(null);
       setResult(null);
       const entries = Object.values(rows).map((r) => ({ labourId: r.labourId, status: r.status, overtimeHours: r.overtimeHours }));
-      const response = await bulkMarkAttendance({ projectId, subWorkId: subWorkId || undefined, attendanceDate, entries });
+      const response = await bulkMarkAttendance({ projectId, siteId, subWorkId: subWorkId || undefined, attendanceDate, entries });
       setResult({ createdCount: response.created.length, skipped: response.skipped });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to mark attendance.");
@@ -107,12 +127,19 @@ export default function MarkAttendance() {
             </div>
           )}
 
-          <div className="grid gap-6 rounded-xl bg-white p-6 shadow-sm md:grid-cols-4">
+          <div className="grid gap-6 rounded-xl bg-white p-6 shadow-sm md:grid-cols-5">
             <div>
               <label className="mb-2 block font-medium">Project *</label>
               <select value={projectId} onChange={(e) => setProjectId(e.target.value)} required className="w-full rounded-lg border p-3">
                 <option value="">Select Project</option>
                 {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="mb-2 block font-medium">Site *</label>
+              <select value={siteId} onChange={(e) => setSiteId(e.target.value)} disabled={!projectId} required className="w-full rounded-lg border p-3 disabled:bg-slate-50">
+                <option value="">Select Site</option>
+                {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
               </select>
             </div>
             <div>

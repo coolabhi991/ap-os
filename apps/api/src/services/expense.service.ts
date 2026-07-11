@@ -22,6 +22,7 @@ const MACHINERY_CATEGORY_NAME = "machinery";
 
 export interface ExpenseFormInput {
   projectId: string;
+  siteId: string;
   categoryId: string;
   vendorId?: string;
   subWorkId?: string;
@@ -41,6 +42,7 @@ export interface ExpenseFormInput {
 export interface ExpenseListQuery {
   search?: string;
   projectId?: string;
+  siteId?: string;
   vendorId?: string;
   categoryId?: string;
   paymentMode?: string;
@@ -95,6 +97,7 @@ function toDTO(e: ExpenseRow) {
     companyId: e.companyId,
     projectId: e.projectId,
     project: e.project,
+    siteId: e.siteId,
     categoryId: e.categoryId,
     category: e.category,
     vendorId: e.vendorId ?? "",
@@ -127,6 +130,10 @@ async function validateAndNormalize(companyId: string, input: ExpenseFormInput) 
   if (!input.projectId?.trim()) throw new Error("Project is required");
   const project = await prisma.project.findFirst({ where: { id: input.projectId, companyId } });
   if (!project) throw new Error("Project not found");
+
+  if (!input.siteId?.trim()) throw new Error("Site is required");
+  const site = await prisma.site.findFirst({ where: { id: input.siteId, companyId, projectId: input.projectId } });
+  if (!site) throw new Error("Site not found");
 
   if (!input.categoryId?.trim()) throw new Error("Category is required");
   const category = await prisma.expenseCategory.findFirst({ where: { id: input.categoryId, companyId } });
@@ -191,6 +198,7 @@ export async function listExpenses(companyId: string, query: ExpenseListQuery) {
   const {
     search = "",
     projectId,
+    siteId,
     vendorId,
     categoryId,
     paymentMode,
@@ -208,6 +216,7 @@ export async function listExpenses(companyId: string, query: ExpenseListQuery) {
     companyId,
     isDeleted: false,
     ...(projectId && { projectId }),
+    ...(siteId && { siteId }),
     ...(vendorId && { vendorId }),
     ...(categoryId && { categoryId }),
     ...(paymentMode && PAYMENT_MODES.includes(paymentMode.toUpperCase()) && { paymentMode: paymentMode.toUpperCase() }),
@@ -256,6 +265,7 @@ export async function createExpense(companyId: string, createdById: string, inpu
     data: {
       companyId,
       projectId: input.projectId,
+      siteId: input.siteId,
       categoryId: input.categoryId,
       vendorId,
       subWorkId,
@@ -290,6 +300,7 @@ export async function updateExpense(id: string, companyId: string, input: Expens
     where: { id },
     data: {
       projectId: input.projectId,
+      siteId: input.siteId,
       categoryId: input.categoryId,
       vendorId,
       subWorkId,

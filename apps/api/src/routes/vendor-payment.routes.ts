@@ -4,6 +4,7 @@ import {
   getVendorPayment,
   createVendorPaymentHandler,
   getVendorLedgerHandler,
+  getVendorProjectBreakdownHandler,
   getVendorPaymentDashboardHandler,
   exportVendorPaymentsHandler,
 } from "../controllers/vendor-payment.controller.js";
@@ -15,6 +16,7 @@ const router = Router();
 router.get("/export", authMiddleware, exportVendorPaymentsHandler);
 router.get("/dashboard", authMiddleware, getVendorPaymentDashboardHandler);
 router.get("/ledger", authMiddleware, getVendorLedgerHandler);
+router.get("/project-breakdown", authMiddleware, getVendorProjectBreakdownHandler);
 
 router.get("/", authMiddleware, getVendorPayments);
 router.get("/:id", authMiddleware, getVendorPayment);

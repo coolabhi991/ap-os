@@ -1,15 +1,16 @@
-import { Request, Response } from "express";
+import { Response } from "express";
+import { AuthRequest } from "../middleware/auth.middleware.js";
 import {
   getCompany,
   updateCompany,
 } from "../services/company.service.js";
 
 export const getCompanyProfile = async (
-  _req: Request,
+  req: AuthRequest,
   res: Response
 ) => {
   try {
-    const company = await getCompany();
+    const company = await getCompany(req.user!.companyId);
 
     res.status(200).json({
       success: true,
@@ -24,11 +25,11 @@ export const getCompanyProfile = async (
 };
 
 export const updateCompanyProfile = async (
-  req: Request,
+  req: AuthRequest,
   res: Response
 ) => {
   try {
-    const company = await updateCompany(req.body);
+    const company = await updateCompany(req.user!.companyId, req.body);
 
     res.status(200).json({
       success: true,

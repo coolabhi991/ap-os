@@ -7,6 +7,8 @@ import {
   createCompanyBankAccount,
   updateCompanyBankAccount,
   deleteCompanyBankAccount,
+  ACCOUNT_TYPE_OPTIONS,
+  ACCOUNT_TYPE_LABELS,
 } from "../../services/company-bank-accounts";
 import type { CompanyBankAccount, CompanyBankAccountFormData } from "../../services/company-bank-accounts";
 
@@ -18,6 +20,8 @@ const emptyForm: CompanyBankAccountFormData = {
   ifscCode: "",
   branch: "",
   upiId: "",
+  accountType: "BANK",
+  openingBalance: 0,
   isPrimary: false,
   isActive: true,
 };
@@ -70,6 +74,8 @@ export default function CompanyBankAccounts() {
       ifscCode: account.ifscCode,
       branch: account.branch,
       upiId: account.upiId,
+      accountType: account.accountType,
+      openingBalance: Number(account.openingBalance),
       isPrimary: account.isPrimary,
       isActive: account.isActive,
     });
@@ -79,7 +85,7 @@ export default function CompanyBankAccounts() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!form.bankName.trim() || !form.accountNumber.trim() || !form.ifscCode.trim()) {
+    if (form.accountType !== "CASH" && (!form.bankName.trim() || !form.accountNumber.trim() || !form.ifscCode.trim())) {
       setFormError("Bank name, account number, and IFSC code are required.");
       return;
     }
@@ -145,6 +151,9 @@ export default function CompanyBankAccounts() {
                   <div>
                     <div className="flex items-center gap-2">
                       <p className="text-lg font-semibold">{a.nickname || a.bankName}</p>
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${a.accountType === "CASH" ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"}`}>
+                        {ACCOUNT_TYPE_LABELS[a.accountType] ?? a.accountType}
+                      </span>
                       {a.isPrimary && (
                         <span className="flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700">
                           <Star size={10} /> Primary
@@ -154,10 +163,15 @@ export default function CompanyBankAccounts() {
                         <span className="rounded-full bg-slate-200 px-2 py-0.5 text-xs font-medium text-slate-500">Inactive</span>
                       )}
                     </div>
-                    <p className="mt-1 text-sm text-slate-500">
-                      {a.beneficiaryName && <>{a.beneficiaryName} • </>}
-                      {a.bankName} • {maskAccountNumber(a.accountNumber)} • {a.ifscCode}
-                    </p>
+                    {a.accountType === "CASH" ? (
+                      <p className="mt-1 text-sm text-slate-500">{a.beneficiaryName || "Cash in Hand"}</p>
+                    ) : (
+                      <p className="mt-1 text-sm text-slate-500">
+                        {a.beneficiaryName && <>{a.beneficiaryName} • </>}
+                        {a.bankName} • {maskAccountNumber(a.accountNumber)} • {a.ifscCode}
+                      </p>
+                    )}
+                    <p className="mt-1 text-xs text-slate-400">Opening Balance: ₹{Number(a.openingBalance).toLocaleString("en-IN")}</p>
                     {(a.branch || a.upiId) && (
                       <p className="mt-1 text-xs text-slate-400">
                         {a.branch && <>Branch: {a.branch} </>}
@@ -180,6 +194,16 @@ export default function CompanyBankAccounts() {
             {formError && <div className="rounded-xl border border-red-200 bg-red-50 px-6 py-4 text-red-700">{formError}</div>}
             <div className="grid gap-6 md:grid-cols-2">
               <div>
+                <label className="mb-2 block font-medium">Account Type *</label>
+                <select value={form.accountType} onChange={(e) => setForm({ ...form, accountType: e.target.value })} className="w-full rounded-lg border p-3">
+                  {ACCOUNT_TYPE_OPTIONS.map((t) => <option key={t} value={t}>{ACCOUNT_TYPE_LABELS[t]}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="mb-2 block font-medium">Opening Balance *</label>
+                <input type="number" step="0.01" value={form.openingBalance} onChange={(e) => setForm({ ...form, openingBalance: Number(e.target.value) || 0 })} className="w-full rounded-lg border p-3" />
+              </div>
+              <div>
                 <label className="mb-2 block font-medium">Nickname</label>
                 <input value={form.nickname} onChange={(e) => setForm({ ...form, nickname: e.target.value })} placeholder="e.g. HDFC Current A/C" className="w-full rounded-lg border p-3" />
               </div>
@@ -187,26 +211,30 @@ export default function CompanyBankAccounts() {
                 <label className="mb-2 block font-medium">Beneficiary Name</label>
                 <input value={form.beneficiaryName} onChange={(e) => setForm({ ...form, beneficiaryName: e.target.value })} className="w-full rounded-lg border p-3" />
               </div>
-              <div>
-                <label className="mb-2 block font-medium">Bank Name *</label>
-                <input value={form.bankName} onChange={(e) => setForm({ ...form, bankName: e.target.value })} required className="w-full rounded-lg border p-3" />
-              </div>
-              <div>
-                <label className="mb-2 block font-medium">Account Number *</label>
-                <input value={form.accountNumber} onChange={(e) => setForm({ ...form, accountNumber: e.target.value })} required className="w-full rounded-lg border p-3" />
-              </div>
-              <div>
-                <label className="mb-2 block font-medium">IFSC Code *</label>
-                <input value={form.ifscCode} onChange={(e) => setForm({ ...form, ifscCode: e.target.value })} required className="w-full rounded-lg border p-3" />
-              </div>
-              <div>
-                <label className="mb-2 block font-medium">Branch</label>
-                <input value={form.branch} onChange={(e) => setForm({ ...form, branch: e.target.value })} className="w-full rounded-lg border p-3" />
-              </div>
-              <div>
-                <label className="mb-2 block font-medium">UPI ID</label>
-                <input value={form.upiId} onChange={(e) => setForm({ ...form, upiId: e.target.value })} placeholder="company@upi" className="w-full rounded-lg border p-3" />
-              </div>
+              {form.accountType !== "CASH" && (
+                <>
+                  <div>
+                    <label className="mb-2 block font-medium">Bank Name *</label>
+                    <input value={form.bankName} onChange={(e) => setForm({ ...form, bankName: e.target.value })} required className="w-full rounded-lg border p-3" />
+                  </div>
+                  <div>
+                    <label className="mb-2 block font-medium">Account Number *</label>
+                    <input value={form.accountNumber} onChange={(e) => setForm({ ...form, accountNumber: e.target.value })} required className="w-full rounded-lg border p-3" />
+                  </div>
+                  <div>
+                    <label className="mb-2 block font-medium">IFSC Code *</label>
+                    <input value={form.ifscCode} onChange={(e) => setForm({ ...form, ifscCode: e.target.value })} required className="w-full rounded-lg border p-3" />
+                  </div>
+                  <div>
+                    <label className="mb-2 block font-medium">Branch</label>
+                    <input value={form.branch} onChange={(e) => setForm({ ...form, branch: e.target.value })} className="w-full rounded-lg border p-3" />
+                  </div>
+                  <div>
+                    <label className="mb-2 block font-medium">UPI ID</label>
+                    <input value={form.upiId} onChange={(e) => setForm({ ...form, upiId: e.target.value })} placeholder="company@upi" className="w-full rounded-lg border p-3" />
+                  </div>
+                </>
+              )}
               <div className="flex items-center gap-6 pt-8">
                 <label className="flex items-center gap-2 text-sm">
                   <input type="checkbox" checked={form.isPrimary} onChange={(e) => setForm({ ...form, isPrimary: e.target.checked })} />

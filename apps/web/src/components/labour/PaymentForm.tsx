@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { LabourPaymentFormData } from "../../services/labour-payments";
 import { PAYMENT_MODE_OPTIONS, PAYMENT_MODE_LABELS } from "../../services/labour-payments";
 import type { CompanyBankAccount } from "../../services/company-bank-accounts";
+import { getSites } from "../../services/sites";
+import type { Site } from "../../services/sites";
 
 interface Option {
   id: string;
@@ -20,6 +22,7 @@ export default function PaymentForm({ onSubmit, saving = false, labourers, proje
   const [form, setForm] = useState<LabourPaymentFormData>({
     labourId: "",
     projectId: "",
+    siteId: "",
     amount: 0,
     paymentDate: new Date().toISOString().slice(0, 10),
     periodFrom: "",
@@ -35,6 +38,19 @@ export default function PaymentForm({ onSubmit, saving = false, labourers, proje
   const set = <K extends keyof LabourPaymentFormData>(key: K, value: LabourPaymentFormData[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
 
+  const [sites, setSites] = useState<Site[]>([]);
+  useEffect(() => {
+    if (!form.projectId) {
+      setSites([]);
+      return;
+    }
+    getSites(form.projectId).then((result) => {
+      setSites(result);
+      if (result.length === 1) set("siteId", result[0].id);
+    }).catch(() => setSites([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.projectId]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.labourId) return setError("Select a worker.");
@@ -42,6 +58,7 @@ export default function PaymentForm({ onSubmit, saving = false, labourers, proje
     if (!form.mode) return setError("Select a payment mode.");
     if (isCompanyBank && !form.companyBankAccountId) return setError("Select the company bank account.");
     if (form.logAsExpense && !form.projectId) return setError("Project is required to also log this as a Site Expense.");
+    if (form.logAsExpense && !form.siteId) return setError("Site is required to also log this as a Site Expense.");
     setError(null);
     onSubmit(form);
   };
@@ -59,9 +76,27 @@ export default function PaymentForm({ onSubmit, saving = false, labourers, proje
         </div>
         <div>
           <label className="mb-2 block font-medium">Project {form.logAsExpense && <span className="text-red-500">*</span>}</label>
-          <select value={form.projectId} onChange={(e) => set("projectId", e.target.value)} required={form.logAsExpense} className="w-full rounded-lg border p-3">
+          <select
+            value={form.projectId}
+            onChange={(e) => setForm((f) => ({ ...f, projectId: e.target.value, siteId: "" }))}
+            required={form.logAsExpense}
+            className="w-full rounded-lg border p-3"
+          >
             <option value="">Not project-specific</option>
             {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="mb-2 block font-medium">Site {form.logAsExpense && <span className="text-red-500">*</span>}</label>
+          <select
+            value={form.siteId}
+            onChange={(e) => set("siteId", e.target.value)}
+            disabled={!form.projectId}
+            required={form.logAsExpense}
+            className="w-full rounded-lg border p-3 disabled:bg-slate-50"
+          >
+            <option value="">Select Site</option>
+            {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
         </div>
         <div>

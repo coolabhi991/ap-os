@@ -1,6 +1,7 @@
 import prisma from "../config/prisma.js";
 import { Prisma } from "@prisma/client";
-import { getSubWorkById } from "./sub-work.service.js";
+import { getSubWorkById, sumBudgetHeads } from "./sub-work.service.js";
+import type { BudgetHeads } from "./sub-work.service.js";
 
 export type CostHeadKey = "material" | "labour" | "machinery" | "fuel" | "vendorBills" | "siteExpenses" | "other";
 
@@ -27,7 +28,7 @@ async function verifyProjectOwnership(projectId: string, companyId: string) {
  * default category — there is no separate "Other" category, to avoid a duplicate bucket).
  * Matched case-insensitively in JS since category names are free text, not an enum.
  */
-async function getSpecialCategoryIds(companyId: string) {
+export async function getSpecialCategoryIds(companyId: string) {
   const categories = await prisma.expenseCategory.findMany({ where: { companyId }, select: { id: true, name: true } });
   const find = (name: string) => categories.find((c) => c.name.trim().toLowerCase() === name.toLowerCase())?.id ?? null;
   return {
@@ -111,6 +112,32 @@ async function computeCostHeads(companyId: string, projectId: string, subWorkId?
   };
 }
 
+/** Sums every Sub Work's per-head planned budget across the whole project — the project-wide counterpart to a single Sub Work's `sumBudgetHeads`. Never stored. */
+async function computeProjectBudgetHeads(companyId: string, projectId: string): Promise<BudgetHeads> {
+  const agg = await prisma.subWork.aggregate({
+    where: { companyId, projectId },
+    _sum: {
+      budgetMaterial: true,
+      budgetLabour: true,
+      budgetMachinery: true,
+      budgetFuel: true,
+      budgetSiteExpenses: true,
+      budgetVendorBills: true,
+      budgetOther: true,
+    },
+  });
+
+  return sumBudgetHeads({
+    budgetMaterial: (agg._sum.budgetMaterial ?? new Prisma.Decimal(0)).toString(),
+    budgetLabour: (agg._sum.budgetLabour ?? new Prisma.Decimal(0)).toString(),
+    budgetMachinery: (agg._sum.budgetMachinery ?? new Prisma.Decimal(0)).toString(),
+    budgetFuel: (agg._sum.budgetFuel ?? new Prisma.Decimal(0)).toString(),
+    budgetSiteExpenses: (agg._sum.budgetSiteExpenses ?? new Prisma.Decimal(0)).toString(),
+    budgetVendorBills: (agg._sum.budgetVendorBills ?? new Prisma.Decimal(0)).toString(),
+    budgetOther: (agg._sum.budgetOther ?? new Prisma.Decimal(0)).toString(),
+  });
+}
+
 export type VarianceStatus = "ahead" | "on-track" | "behind";
 
 /** Percentage points of slack before Physical vs Financial Progress is flagged as diverging. */
@@ -122,7 +149,7 @@ const VARIANCE_TOLERANCE = 10;
  * (SubWork.physicalProgress, or Project.progress at whole-project level) and the two are
  * always returned side by side, never collapsed into one number.
  */
-function compareProgress(physicalProgress: number, budget: number, actual: number) {
+export function compareProgress(physicalProgress: number, budget: number, actual: number) {
   const financialProgress = budget > 0 ? Math.round((actual / budget) * 1000) / 10 : 0;
   const variance = Math.round((physicalProgress - financialProgress) * 10) / 10;
   const varianceStatus: VarianceStatus =
@@ -130,11 +157,12 @@ function compareProgress(physicalProgress: number, budget: number, actual: numbe
   return { physicalProgress, financialProgress, variance, varianceStatus };
 }
 
-/** The Recapitulation Sheet for a single Sub Work: Budget, Actual, Difference, Physical vs Financial Progress, and the cost-head breakdown. */
+/** The Recapitulation Sheet for a single Sub Work: Budget, Actual, Difference, Physical vs Financial Progress, and the Budget-vs-Actual cost-head breakdown. */
 export async function getSubWorkRecap(subWorkId: string, companyId: string) {
   const subWork = await getSubWorkById(subWorkId, companyId);
   const costHeads = await computeCostHeads(companyId, subWork.projectId, subWork.id);
-  const budget = Number(subWork.budgetAmount);
+  const budgetHeads = sumBudgetHeads(subWork);
+  const budget = Number(budgetHeads.total);
   const actual = Number(costHeads.total);
 
   return {
@@ -143,6 +171,7 @@ export async function getSubWorkRecap(subWorkId: string, companyId: string) {
     actual: actual.toFixed(2),
     difference: (budget - actual).toFixed(2),
     ...compareProgress(subWork.physicalProgress, budget, actual),
+    budgetHeads,
     costHeads,
   };
 }
@@ -296,8 +325,8 @@ export async function getProjectOverview(projectId: string, companyId: string) {
   const costHeads = await computeCostHeads(companyId, projectId);
   const actualCost = Number(costHeads.total);
 
-  const budgetAgg = await prisma.subWork.aggregate({ where: { companyId, projectId }, _sum: { budgetAmount: true } });
-  const budget = Number(budgetAgg._sum.budgetAmount ?? 0);
+  const budgetHeads = await computeProjectBudgetHeads(companyId, projectId);
+  const budget = Number(budgetHeads.total);
 
   const pendingBillsWhere: Prisma.VendorBillWhereInput = { companyId, projectId, status: { in: ["PENDING", "PARTIALLY_PAID"] } };
   const [pendingBillsCount, pendingBillsAgg] = await Promise.all([
@@ -326,14 +355,16 @@ export async function getProjectOverview(projectId: string, companyId: string) {
     pendingPayments: { amount: (pendingBillsAgg._sum.outstandingBalance ?? new Prisma.Decimal(0)).toString() },
     materialStock: { totalItems: totalInventoryItems, lowStockItems },
     labourToday: { count: labourTodayCount },
+    budgetHeads,
+    costHeads,
   };
 }
 
-/** Reports: Budget vs Actual (whole project). Physical Progress here is Project.progress — the existing, manually-set field. */
+/** Reports: Budget vs Actual (whole project), including the full per-cost-head breakdown. Physical Progress here is Project.progress — the existing, manually-set field. */
 export async function getBudgetVsActualReport(projectId: string, companyId: string) {
   const project = await verifyProjectOwnership(projectId, companyId);
-  const budgetAgg = await prisma.subWork.aggregate({ where: { companyId, projectId }, _sum: { budgetAmount: true } });
-  const budget = Number(budgetAgg._sum.budgetAmount ?? 0);
+  const budgetHeads = await computeProjectBudgetHeads(companyId, projectId);
+  const budget = Number(budgetHeads.total);
   const costHeads = await computeCostHeads(companyId, projectId);
   const actual = Number(costHeads.total);
 
@@ -342,6 +373,8 @@ export async function getBudgetVsActualReport(projectId: string, companyId: stri
     actual: actual.toFixed(2),
     difference: (budget - actual).toFixed(2),
     ...compareProgress(project.progress, budget, actual),
+    budgetHeads,
+    costHeads,
   };
 }
 
@@ -353,7 +386,8 @@ export async function getCostBySubWorkReport(projectId: string, companyId: strin
   return Promise.all(
     subWorks.map(async (sw) => {
       const costHeads = await computeCostHeads(companyId, projectId, sw.id);
-      const budget = Number(sw.budgetAmount);
+      const budgetHeads = sumBudgetHeads(sw);
+      const budget = Number(budgetHeads.total);
       const actual = Number(costHeads.total);
       return {
         subWorkId: sw.id,
@@ -363,6 +397,8 @@ export async function getCostBySubWorkReport(projectId: string, companyId: strin
         actual: actual.toFixed(2),
         difference: (budget - actual).toFixed(2),
         ...compareProgress(sw.physicalProgress, budget, actual),
+        budgetHeads,
+        costHeads,
       };
     })
   );
@@ -400,10 +436,32 @@ export async function getProjectCostSummaryReport(projectId: string, companyId: 
   return { ...budgetVsActual, costHeads };
 }
 
+const HEAD_ORDER: CostHeadKey[] = ["material", "labour", "machinery", "fuel", "vendorBills", "siteExpenses", "other"];
+const HEAD_CSV_LABELS: Record<CostHeadKey, string> = {
+  material: "Material",
+  labour: "Labour",
+  machinery: "Machinery",
+  fuel: "Fuel",
+  vendorBills: "Vendor Bills",
+  siteExpenses: "Site Expenses",
+  other: "Other",
+};
+
 export async function exportCostBySubWorkToCSV(projectId: string, companyId: string) {
   const rows = await getCostBySubWorkReport(projectId, companyId);
 
-  const headers = ["Sub Work", "Status", "Budget", "Actual", "Difference", "Physical Progress %", "Financial Progress %", "Variance"];
+  const headers = [
+    "Sub Work",
+    "Status",
+    ...HEAD_ORDER.map((k) => `Budget ${HEAD_CSV_LABELS[k]}`),
+    "Total Budget",
+    ...HEAD_ORDER.map((k) => `Actual ${HEAD_CSV_LABELS[k]}`),
+    "Total Actual",
+    "Difference",
+    "Physical Progress %",
+    "Financial Progress %",
+    "Variance",
+  ];
   const escapeCsv = (value: string) => {
     if (value.includes(",") || value.includes("\"") || value.includes("\n")) {
       return `"${value.replace(/"/g, '""')}"`;
@@ -412,7 +470,18 @@ export async function exportCostBySubWorkToCSV(projectId: string, companyId: str
   };
 
   const csvRows = rows.map((r) =>
-    [r.name, r.status, r.budget, r.actual, r.difference, `${r.physicalProgress}%`, `${r.financialProgress}%`, r.varianceStatus]
+    [
+      r.name,
+      r.status,
+      ...HEAD_ORDER.map((k) => r.budgetHeads[k]),
+      r.budgetHeads.total,
+      ...HEAD_ORDER.map((k) => r.costHeads[k]),
+      r.costHeads.total,
+      r.difference,
+      `${r.physicalProgress}%`,
+      `${r.financialProgress}%`,
+      r.varianceStatus,
+    ]
       .map((v) => escapeCsv(String(v)))
       .join(",")
   );

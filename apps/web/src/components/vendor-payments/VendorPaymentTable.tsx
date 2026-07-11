@@ -31,7 +31,10 @@ export default function VendorPaymentTable({ payments = [], onView }: Props) {
             payments.map((p) => (
               <tr key={p.id} className="border-t hover:bg-slate-50">
                 <td className="px-6 py-4 font-mono text-sm font-medium text-blue-700">{p.paymentNumber}</td>
-                <td className="px-6 py-4">{p.vendor?.name ?? "—"}</td>
+                <td className="px-6 py-4">
+                  {p.vendor?.name ?? "—"}
+                  {p.paidToOtherParty && <div className="text-xs font-medium text-amber-600">Paid to: {p.paidToName}</div>}
+                </td>
                 <td className="px-6 py-4 text-sm text-slate-500">{p.vendorBill?.billNumber ?? "—"}</td>
                 <td className="px-6 py-4 text-slate-600">{new Date(p.paymentDate).toLocaleDateString()}</td>
                 <td className="px-6 py-4 text-right font-medium">₹{Number(p.amount).toLocaleString("en-IN")}</td>

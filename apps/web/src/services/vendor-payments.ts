@@ -31,6 +31,9 @@ export interface VendorPayment {
   attachmentFileName: string;
   attachmentFileUrl: string;
   remarks: string;
+  paidToOtherParty: boolean;
+  paidToName: string;
+  paidToReason: string;
   status: string;
   createdAt: string;
   updatedAt: string;
@@ -47,6 +50,18 @@ export interface RecordVendorPaymentInput {
   attachmentFileName?: string;
   attachmentFileUrl?: string;
   remarks?: string;
+  paidToOtherParty?: boolean;
+  paidToName?: string;
+  paidToReason?: string;
+}
+
+export interface VendorProjectBreakdownRow {
+  project: { id: string; name: string } | null;
+  workDone: string;
+  billAmount: string;
+  paidAmount: string;
+  outstanding: string;
+  billCount: number;
 }
 
 export interface VendorPaymentListQuery {
@@ -127,6 +142,11 @@ export async function getVendorLedger(vendorId: string, query?: { fromDate?: str
   const response = await api.get<{ success: boolean; data: VendorLedger }>("/vendor-payments/ledger", {
     params: { vendorId, ...query },
   });
+  return response.data.data;
+}
+
+export async function getVendorProjectBreakdown(vendorId: string): Promise<VendorProjectBreakdownRow[]> {
+  const response = await api.get<{ success: boolean; data: VendorProjectBreakdownRow[] }>("/vendor-payments/project-breakdown", { params: { vendorId } });
   return response.data.data;
 }
 

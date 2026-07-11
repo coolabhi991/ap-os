@@ -5,6 +5,7 @@ import {
   getVendorPaymentById,
   recordVendorPayment,
   getVendorLedger,
+  getVendorProjectBreakdown,
   getVendorPaymentDashboard,
   exportVendorPaymentsToCSV,
 } from "../services/vendor-payment.service.js";
@@ -70,6 +71,22 @@ export const getVendorLedgerHandler = async (req: AuthRequest, res: Response) =>
   } catch (error) {
     const is404 = error instanceof Error && (error.message === "Vendor not found" || error.message === "Vendor is required");
     res.status(is404 ? 404 : 400).json({ success: false, message: error instanceof Error ? error.message : "Failed to load vendor ledger" });
+  }
+};
+
+export const getVendorProjectBreakdownHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const companyId = req.user!.companyId;
+    const vendorId = req.query.vendorId as string;
+    if (!vendorId) {
+      res.status(400).json({ success: false, message: "vendorId query param is required" });
+      return;
+    }
+    const data = await getVendorProjectBreakdown(companyId, vendorId);
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    const is404 = error instanceof Error && error.message === "Vendor not found";
+    res.status(is404 ? 404 : 500).json({ success: false, message: error instanceof Error ? error.message : "Failed to load vendor project breakdown" });
   }
 };
 

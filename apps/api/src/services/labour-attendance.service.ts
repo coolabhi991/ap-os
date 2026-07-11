@@ -25,12 +25,14 @@ export interface AttendanceEntryInput {
 
 export interface MarkAttendanceInput extends AttendanceEntryInput {
   projectId: string;
+  siteId: string;
   subWorkId?: string;
   attendanceDate?: string;
 }
 
 export interface BulkMarkAttendanceInput {
   projectId: string;
+  siteId: string;
   subWorkId?: string;
   attendanceDate?: string;
   entries: AttendanceEntryInput[];
@@ -45,6 +47,7 @@ export interface AttendanceUpdateInput {
 export interface LabourAttendanceListQuery {
   search?: string;
   projectId?: string;
+  siteId?: string;
   labourId?: string;
   groupId?: string;
   status?: string;
@@ -71,6 +74,7 @@ function toDTO(a: AttendanceRow) {
     companyId: a.companyId,
     projectId: a.projectId,
     project: a.project,
+    siteId: a.siteId,
     labourId: a.labourId,
     labour: a.labour,
     subWorkId: a.subWorkId ?? "",
@@ -94,6 +98,7 @@ async function markOne(
   companyId: string,
   createdById: string,
   projectId: string,
+  siteId: string,
   subWorkId: string | null,
   attendanceDate: Date,
   entry: AttendanceEntryInput
@@ -119,6 +124,7 @@ async function markOne(
     data: {
       companyId,
       projectId,
+      siteId,
       subWorkId,
       labourId: entry.labourId,
       attendanceDate,
@@ -141,22 +147,32 @@ async function resolveSubWorkId(companyId: string, projectId: string, subWorkId:
   return subWork.id;
 }
 
+async function verifySiteOwnership(siteId: string, companyId: string, projectId: string) {
+  const site = await prisma.site.findFirst({ where: { id: siteId, companyId, projectId } });
+  if (!site) throw new Error("Site not found");
+  return site;
+}
+
 export async function markAttendance(companyId: string, createdById: string, input: MarkAttendanceInput) {
   if (!input.projectId?.trim()) throw new Error("Project is required");
+  if (!input.siteId?.trim()) throw new Error("Site is required");
   const project = await prisma.project.findFirst({ where: { id: input.projectId, companyId } });
   if (!project) throw new Error("Project not found");
+  await verifySiteOwnership(input.siteId, companyId, input.projectId);
 
   const subWorkId = await resolveSubWorkId(companyId, input.projectId, input.subWorkId);
   const attendanceDate = input.attendanceDate ? new Date(input.attendanceDate) : new Date();
-  const record = await markOne(companyId, createdById, input.projectId, subWorkId, attendanceDate, input);
+  const record = await markOne(companyId, createdById, input.projectId, input.siteId, subWorkId, attendanceDate, input);
   return toDTO(record);
 }
 
-/** Marks attendance for multiple workers on the same date/project (and optionally the same Sub Work) in one call. Entries that fail (already marked, no wage rate) are skipped, not fatal to the batch. */
+/** Marks attendance for multiple workers on the same date/project/site (and optionally the same Sub Work) in one call. Entries that fail (already marked, no wage rate) are skipped, not fatal to the batch. */
 export async function bulkMarkAttendance(companyId: string, createdById: string, input: BulkMarkAttendanceInput) {
   if (!input.projectId?.trim()) throw new Error("Project is required");
+  if (!input.siteId?.trim()) throw new Error("Site is required");
   const project = await prisma.project.findFirst({ where: { id: input.projectId, companyId } });
   if (!project) throw new Error("Project not found");
+  await verifySiteOwnership(input.siteId, companyId, input.projectId);
   if (!input.entries?.length) throw new Error("At least one attendance entry is required");
 
   const subWorkId = await resolveSubWorkId(companyId, input.projectId, input.subWorkId);
@@ -167,7 +183,7 @@ export async function bulkMarkAttendance(companyId: string, createdById: string,
 
   for (const entry of input.entries) {
     try {
-      const record = await markOne(companyId, createdById, input.projectId, subWorkId, attendanceDate, entry);
+      const record = await markOne(companyId, createdById, input.projectId, input.siteId, subWorkId, attendanceDate, entry);
       created.push(toDTO(record));
     } catch (error) {
       skipped.push({ labourId: entry.labourId, reason: error instanceof Error ? error.message : "Failed to mark attendance" });
@@ -181,6 +197,7 @@ export async function listLabourAttendance(companyId: string, query: LabourAtten
   const {
     search = "",
     projectId,
+    siteId,
     labourId,
     groupId,
     status,
@@ -196,6 +213,7 @@ export async function listLabourAttendance(companyId: string, query: LabourAtten
     companyId,
     isDeleted: false,
     ...(projectId && { projectId }),
+    ...(siteId && { siteId }),
     ...(labourId && { labourId }),
     ...(groupId && { labour: { groupId } }),
     ...(status && ATTENDANCE_STATUSES.includes(status.toUpperCase() as AttendanceStatus) && { status: status.toUpperCase() as AttendanceStatus }),

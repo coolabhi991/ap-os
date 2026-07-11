@@ -68,6 +68,12 @@ export interface RecordPaymentInput {
   attachmentFileName?: string;
   attachmentFileUrl?: string;
   remarks?: string;
+  // Display/audit metadata only — never affects paidAmount/outstandingBalance below. Set when the
+  // money was physically handed to someone other than the vendor (e.g. a site supervisor
+  // collecting cash on the vendor's behalf).
+  paidToOtherParty?: boolean;
+  paidToName?: string;
+  paidToReason?: string;
 }
 
 function parseStatus(s: string | undefined): VendorBillStatus | undefined {
@@ -167,6 +173,9 @@ function toDTO(bill: VendorBillRow) {
       companyBankAccount: p.companyBankAccount,
       vendorBankAccount: p.vendorBankAccount,
       remarks: p.remarks ?? "",
+      paidToOtherParty: p.paidToOtherParty,
+      paidToName: p.paidToName ?? "",
+      paidToReason: p.paidToReason ?? "",
       status: p.status,
     })),
     createdAt: bill.createdAt.toISOString(),
@@ -417,6 +426,10 @@ export async function recordVendorBillPayment(id: string, companyId: string, inp
     vendorBankAccountId = vendorAccount.id;
   }
 
+  if (input.paidToOtherParty && !input.paidToName?.trim()) {
+    throw new Error("Paid To is required when paying another person on the vendor's behalf");
+  }
+
   const newPaidAmount = Number(existing.paidAmount) + input.amount;
   const newOutstanding = Number(existing.totalAmount) - newPaidAmount;
   const newStatus = deriveBillStatus(newPaidAmount, Number(existing.totalAmount));
@@ -438,6 +451,9 @@ export async function recordVendorBillPayment(id: string, companyId: string, inp
         attachmentFileName: input.attachmentFileName || null,
         attachmentFileUrl: input.attachmentFileUrl || null,
         remarks: input.remarks || null,
+        paidToOtherParty: !!input.paidToOtherParty,
+        paidToName: input.paidToOtherParty ? input.paidToName!.trim() : null,
+        paidToReason: input.paidToOtherParty ? input.paidToReason || null : null,
         status: "PAID" as PaymentStatus,
       },
     });

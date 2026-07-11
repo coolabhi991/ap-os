@@ -7,6 +7,7 @@ export const PAYMENT_MODES = ["CASH", "COMPANY_BANK"];
 export interface LabourPaymentFormInput {
   labourId: string;
   projectId?: string;
+  siteId?: string;
   amount: number;
   paymentDate?: string;
   periodFrom?: string;
@@ -135,6 +136,7 @@ export async function createLabourPayment(companyId: string, createdById: string
   let expenseId: string | null = null;
   if (input.logAsExpense) {
     if (!input.projectId) throw new Error("Project is required to log this payment as a Site Expense");
+    if (!input.siteId) throw new Error("Site is required to log this payment as a Site Expense");
 
     const labourCategory = await prisma.expenseCategory.findFirst({ where: { companyId, name: "Labour" } });
     if (!labourCategory) throw new Error('"Labour" expense category not found — create it under Site Expenses first');
@@ -144,6 +146,7 @@ export async function createLabourPayment(companyId: string, createdById: string
     // row remains as a harmless orphan rather than risking a partial/inconsistent transaction.
     const expense = await createExpense(companyId, createdById, {
       projectId: input.projectId,
+      siteId: input.siteId,
       categoryId: labourCategory.id,
       vendorId: labour.contractorId || undefined,
       amount: input.amount,

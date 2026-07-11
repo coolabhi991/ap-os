@@ -10,6 +10,8 @@ export interface CompanyBankAccount {
   ifscCode: string;
   branch: string;
   upiId: string;
+  accountType: string;
+  openingBalance: string;
   isPrimary: boolean;
   isActive: boolean;
   createdAt: string;
@@ -24,9 +26,14 @@ export interface CompanyBankAccountFormData {
   ifscCode: string;
   branch: string;
   upiId: string;
+  accountType: string;
+  openingBalance: number;
   isPrimary: boolean;
   isActive: boolean;
 }
+
+export const ACCOUNT_TYPE_OPTIONS = ["BANK", "CASH"];
+export const ACCOUNT_TYPE_LABELS: Record<string, string> = { BANK: "Bank Account", CASH: "Cash Account" };
 
 export async function getCompanyBankAccounts(): Promise<CompanyBankAccount[]> {
   const response = await api.get<{ success: boolean; data: CompanyBankAccount[] }>("/company-bank-accounts");

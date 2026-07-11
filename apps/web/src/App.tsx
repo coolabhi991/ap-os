@@ -9,6 +9,11 @@ import AddProject from "./pages/projects/AddProject";
 import EditProject from "./pages/projects/EditProject";
 import ViewProject from "./pages/projects/ViewProject";
 
+/* Sites */
+import AddSite from "./pages/sites/AddSite";
+import EditSite from "./pages/sites/EditSite";
+import SiteWorkspacePage from "./pages/sites/SiteWorkspacePage";
+
 /* Clients */
 import Clients from "./pages/clients/Clients";
 import AddClient from "./pages/clients/AddClient";
@@ -96,6 +101,37 @@ import AddPayment from "./pages/labour/AddPayment";
 import LabourDashboard from "./pages/labour/LabourDashboard";
 import LabourReports from "./pages/labour/LabourReports";
 
+/* Daily Progress Reports */
+import DPRs from "./pages/dpr/DPRs";
+import AddDPR from "./pages/dpr/AddDPR";
+import EditDPR from "./pages/dpr/EditDPR";
+import ViewDPR from "./pages/dpr/ViewDPR";
+
+/* Measurement Books */
+import MeasurementBooks from "./pages/measurement-books/MeasurementBooks";
+import AddMB from "./pages/measurement-books/AddMB";
+import EditMB from "./pages/measurement-books/EditMB";
+import ViewMB from "./pages/measurement-books/ViewMB";
+import MBReports from "./pages/measurement-books/MBReports";
+
+/* Running Bills */
+import RunningBills from "./pages/running-bills/RunningBills";
+import AddRunningBill from "./pages/running-bills/AddRunningBill";
+import EditRunningBill from "./pages/running-bills/EditRunningBill";
+import ViewRunningBill from "./pages/running-bills/ViewRunningBill";
+import RunningBillReports from "./pages/running-bills/RunningBillReports";
+
+/* Banking & Reconciliation */
+import BankTransactions from "./pages/banking/BankTransactions";
+import BankingReports from "./pages/banking/BankingReports";
+
+/* AP AI */
+import ApAi from "./pages/ai/ApAi";
+
+/* Reports */
+import Reports from "./pages/reports/Reports";
+import VendorReports from "./pages/reports/VendorReports";
+
 export default function App() {
   return (
     <Routes>
@@ -110,6 +146,11 @@ export default function App() {
       <Route path="/projects/new" element={<AddProject />} />
       <Route path="/projects/:id" element={<ViewProject />} />
       <Route path="/projects/:id/edit" element={<EditProject />} />
+
+      {/* Sites */}
+      <Route path="/projects/:projectId/sites/new" element={<AddSite />} />
+      <Route path="/sites/:id" element={<SiteWorkspacePage />} />
+      <Route path="/sites/:id/edit" element={<EditSite />} />
 
       {/* Clients */}
       <Route path="/clients" element={<Clients />} />
@@ -197,6 +238,37 @@ export default function App() {
       <Route path="/vendor-bills/dashboard" element={<VendorBillsDashboard />} />
       <Route path="/vendor-bills/:id" element={<ViewVendorBill />} />
       <Route path="/vendor-bills/:id/edit" element={<EditVendorBill />} />
+
+      {/* Daily Progress Reports */}
+      <Route path="/dpr" element={<DPRs />} />
+      <Route path="/dpr/new" element={<AddDPR />} />
+      <Route path="/dpr/:id" element={<ViewDPR />} />
+      <Route path="/dpr/:id/edit" element={<EditDPR />} />
+
+      {/* Measurement Books */}
+      <Route path="/measurement-books" element={<MeasurementBooks />} />
+      <Route path="/measurement-books/new" element={<AddMB />} />
+      <Route path="/measurement-books/reports" element={<MBReports />} />
+      <Route path="/measurement-books/:id" element={<ViewMB />} />
+      <Route path="/measurement-books/:id/edit" element={<EditMB />} />
+
+      {/* Running Bills */}
+      <Route path="/running-bills" element={<RunningBills />} />
+      <Route path="/running-bills/new" element={<AddRunningBill />} />
+      <Route path="/running-bills/reports" element={<RunningBillReports />} />
+      <Route path="/running-bills/:id" element={<ViewRunningBill />} />
+      <Route path="/running-bills/:id/edit" element={<EditRunningBill />} />
+
+      {/* Banking & Reconciliation */}
+      <Route path="/banking" element={<BankTransactions />} />
+      <Route path="/banking/reports" element={<BankingReports />} />
+
+      {/* AP AI */}
+      <Route path="/ai" element={<ApAi />} />
+
+      {/* Reports */}
+      <Route path="/reports" element={<Reports />} />
+      <Route path="/reports/vendors" element={<VendorReports />} />
 
       {/* Default */}
       <Route path="*" element={<Navigate to="/" replace />} />

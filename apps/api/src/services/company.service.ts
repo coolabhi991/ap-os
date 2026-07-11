@@ -1,7 +1,7 @@
 import prisma from "../config/prisma.js";
 
-export async function getCompany() {
-  const company = await prisma.company.findFirst();
+export async function getCompany(companyId: string) {
+  const company = await prisma.company.findFirst({ where: { id: companyId } });
 
   if (!company) {
     throw new Error("Company not found");
@@ -24,8 +24,8 @@ interface UpdateCompanyInput {
   logo?: string;
 }
 
-export async function updateCompany(data: UpdateCompanyInput) {
-  const company = await prisma.company.findFirst();
+export async function updateCompany(companyId: string, data: UpdateCompanyInput) {
+  const company = await prisma.company.findFirst({ where: { id: companyId } });
 
   if (!company) {
     throw new Error("Company not found");

@@ -22,10 +22,11 @@ import {
 const notFoundMessage = "Expense not found";
 
 function parseListQuery(req: AuthRequest) {
-  const { search, projectId, vendorId, categoryId, paymentMode, fromDate, toDate, minAmount, maxAmount, page, limit, sortBy, sortOrder } = req.query;
+  const { search, projectId, siteId, vendorId, categoryId, paymentMode, fromDate, toDate, minAmount, maxAmount, page, limit, sortBy, sortOrder } = req.query;
   return {
     search: search as string,
     projectId: projectId as string,
+    siteId: siteId as string,
     vendorId: vendorId as string,
     categoryId: categoryId as string,
     paymentMode: paymentMode as string,
