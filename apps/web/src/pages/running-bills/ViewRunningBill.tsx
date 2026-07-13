@@ -328,11 +328,11 @@ export default function ViewRunningBill() {
           <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
             <table className="min-w-full">
               <thead className="bg-slate-100">
-                <tr><th className="px-4 py-3 text-left">Payment #</th><th className="px-4 py-3 text-left">Date</th><th className="px-4 py-3 text-right">Amount</th><th className="px-4 py-3 text-left">Mode</th><th className="px-4 py-3 text-left">Reference</th><th className="px-4 py-3 text-left">Bank Account</th></tr>
+                <tr><th className="px-4 py-3 text-left">Payment #</th><th className="px-4 py-3 text-left">Date</th><th className="px-4 py-3 text-right">Amount</th><th className="px-4 py-3 text-left">Mode</th><th className="px-4 py-3 text-left">Reference</th><th className="px-4 py-3 text-left">Bank Account</th><th className="px-4 py-3 text-left">Remarks</th></tr>
               </thead>
               <tbody>
                 {payments.length === 0 ? (
-                  <EmptyTableRow colSpan={6}>No payments recorded yet.</EmptyTableRow>
+                  <EmptyTableRow colSpan={7}>No payments recorded yet.</EmptyTableRow>
                 ) : (
                   payments.map((p) => (
                     <tr key={p.id} className="border-t">
@@ -342,6 +342,7 @@ export default function ViewRunningBill() {
                       <td className="px-4 py-3">{p.mode}</td>
                       <td className="px-4 py-3 text-slate-500">{p.referenceNumber || "—"}</td>
                       <td className="px-4 py-3 text-slate-500">{p.companyBankAccount ? `${p.companyBankAccount.bankName} (${p.companyBankAccount.accountNumber})` : "—"}</td>
+                      <td className="px-4 py-3 text-slate-500">{p.remarks || "—"}</td>
                     </tr>
                   ))
                 )}

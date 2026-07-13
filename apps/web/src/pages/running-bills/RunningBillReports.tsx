@@ -18,8 +18,26 @@ import type { RunningBill, OutstandingBillRow, PaymentRegisterRow, RecoveryRegis
 import { getProjects } from "../../services/projects";
 import { formatCurrency as inr } from "../../lib/utils";
 import EmptyTableRow from "../../components/ui/EmptyTableRow";
+import ReportExportBar from "../../components/ui/ReportExportBar";
+import type { ReportExportInput } from "../../lib/report-export";
+import {
+  getSiteWiseDeductions,
+  getClientWiseDeductions,
+  getSDPendingReport,
+  getRecoveryLedger,
+} from "../../services/deduction-ledger";
+import type { SiteWiseDeductionRow, ClientWiseDeductionRow, SDPendingRow, RecoveryLedgerEntry } from "../../services/deduction-ledger";
 
-type ReportTab = "register" | "outstanding" | "payments" | "recovery" | "project-summary";
+type ReportTab =
+  | "register"
+  | "outstanding"
+  | "payments"
+  | "recovery"
+  | "project-summary"
+  | "site-deductions"
+  | "client-deductions"
+  | "sd-pending"
+  | "recovery-ledger";
 
 const TABS: { key: ReportTab; label: string }[] = [
   { key: "register", label: "Running Bill Register" },
@@ -27,6 +45,10 @@ const TABS: { key: ReportTab; label: string }[] = [
   { key: "payments", label: "Payment Register" },
   { key: "recovery", label: "Recovery Register" },
   { key: "project-summary", label: "Project Billing Summary" },
+  { key: "site-deductions", label: "Site-wise Deductions" },
+  { key: "client-deductions", label: "Client-wise Deductions" },
+  { key: "sd-pending", label: "SD Pending" },
+  { key: "recovery-ledger", label: "Recovery Ledger" },
 ];
 
 export default function RunningBillReports() {
@@ -44,6 +66,10 @@ export default function RunningBillReports() {
   const [paymentRows, setPaymentRows] = useState<PaymentRegisterRow[]>([]);
   const [recoveryRows, setRecoveryRows] = useState<RecoveryRegisterRow[]>([]);
   const [projectSummaryRows, setProjectSummaryRows] = useState<ProjectBillingSummaryRow[]>([]);
+  const [siteDeductionRows, setSiteDeductionRows] = useState<SiteWiseDeductionRow[]>([]);
+  const [clientDeductionRows, setClientDeductionRows] = useState<ClientWiseDeductionRow[]>([]);
+  const [sdPendingRows, setSdPendingRows] = useState<SDPendingRow[]>([]);
+  const [recoveryLedgerRows, setRecoveryLedgerRows] = useState<RecoveryLedgerEntry[]>([]);
 
   useEffect(() => {
     getProjects({ limit: 100 }).then((r) => setProjects(r.data)).catch(() => {});
@@ -54,18 +80,26 @@ export default function RunningBillReports() {
       setLoading(true);
       setError(null);
       const query = { projectId: projectFilter || undefined, fromDate: fromDate || undefined, toDate: toDate || undefined };
-      const [register, outstanding, paymentsReg, recovery, projectSummary] = await Promise.all([
+      const [register, outstanding, paymentsReg, recovery, projectSummary, siteDeductions, clientDeductions, sdPending, recoveryLedger] = await Promise.all([
         getRunningBillRegisterReport(query),
         getOutstandingBillsReport({ projectId: projectFilter || undefined }),
         getPaymentRegisterReport(query),
         getRecoveryRegisterReport(query),
         getProjectBillingSummaryReport({ projectId: projectFilter || undefined }),
+        getSiteWiseDeductions(query),
+        getClientWiseDeductions(query),
+        getSDPendingReport(query),
+        getRecoveryLedger(query),
       ]);
       setRegisterRows(register);
       setOutstandingRows(outstanding);
       setPaymentRows(paymentsReg);
       setRecoveryRows(recovery);
       setProjectSummaryRows(projectSummary);
+      setSiteDeductionRows(siteDeductions);
+      setClientDeductionRows(clientDeductions);
+      setSdPendingRows(sdPending);
+      setRecoveryLedgerRows(recoveryLedger);
     } catch {
       setError("Failed to load Running Bill reports.");
     } finally {
@@ -89,7 +123,235 @@ export default function RunningBillReports() {
     }
   };
 
-  
+  const filterSubtitle = [
+    projectFilter ? `Project: ${projects.find((p) => p.id === projectFilter)?.name ?? projectFilter}` : "All Projects",
+    fromDate && `From ${fromDate}`,
+    toDate && `To ${toDate}`,
+  ]
+    .filter(Boolean)
+    .join(" | ");
+
+  const sum = (rows: Record<string, string>[], key: string) => rows.reduce((s, r) => s + (Number(r[key]) || 0), 0).toFixed(2);
+
+  const buildExportInput = (): ReportExportInput | null => {
+    switch (tab) {
+      case "register":
+        return {
+          title: "Running Bill Register",
+          subtitle: filterSubtitle,
+          columns: [
+            { key: "billNumber", label: "Bill #" },
+            { key: "billDate", label: "Date" },
+            { key: "project", label: "Project" },
+            { key: "billType", label: "Type" },
+            { key: "currentCertifiedAmount", label: "Current Certified", align: "right" as const },
+            { key: "totalDeductions", label: "Deductions", align: "right" as const },
+            { key: "netPayable", label: "Net Payable", align: "right" as const },
+            { key: "amountReceived", label: "Received", align: "right" as const },
+            { key: "outstandingAmount", label: "Outstanding", align: "right" as const },
+            { key: "status", label: "Status" },
+          ],
+          rows: registerRows.map((r) => ({
+            billNumber: r.billNumber,
+            billDate: r.billDate,
+            project: r.project?.name ?? "",
+            billType: BILL_TYPE_LABELS[r.billType] ?? r.billType,
+            currentCertifiedAmount: r.currentCertifiedAmount,
+            totalDeductions: r.totalDeductions,
+            netPayable: r.netPayable,
+            amountReceived: r.amountReceived,
+            outstandingAmount: r.outstandingAmount,
+            status: RB_STATUS_LABELS[r.status] ?? r.status,
+          })),
+          totals: {
+            billNumber: "TOTAL",
+            currentCertifiedAmount: sum(registerRows as unknown as Record<string, string>[], "currentCertifiedAmount"),
+            totalDeductions: sum(registerRows as unknown as Record<string, string>[], "totalDeductions"),
+            netPayable: sum(registerRows as unknown as Record<string, string>[], "netPayable"),
+            amountReceived: sum(registerRows as unknown as Record<string, string>[], "amountReceived"),
+            outstandingAmount: sum(registerRows as unknown as Record<string, string>[], "outstandingAmount"),
+          },
+        };
+      case "outstanding":
+        return {
+          title: "Outstanding Bills",
+          subtitle: filterSubtitle,
+          columns: [
+            { key: "billNumber", label: "Bill #" },
+            { key: "billDate", label: "Date" },
+            { key: "project", label: "Project" },
+            { key: "netPayable", label: "Net Payable", align: "right" as const },
+            { key: "amountReceived", label: "Received", align: "right" as const },
+            { key: "outstandingAmount", label: "Outstanding", align: "right" as const },
+            { key: "daysOutstanding", label: "Days Outstanding", align: "right" as const },
+          ],
+          rows: outstandingRows.map((r) => ({
+            billNumber: r.billNumber,
+            billDate: r.billDate,
+            project: r.project?.name ?? "",
+            netPayable: r.netPayable,
+            amountReceived: r.amountReceived,
+            outstandingAmount: r.outstandingAmount,
+            daysOutstanding: r.daysOutstanding,
+          })),
+          totals: { billNumber: "TOTAL", outstandingAmount: sum(outstandingRows as unknown as Record<string, string>[], "outstandingAmount") },
+        };
+      case "payments":
+        return {
+          title: "Payment Register",
+          subtitle: filterSubtitle,
+          columns: [
+            { key: "paymentNumber", label: "Payment #" },
+            { key: "paymentDate", label: "Date" },
+            { key: "billNumber", label: "Bill #" },
+            { key: "project", label: "Project" },
+            { key: "amount", label: "Amount", align: "right" as const },
+            { key: "mode", label: "Mode" },
+          ],
+          rows: paymentRows.map((p) => ({
+            paymentNumber: p.paymentNumber,
+            paymentDate: p.paymentDate,
+            billNumber: p.runningBill?.billNumber ?? "",
+            project: p.project?.name ?? "",
+            amount: p.amount,
+            mode: p.mode,
+          })),
+          totals: { paymentNumber: "TOTAL", amount: sum(paymentRows as unknown as Record<string, string>[], "amount") },
+        };
+      case "recovery":
+        return {
+          title: "Recovery Register",
+          subtitle: filterSubtitle,
+          columns: [
+            { key: "billNumber", label: "Bill #" },
+            { key: "billDate", label: "Date" },
+            { key: "project", label: "Project" },
+            { key: "type", label: "Type" },
+            { key: "label", label: "Label" },
+            { key: "amount", label: "Amount", align: "right" as const },
+          ],
+          rows: recoveryRows.map((r) => ({
+            billNumber: r.billNumber,
+            billDate: r.billDate,
+            project: r.project,
+            type: DEDUCTION_TYPE_LABELS[r.type] ?? r.type,
+            label: r.label,
+            amount: r.amount,
+          })),
+          totals: { billNumber: "TOTAL", amount: sum(recoveryRows as unknown as Record<string, string>[], "amount") },
+        };
+      case "project-summary":
+        return {
+          title: "Project Billing Summary",
+          columns: [
+            { key: "projectName", label: "Project" },
+            { key: "contractValue", label: "Contract Value", align: "right" as const },
+            { key: "billsSubmittedCount", label: "Bills Submitted", align: "right" as const },
+            { key: "totalBillsSubmitted", label: "Total Certified", align: "right" as const },
+            { key: "totalAmountReceived", label: "Total Received", align: "right" as const },
+            { key: "outstandingAmount", label: "Outstanding", align: "right" as const },
+          ],
+          rows: projectSummaryRows.map((r) => ({
+            projectName: r.projectName,
+            contractValue: r.contractValue,
+            billsSubmittedCount: r.billsSubmittedCount,
+            totalBillsSubmitted: r.totalBillsSubmitted,
+            totalAmountReceived: r.totalAmountReceived,
+            outstandingAmount: r.outstandingAmount,
+          })),
+        };
+      case "site-deductions":
+        return {
+          title: "Site-wise Deductions",
+          subtitle: filterSubtitle,
+          columns: [
+            { key: "siteName", label: "Site" },
+            { key: "sdDeducted", label: "SD Deducted", align: "right" as const },
+            { key: "sdReleased", label: "SD Released", align: "right" as const },
+            { key: "sdPending", label: "SD Pending", align: "right" as const },
+            { key: "gst", label: "GST", align: "right" as const },
+            { key: "tds", label: "TDS", align: "right" as const },
+            { key: "labourCess", label: "Labour Cess", align: "right" as const },
+            { key: "royalty", label: "Royalty", align: "right" as const },
+            { key: "insurance", label: "Insurance", align: "right" as const },
+            { key: "other", label: "Other", align: "right" as const },
+            { key: "totalDeductions", label: "Total", align: "right" as const },
+          ],
+          rows: siteDeductionRows as unknown as Record<string, string>[],
+          totals: {
+            siteName: "TOTAL",
+            sdDeducted: sum(siteDeductionRows as unknown as Record<string, string>[], "sdDeducted"),
+            sdReleased: sum(siteDeductionRows as unknown as Record<string, string>[], "sdReleased"),
+            sdPending: sum(siteDeductionRows as unknown as Record<string, string>[], "sdPending"),
+            gst: sum(siteDeductionRows as unknown as Record<string, string>[], "gst"),
+            tds: sum(siteDeductionRows as unknown as Record<string, string>[], "tds"),
+            labourCess: sum(siteDeductionRows as unknown as Record<string, string>[], "labourCess"),
+            royalty: sum(siteDeductionRows as unknown as Record<string, string>[], "royalty"),
+            insurance: sum(siteDeductionRows as unknown as Record<string, string>[], "insurance"),
+            other: sum(siteDeductionRows as unknown as Record<string, string>[], "other"),
+            totalDeductions: sum(siteDeductionRows as unknown as Record<string, string>[], "totalDeductions"),
+          },
+        };
+      case "client-deductions":
+        return {
+          title: "Client-wise Deductions",
+          subtitle: filterSubtitle,
+          columns: [
+            { key: "clientName", label: "Client" },
+            { key: "sdDeducted", label: "SD Deducted", align: "right" as const },
+            { key: "gst", label: "GST", align: "right" as const },
+            { key: "tds", label: "TDS", align: "right" as const },
+            { key: "labourCess", label: "Labour Cess", align: "right" as const },
+            { key: "royalty", label: "Royalty", align: "right" as const },
+            { key: "insurance", label: "Insurance", align: "right" as const },
+            { key: "other", label: "Other", align: "right" as const },
+            { key: "totalDeductions", label: "Total", align: "right" as const },
+          ],
+          rows: clientDeductionRows as unknown as Record<string, string>[],
+          totals: {
+            clientName: "TOTAL",
+            totalDeductions: sum(clientDeductionRows as unknown as Record<string, string>[], "totalDeductions"),
+          },
+        };
+      case "sd-pending":
+        return {
+          title: "SD Pending Report",
+          subtitle: filterSubtitle,
+          columns: [
+            { key: "siteName", label: "Site" },
+            { key: "projectName", label: "Project" },
+            { key: "sdDeducted", label: "SD Deducted", align: "right" as const },
+            { key: "sdReleased", label: "SD Released", align: "right" as const },
+            { key: "sdPending", label: "SD Pending", align: "right" as const },
+          ],
+          rows: sdPendingRows as unknown as Record<string, string>[],
+          totals: {
+            siteName: "TOTAL",
+            sdDeducted: sum(sdPendingRows as unknown as Record<string, string>[], "sdDeducted"),
+            sdReleased: sum(sdPendingRows as unknown as Record<string, string>[], "sdReleased"),
+            sdPending: sum(sdPendingRows as unknown as Record<string, string>[], "sdPending"),
+          },
+        };
+      case "recovery-ledger":
+        return {
+          title: "Recovery Ledger",
+          subtitle: filterSubtitle,
+          columns: [
+            { key: "date", label: "Date" },
+            { key: "siteName", label: "Site" },
+            { key: "runningBillNumber", label: "Running Bill" },
+            { key: "typeLabel", label: "Type" },
+            { key: "direction", label: "Direction" },
+            { key: "amount", label: "Amount", align: "right" as const },
+            { key: "remarks", label: "Remarks" },
+          ],
+          rows: recoveryLedgerRows as unknown as Record<string, string>[],
+        };
+      default:
+        return null;
+    }
+  };
+
   return (
     <Layout>
       <div className="space-y-6">
@@ -98,9 +360,12 @@ export default function RunningBillReports() {
             <h1 className="text-3xl font-bold text-slate-900">Running Bill Reports</h1>
             <p className="mt-2 text-slate-500">Register, outstanding bills, payments received, recoveries, and project billing summary.</p>
           </div>
-          <button onClick={handleExport} disabled={exporting} className="flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm hover:bg-slate-50 disabled:opacity-60">
-            <Download className="h-4 w-4" /> {exporting ? "Exporting..." : "Export Register CSV"}
-          </button>
+          <div className="flex items-center gap-2">
+            {buildExportInput() && <ReportExportBar input={buildExportInput()!} />}
+            <button onClick={handleExport} disabled={exporting} className="flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm hover:bg-slate-50 disabled:opacity-60">
+              <Download className="h-4 w-4" /> {exporting ? "Exporting..." : "Export Register CSV"}
+            </button>
+          </div>
         </div>
 
         <div className="rounded-xl bg-white p-6 shadow-sm">
@@ -301,6 +566,150 @@ export default function RunningBillReports() {
                         <td className="px-6 py-4 text-right text-emerald-600">{inr(r.totalAmountReceived)}</td>
                         <td className="px-6 py-4 text-right text-amber-600">{inr(r.outstandingAmount)}</td>
                         <td className="px-6 py-4 text-right font-medium">{inr(r.balanceContractValue)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            )}
+
+            {tab === "site-deductions" && (
+              <table className="min-w-full text-sm">
+                <thead className="bg-slate-100">
+                  <tr>
+                    <th className="px-4 py-3 text-left">Site</th>
+                    <th className="px-4 py-3 text-right">SD Deducted</th>
+                    <th className="px-4 py-3 text-right">SD Released</th>
+                    <th className="px-4 py-3 text-right">SD Pending</th>
+                    <th className="px-4 py-3 text-right">GST</th>
+                    <th className="px-4 py-3 text-right">TDS</th>
+                    <th className="px-4 py-3 text-right">Labour Cess</th>
+                    <th className="px-4 py-3 text-right">Royalty</th>
+                    <th className="px-4 py-3 text-right">Insurance</th>
+                    <th className="px-4 py-3 text-right">Other</th>
+                    <th className="px-4 py-3 text-right">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {siteDeductionRows.length === 0 ? (
+                    <EmptyTableRow colSpan={11}>No deductions recorded yet.</EmptyTableRow>
+                  ) : (
+                    siteDeductionRows.map((r) => (
+                      <tr key={r.siteId} className="border-t">
+                        <td className="px-4 py-3 font-medium">{r.siteName}</td>
+                        <td className="px-4 py-3 text-right">{inr(r.sdDeducted)}</td>
+                        <td className="px-4 py-3 text-right">{inr(r.sdReleased)}</td>
+                        <td className="px-4 py-3 text-right font-medium text-amber-600">{inr(r.sdPending)}</td>
+                        <td className="px-4 py-3 text-right">{inr(r.gst)}</td>
+                        <td className="px-4 py-3 text-right">{inr(r.tds)}</td>
+                        <td className="px-4 py-3 text-right">{inr(r.labourCess)}</td>
+                        <td className="px-4 py-3 text-right">{inr(r.royalty)}</td>
+                        <td className="px-4 py-3 text-right">{inr(r.insurance)}</td>
+                        <td className="px-4 py-3 text-right">{inr(r.other)}</td>
+                        <td className="px-4 py-3 text-right font-medium">{inr(r.totalDeductions)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            )}
+
+            {tab === "client-deductions" && (
+              <table className="min-w-full text-sm">
+                <thead className="bg-slate-100">
+                  <tr>
+                    <th className="px-4 py-3 text-left">Client</th>
+                    <th className="px-4 py-3 text-right">SD Deducted</th>
+                    <th className="px-4 py-3 text-right">GST</th>
+                    <th className="px-4 py-3 text-right">TDS</th>
+                    <th className="px-4 py-3 text-right">Labour Cess</th>
+                    <th className="px-4 py-3 text-right">Royalty</th>
+                    <th className="px-4 py-3 text-right">Insurance</th>
+                    <th className="px-4 py-3 text-right">Other</th>
+                    <th className="px-4 py-3 text-right">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {clientDeductionRows.length === 0 ? (
+                    <EmptyTableRow colSpan={9}>No deductions recorded yet.</EmptyTableRow>
+                  ) : (
+                    clientDeductionRows.map((r, i) => (
+                      <tr key={r.clientId || `none-${i}`} className="border-t">
+                        <td className="px-4 py-3 font-medium">{r.clientName}</td>
+                        <td className="px-4 py-3 text-right">{inr(r.sdDeducted)}</td>
+                        <td className="px-4 py-3 text-right">{inr(r.gst)}</td>
+                        <td className="px-4 py-3 text-right">{inr(r.tds)}</td>
+                        <td className="px-4 py-3 text-right">{inr(r.labourCess)}</td>
+                        <td className="px-4 py-3 text-right">{inr(r.royalty)}</td>
+                        <td className="px-4 py-3 text-right">{inr(r.insurance)}</td>
+                        <td className="px-4 py-3 text-right">{inr(r.other)}</td>
+                        <td className="px-4 py-3 text-right font-medium">{inr(r.totalDeductions)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            )}
+
+            {tab === "sd-pending" && (
+              <table className="min-w-full text-sm">
+                <thead className="bg-slate-100">
+                  <tr>
+                    <th className="px-6 py-4 text-left">Site</th>
+                    <th className="px-6 py-4 text-left">Project</th>
+                    <th className="px-6 py-4 text-right">SD Deducted</th>
+                    <th className="px-6 py-4 text-right">SD Released</th>
+                    <th className="px-6 py-4 text-right">SD Pending</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sdPendingRows.length === 0 ? (
+                    <EmptyTableRow colSpan={5}>No Security Deposit activity yet.</EmptyTableRow>
+                  ) : (
+                    sdPendingRows.map((r) => (
+                      <tr key={r.siteId} className="border-t">
+                        <td className="px-6 py-4 font-medium">{r.siteName}</td>
+                        <td className="px-6 py-4">{r.projectName}</td>
+                        <td className="px-6 py-4 text-right">{inr(r.sdDeducted)}</td>
+                        <td className="px-6 py-4 text-right">{inr(r.sdReleased)}</td>
+                        <td className="px-6 py-4 text-right font-medium text-amber-600">{inr(r.sdPending)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            )}
+
+            {tab === "recovery-ledger" && (
+              <table className="min-w-full text-sm">
+                <thead className="bg-slate-100">
+                  <tr>
+                    <th className="px-4 py-3 text-left">Date</th>
+                    <th className="px-4 py-3 text-left">Site</th>
+                    <th className="px-4 py-3 text-left">Running Bill</th>
+                    <th className="px-4 py-3 text-left">Type</th>
+                    <th className="px-4 py-3 text-left">Direction</th>
+                    <th className="px-4 py-3 text-right">Amount</th>
+                    <th className="px-4 py-3 text-left">Remarks</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recoveryLedgerRows.length === 0 ? (
+                    <EmptyTableRow colSpan={7}>No recovery activity yet.</EmptyTableRow>
+                  ) : (
+                    recoveryLedgerRows.map((r, i) => (
+                      <tr key={i} className="border-t">
+                        <td className="px-4 py-3">{r.date}</td>
+                        <td className="px-4 py-3">{r.siteName}</td>
+                        <td className="px-4 py-3">{r.runningBillNumber || "—"}</td>
+                        <td className="px-4 py-3">{r.typeLabel}</td>
+                        <td className="px-4 py-3">
+                          <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${r.direction === "DEDUCTED" ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"}`}>
+                            {r.direction === "DEDUCTED" ? "Deducted" : "Released"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right font-medium">{inr(r.amount)}</td>
+                        <td className="px-4 py-3 text-slate-500">{r.remarks || "—"}</td>
                       </tr>
                     ))
                   )}

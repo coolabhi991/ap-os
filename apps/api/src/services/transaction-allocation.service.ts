@@ -32,6 +32,18 @@ export const ALLOCATION_TYPES = [
   "OTHER",
   "LIABILITY_DISBURSEMENT",
   "LIABILITY_REPAYMENT",
+  "EMPLOYEE_SALARY",
+  "SITE_ADVANCE",
+  "PERSONAL_ADVANCE",
+  "OD_CC_INTEREST",
+  "BANK_CHARGES",
+  "INTEREST_INCOME",
+  "CAR_LOAN_EMI",
+  "HOME_LOAN_EMI",
+  "GOLD_LOAN",
+  "EMERGENCY_LOAN",
+  "OTHER_LOAN",
+  "SECURITY_DEPOSIT_RELEASE",
 ];
 
 export const ALLOCATION_TYPE_LABELS: Record<string, string> = {
@@ -49,10 +61,35 @@ export const ALLOCATION_TYPE_LABELS: Record<string, string> = {
   OTHER: "Other",
   LIABILITY_DISBURSEMENT: "Liability Disbursement",
   LIABILITY_REPAYMENT: "Liability Repayment",
+  EMPLOYEE_SALARY: "Employee Salary",
+  SITE_ADVANCE: "Site Advance",
+  PERSONAL_ADVANCE: "Personal Advance",
+  OD_CC_INTEREST: "OD / CC Interest",
+  BANK_CHARGES: "Bank Charges",
+  INTEREST_INCOME: "Interest Income",
+  CAR_LOAN_EMI: "Car Loan EMI",
+  HOME_LOAN_EMI: "Home Loan EMI",
+  GOLD_LOAN: "Gold Loan",
+  EMERGENCY_LOAN: "Emergency Loan",
+  OTHER_LOAN: "Other Loan",
+  SECURITY_DEPOSIT_RELEASE: "Security Deposit Release",
 };
 
+/** Employee Salary / Site Advance / Personal Advance — tag-only, mirrors LIABILITY_DISBURSEMENT. */
+export const EMPLOYEE_TAG_TYPES: AllocationType[] = ["EMPLOYEE_SALARY", "SITE_ADVANCE", "PERSONAL_ADVANCE"];
+
+/** Car/Home/Gold/Emergency/Other Loan behave exactly like LIABILITY_REPAYMENT — same ledger row, just a more specific "why" label, filtered to the matching Liability.liabilityType in the UI. */
+export const LOAN_REPAYMENT_TYPES: AllocationType[] = [
+  "LIABILITY_REPAYMENT",
+  "CAR_LOAN_EMI",
+  "HOME_LOAN_EMI",
+  "GOLD_LOAN",
+  "EMERGENCY_LOAN",
+  "OTHER_LOAN",
+];
+
 // The types that auto-create a real ledger row rather than existing only as an allocation.
-const LEDGER_BACKED_TYPES: AllocationType[] = [
+export const LEDGER_BACKED_TYPES: AllocationType[] = [
   "RUNNING_BILL_RECEIPT",
   "VENDOR_PAYMENT",
   "LABOUR",
@@ -60,7 +97,7 @@ const LEDGER_BACKED_TYPES: AllocationType[] = [
   "OWNER_INVESTMENT",
   "PARTNER_INVESTMENT",
   "PARTNER_SETTLEMENT",
-  "LIABILITY_REPAYMENT",
+  ...LOAN_REPAYMENT_TYPES,
 ];
 
 const AMOUNT_TOLERANCE = 0.01;
@@ -80,10 +117,12 @@ export interface AllocationRowInput {
   liabilityId?: string;
   principalPaid?: number;
   interestPaid?: number;
+  employeeId?: string;
 }
 
 const include = {
   site: { select: { id: true, name: true } },
+  employee: { select: { id: true, name: true } },
   runningBillPayment: { select: { id: true, paymentNumber: true, runningBill: { select: { id: true, billNumber: true } } } },
   vendorPayment: { select: { id: true, paymentNumber: true, vendor: { select: { id: true, name: true } }, vendorBill: { select: { id: true, billNumber: true } } } },
   labourPayment: { select: { id: true, labour: { select: { id: true, name: true } } } },
@@ -106,6 +145,8 @@ function toDTO(a: AllocationRow) {
     amount: a.amount.toString(),
     siteId: a.siteId ?? "",
     site: a.site,
+    employeeId: a.employeeId ?? "",
+    employee: a.employee,
     partyName: a.partyName ?? "",
     notes: a.notes ?? "",
     runningBillPaymentId: a.runningBillPaymentId ?? "",
@@ -166,7 +207,7 @@ async function recomputeAllocationStatus(bankTransactionId: string) {
 }
 
 export async function listAllocationsForTransaction(bankTransactionId: string, companyId: string) {
-  const txn = await prisma.bankTransaction.findFirst({ where: { id: bankTransactionId, companyId } });
+  const txn = await prisma.bankTransaction.findFirst({ where: { id: bankTransactionId, companyId, isActive: true } });
   if (!txn) throw new Error("Bank Transaction not found");
 
   const allocations = await prisma.transactionAllocation.findMany({
@@ -175,6 +216,32 @@ export async function listAllocationsForTransaction(bankTransactionId: string, c
     orderBy: { createdAt: "asc" },
   });
   return allocations.map(toDTO);
+}
+
+/**
+ * Removes a wrong (not necessarily duplicate) allocation — the general "undo a mis-allocation"
+ * path, since createAllocations has no update, only create. Tag-only types (no secondary ledger
+ * row — GST/OTHER/Employee tags/LIABILITY_DISBURSEMENT/SD_RELEASE/etc.) can be removed with
+ * confirmation. Ledger-backed types (Vendor Payment, Running Bill Receipt, Liability Repayment,
+ * etc.) are refused — undoing those safely means reversing the real record they created first,
+ * which must be done from that record's own module, never by silently deleting it here.
+ */
+export async function deleteAllocation(id: string, companyId: string, confirm: boolean) {
+  const allocation = await prisma.transactionAllocation.findFirst({ where: { id, companyId } });
+  if (!allocation) throw new Error("Allocation not found");
+
+  if (LEDGER_BACKED_TYPES.includes(allocation.allocationType)) {
+    throw new Error(
+      `This allocation created a ${ALLOCATION_TYPE_LABELS[allocation.allocationType] ?? allocation.allocationType} record — remove/reverse that record from its own module first, then this allocation`
+    );
+  }
+
+  if (!confirm) {
+    throw new Error("Confirmation required before removing an allocation");
+  }
+
+  await prisma.transactionAllocation.delete({ where: { id } });
+  return recomputeAllocationStatus(allocation.bankTransactionId);
 }
 
 async function createLedgerRecord(
@@ -191,11 +258,14 @@ async function createLedgerRecord(
   partnerInvestmentId?: string;
   partnerSettlementId?: string;
   liabilityRepaymentId?: string;
+  siteId?: string;
 }> {
   const paymentDate = bankTxn.transactionDate.toISOString().slice(0, 10);
 
   if (allocationType === "RUNNING_BILL_RECEIPT") {
     if (!row.runningBillId?.trim()) throw new Error("Running Bill is required for a Running Bill Receipt allocation");
+    const runningBill = await prisma.runningBill.findFirst({ where: { id: row.runningBillId, companyId } });
+    if (!runningBill) throw new Error("Running Bill not found");
     const result = await recordRunningBillPayment(row.runningBillId, companyId, createdById, {
       amount: row.amount,
       paymentDate,
@@ -203,12 +273,16 @@ async function createLedgerRecord(
       companyBankAccountId: bankTxn.companyBankAccountId,
       remarks: row.notes,
     });
-    return { runningBillPaymentId: result.paymentId };
+    // Site is derived from the Running Bill itself (Project -> Site -> Running Bill), never asked
+    // for separately, so it never drifts from the bill it's actually attached to.
+    return { runningBillPaymentId: result.paymentId, siteId: runningBill.siteId ?? undefined };
   }
 
   if (allocationType === "VENDOR_PAYMENT") {
     if (!row.vendorBillId?.trim()) throw new Error("Vendor Bill is required for a Vendor Payment allocation");
     if (!row.vendorBankAccountId?.trim()) throw new Error("Vendor bank account is required for a Vendor Payment allocation");
+    const vendorBill = await prisma.vendorBill.findFirst({ where: { id: row.vendorBillId, companyId } });
+    if (!vendorBill) throw new Error("Vendor Bill not found");
     const payment = await recordVendorPayment(companyId, {
       vendorBillId: row.vendorBillId,
       amount: row.amount,
@@ -218,7 +292,9 @@ async function createLedgerRecord(
       vendorBankAccountId: row.vendorBankAccountId,
       remarks: row.notes,
     });
-    return { vendorPaymentId: payment.id };
+    // Site is derived from the Vendor Bill itself (every Vendor Bill now requires one), never
+    // asked for separately, so it never drifts from the bill it's actually attached to.
+    return { vendorPaymentId: payment.id, siteId: vendorBill.siteId ?? undefined };
   }
 
   if (allocationType === "LABOUR") {
@@ -291,8 +367,8 @@ async function createLedgerRecord(
     return { partnerSettlementId: settlement.id };
   }
 
-  if (allocationType === "LIABILITY_REPAYMENT") {
-    if (!row.liabilityId?.trim()) throw new Error("Liability is required for a Liability Repayment allocation");
+  if (LOAN_REPAYMENT_TYPES.includes(allocationType)) {
+    if (!row.liabilityId?.trim()) throw new Error(`Liability is required for a ${ALLOCATION_TYPE_LABELS[allocationType]} allocation`);
     const principalPaid = Number(row.principalPaid) || 0;
     const interestPaid = Number(row.interestPaid) || 0;
     if (Math.abs(principalPaid + interestPaid - row.amount) > 0.01) {
@@ -322,7 +398,7 @@ async function createLedgerRecord(
  * bulkMarkAttendance, and the documented orphan-tolerance in labour-payment.service.ts.
  */
 export async function createAllocations(companyId: string, createdById: string, bankTransactionId: string, rows: AllocationRowInput[]) {
-  const txn = await prisma.bankTransaction.findFirst({ where: { id: bankTransactionId, companyId } });
+  const txn = await prisma.bankTransaction.findFirst({ where: { id: bankTransactionId, companyId, isActive: true } });
   if (!txn) throw new Error("Bank Transaction not found");
   if (!rows?.length) throw new Error("At least one allocation is required");
 
@@ -350,15 +426,28 @@ export async function createAllocations(companyId: string, createdById: string, 
         if (!site) throw new Error("Site not found");
       }
 
+      if (allocationType === "SECURITY_DEPOSIT_RELEASE" && !row.siteId?.trim()) {
+        throw new Error("Site is required for a Security Deposit Release allocation");
+      }
+
       if (allocationType === "LIABILITY_DISBURSEMENT") {
         if (!row.liabilityId?.trim()) throw new Error("Liability is required for a Liability Disbursement allocation");
         const liability = await prisma.liability.findFirst({ where: { id: row.liabilityId, companyId } });
         if (!liability) throw new Error("Liability not found");
       }
 
+      if (EMPLOYEE_TAG_TYPES.includes(allocationType)) {
+        if (!row.employeeId?.trim()) throw new Error(`Employee is required for a ${ALLOCATION_TYPE_LABELS[allocationType]} allocation`);
+        const employee = await prisma.employee.findFirst({ where: { id: row.employeeId, companyId } });
+        if (!employee) throw new Error("Employee not found");
+      }
+
       const ledgerIds = LEDGER_BACKED_TYPES.includes(allocationType)
         ? await createLedgerRecord(companyId, createdById, txn, row, allocationType)
         : {};
+      // VENDOR_PAYMENT/RUNNING_BILL_RECEIPT return a derived siteId from the bill they're
+      // attached to — it takes priority over whatever (if anything) the client sent.
+      const { siteId: derivedSiteId, ...ledgerIdsWithoutSite } = ledgerIds;
 
       const allocation = await prisma.transactionAllocation.create({
         data: {
@@ -366,11 +455,12 @@ export async function createAllocations(companyId: string, createdById: string, 
           bankTransactionId,
           allocationType,
           amount: row.amount,
-          siteId: row.siteId || null,
+          siteId: derivedSiteId ?? row.siteId ?? null,
           partyName: row.partyName || null,
           notes: row.notes || null,
           ...(allocationType === "LIABILITY_DISBURSEMENT" && { liabilityId: row.liabilityId || null }),
-          ...ledgerIds,
+          ...(EMPLOYEE_TAG_TYPES.includes(allocationType) && { employeeId: row.employeeId || null }),
+          ...ledgerIdsWithoutSite,
           createdById,
         },
         include,

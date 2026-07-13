@@ -77,6 +77,18 @@ export default function EditSite() {
               performanceGuarantee: Number(site.performanceGuarantee),
               workOrderDate: site.workOrderDate,
               completionDate: site.completionDate,
+              actualCompletionDate: site.actualCompletionDate,
+              workOrderNumber: site.workOrderNumber,
+              agreementNumber: site.agreementNumber,
+              agreementDate: site.agreementDate,
+              tenderNumber: site.tenderNumber,
+              tenderAboveBelowPercent: site.tenderAboveBelowPercent === "" ? "" : Number(site.tenderAboveBelowPercent),
+              department: site.department,
+              division: site.division,
+              subDivision: site.subDivision,
+              clientEngineer: site.clientEngineer,
+              defectLiabilityPeriod: site.defectLiabilityPeriod,
+              gstPercent: site.gstPercent === "" ? "" : Number(site.gstPercent),
             }}
             onSubmit={handleSubmit}
             saving={saving}

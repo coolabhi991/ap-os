@@ -15,6 +15,18 @@ export const ALLOCATION_TYPES = [
   "OTHER",
   "LIABILITY_DISBURSEMENT",
   "LIABILITY_REPAYMENT",
+  "EMPLOYEE_SALARY",
+  "SITE_ADVANCE",
+  "PERSONAL_ADVANCE",
+  "OD_CC_INTEREST",
+  "BANK_CHARGES",
+  "INTEREST_INCOME",
+  "CAR_LOAN_EMI",
+  "HOME_LOAN_EMI",
+  "GOLD_LOAN",
+  "EMERGENCY_LOAN",
+  "OTHER_LOAN",
+  "SECURITY_DEPOSIT_RELEASE",
 ];
 
 export const ALLOCATION_TYPE_LABELS: Record<string, string> = {
@@ -32,13 +44,53 @@ export const ALLOCATION_TYPE_LABELS: Record<string, string> = {
   OTHER: "Other",
   LIABILITY_DISBURSEMENT: "Liability Disbursement",
   LIABILITY_REPAYMENT: "Liability Repayment",
+  EMPLOYEE_SALARY: "Employee Salary",
+  SITE_ADVANCE: "Site Advance",
+  PERSONAL_ADVANCE: "Personal Advance",
+  OD_CC_INTEREST: "OD / CC Interest",
+  BANK_CHARGES: "Bank Charges",
+  INTEREST_INCOME: "Interest Income",
+  CAR_LOAN_EMI: "Car Loan EMI",
+  HOME_LOAN_EMI: "Home Loan EMI",
+  GOLD_LOAN: "Gold Loan",
+  EMERGENCY_LOAN: "Emergency Loan",
+  OTHER_LOAN: "Other Loan",
+  SECURITY_DEPOSIT_RELEASE: "Security Deposit Release",
 };
 
 // Types that require a Site to be selected.
-export const SITE_SCOPED_TYPES = ["SITE_EXPENSE", "LABOUR"];
+export const SITE_SCOPED_TYPES = ["SITE_EXPENSE", "LABOUR", "SECURITY_DEPOSIT_RELEASE"];
+
+// Of the SITE_SCOPED_TYPES, the ones where Site is mandatory (not just optionally shown).
+export const SITE_REQUIRED_TYPES = ["SITE_EXPENSE", "SECURITY_DEPOSIT_RELEASE"];
 
 // Types that require a Partner to be selected.
 export const PARTNER_SCOPED_TYPES = ["OWNER_INVESTMENT", "PARTNER_INVESTMENT", "PARTNER_SETTLEMENT"];
+
+// Types that require an Employee to be selected — tag-only, mirrors LIABILITY_DISBURSEMENT.
+export const EMPLOYEE_SCOPED_TYPES = ["EMPLOYEE_SALARY", "SITE_ADVANCE", "PERSONAL_ADVANCE"];
+
+// Loan types that behave exactly like LIABILITY_REPAYMENT — same Liability + Principal/Interest split fields.
+export const LOAN_REPAYMENT_TYPES = ["LIABILITY_REPAYMENT", "CAR_LOAN_EMI", "HOME_LOAN_EMI", "GOLD_LOAN", "EMERGENCY_LOAN", "OTHER_LOAN"];
+
+// Types that create a real ledger record (Vendor Payment, Running Bill Payment, Liability Repayment, etc.) — these can never be deleted here, only from their own module.
+export const LEDGER_BACKED_TYPES = [
+  "RUNNING_BILL_RECEIPT",
+  "VENDOR_PAYMENT",
+  "LABOUR",
+  "SITE_EXPENSE",
+  "OWNER_INVESTMENT",
+  "PARTNER_INVESTMENT",
+  "PARTNER_SETTLEMENT",
+  ...LOAN_REPAYMENT_TYPES,
+];
+
+// Maps a loan-specific allocation type to the matching Liability.liabilityType, to filter the picker to relevant liabilities only.
+export const LOAN_TYPE_TO_LIABILITY_TYPE: Record<string, string> = {
+  CAR_LOAN_EMI: "CAR_LOAN",
+  HOME_LOAN_EMI: "HOME_LOAN",
+  GOLD_LOAN: "GOLD_LOAN",
+};
 
 export interface TransactionAllocation {
   id: string;
@@ -48,6 +100,8 @@ export interface TransactionAllocation {
   amount: string;
   siteId: string;
   site: { id: string; name: string } | null;
+  employeeId: string;
+  employee: { id: string; name: string } | null;
   partyName: string;
   notes: string;
   runningBillPaymentId: string;
@@ -86,6 +140,7 @@ export interface AllocationRowInput {
   liabilityId?: string;
   principalPaid?: number;
   interestPaid?: number;
+  employeeId?: string;
 }
 
 export interface CreateAllocationsResult {
@@ -104,4 +159,9 @@ export async function getAllocationsForTransaction(bankTransactionId: string): P
 export async function createAllocations(bankTransactionId: string, rows: AllocationRowInput[]): Promise<CreateAllocationsResult> {
   const response = await api.post<{ success: boolean } & CreateAllocationsResult>("/transaction-allocations", { bankTransactionId, rows });
   return response.data;
+}
+
+/** Removes a wrong allocation — tag-only types only, and only with confirm=true; ledger-backed types (Vendor Payment, Liability Repayment, etc.) are always refused server-side. */
+export async function deleteAllocation(id: string, confirm = false): Promise<void> {
+  await api.delete(`/transaction-allocations/${id}`, { data: { confirm } });
 }

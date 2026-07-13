@@ -160,11 +160,21 @@ enum BillType {
 
 enum DeductionType {
   SECURITY_DEPOSIT
+  // Legacy single GST value — kept for historical rows only. New Form 58 bills use
+  // GST_STATE/GST_CENTRAL below instead (the split can't be reconstructed retroactively for
+  // rows already recorded against this value).
   GST
+  GST_STATE
+  GST_CENTRAL
   LABOUR_CESS
   ROYALTY
   TDS
+  // Separate from TDS per business confirmation — Income Tax and TDS are two distinct
+  // deductions on Form 58, not the same withholding recorded twice.
+  INCOME_TAX
   MOBILIZATION_RECOVERY
+  INSURANCE
+  FINE
   OTHER
 }
 
@@ -241,6 +251,30 @@ enum AllocationType {
   OTHER
   LIABILITY_DISBURSEMENT
   LIABILITY_REPAYMENT
+  // Employee — tag-only (employeeId on the allocation row), no dedicated ledger; Employee
+  // Reports read straight off these allocations (see EmployeeReport comment further down).
+  EMPLOYEE_SALARY
+  SITE_ADVANCE
+  PERSONAL_ADVANCE
+  // Banking — tag-only, no extra entity beyond the BankTransaction's own companyBankAccountId.
+  OD_CC_INTEREST
+  BANK_CHARGES
+  INTEREST_INCOME
+  // Loans — behave exactly like LIABILITY_REPAYMENT (require liabilityId, principal/interest
+  // split, create a LiabilityRepayment row) — see LOAN_REPAYMENT_TYPES in
+  // transaction-allocation.service.ts. These are just more specific "why" labels on top of the
+  // same mechanism, filtered to the matching Liability.liabilityType in the picker.
+  CAR_LOAN_EMI
+  HOME_LOAN_EMI
+  GOLD_LOAN
+  EMERGENCY_LOAN
+  OTHER_LOAN
+  // Security Deposit released back to a contractor — tag-only, requires siteId (already a
+  // first-class field on this model, same as SITE_EXPENSE). SD Deducted comes from
+  // RunningBillDeduction rows of type SECURITY_DEPOSIT on that site's bills; SD Released is the
+  // sum of these allocations; SD Pending is always Deducted minus Released, computed on demand
+  // in deduction-ledger.service.ts — never stored.
+  SECURITY_DEPOSIT_RELEASE
 }
 
 enum LiabilityType {
@@ -347,15 +381,20 @@ model Company {
   runningBillPayments   RunningBillPayment[]
   runningBillEmailLogs  RunningBillEmailLog[]
   bankTransactions      BankTransaction[]
+  bankStatementMappings BankStatementMapping[]
   transactionAllocations TransactionAllocation[]
   partners              Partner[]
   partnerInvestments    PartnerInvestment[]
   partnerSettlements    PartnerSettlement[]
-  projectContractInfos  ProjectContractInfo[]
   sites                 Site[]
   siteRecapRevisions    SiteRecapRevision[]
   siteVisits            SiteVisit[]
   liabilities           Liability[]
+  employees             Employee[]
+  bankAccountMasters    BankAccountMaster[]
+  bankStatementImports  BankStatementImport[]
+  bankStatementAuditLogs BankStatementAuditLog[]
+  siteBillItems         SiteBillItem[]
   liabilityRepayments   LiabilityRepayment[]
   recapitulationItems   RecapitulationItem[]
   measurementItemFieldAudits MeasurementItemFieldAudit[]
@@ -393,6 +432,7 @@ model CompanyBankAccount {
   partnerInvestments  PartnerInvestment[]
   partnerSettlements  PartnerSettlement[]
   liabilityRepayments LiabilityRepayment[]
+  bankStatementImports BankStatementImport[]
 
   @@index([companyId])
 }
@@ -438,6 +478,9 @@ model User {
   runningBillPaymentsCreated RunningBillPayment[]  @relation("RunningBillPaymentCreatedBy")
   runningBillEmailsSent      RunningBillEmailLog[] @relation("RunningBillEmailSentBy")
   bankTransactionsCreated    BankTransaction[]     @relation("BankTransactionCreatedBy")
+  bankStatementImportsCreated BankStatementImport[] @relation("BankStatementImportCreatedBy")
+  bankStatementAuditLogsPerformed BankStatementAuditLog[] @relation("BankStatementAuditPerformedBy")
+  siteBillItemsCreated       SiteBillItem[]        @relation("SiteBillItemCreatedBy")
   transactionAllocationsCreated TransactionAllocation[]
   partnerInvestmentsCreated  PartnerInvestment[]
   partnerSettlementsCreated  PartnerSettlement[]
@@ -452,6 +495,7 @@ model Client {
   companyId     String
   company       Company  @relation(fields: [companyId], references: [id])
   name          String
+  // System-generated, permanent, read-only — CLI/<FY>/<Seq>.
   clientCode    String?
   contactPerson String?
   email         String?
@@ -471,6 +515,7 @@ model Client {
   projects  Project[]
   documents Document[]
 
+  @@unique([companyId, clientCode])
   @@index([companyId])
   @@index([status])
 }
@@ -496,6 +541,7 @@ model Project {
   projectTypeId String?
   projectType   ProjectType?  @relation(fields: [projectTypeId], references: [id])
   name          String
+  // System-generated, permanent, read-only — derived from name initials at creation time.
   code          String?
   description   String?
   location      String?
@@ -531,8 +577,9 @@ model Project {
   dailyProgressReports DailyProgressReport[]
   runningBillPayments  RunningBillPayment[]
   bankTransactions     BankTransaction[]
-  contractInfo         ProjectContractInfo?
   sites                Site[]
+
+  @@unique([companyId, code])
 }
 
 /**
@@ -562,7 +609,26 @@ model Site {
   securityDeposit      Decimal       @default(0) @db.Decimal(14, 2)
   performanceGuarantee Decimal       @default(0) @db.Decimal(14, 2)
   workOrderDate        DateTime?
+  // "Work Order End Date" in the UI — the expected/contractual completion date, always visible.
   completionDate       DateTime?
+  // Only ever set once status = COMPLETED; the UI hides this field until then.
+  actualCompletionDate DateTime?
+  // Work Order Details tab fields — relocated here from the removed ProjectContractInfo model so
+  // every Site is self-contained (§ Workflow Refinement milestone, Item 1).
+  workOrderNumber       String?
+  agreementNumber       String?
+  agreementDate         DateTime?
+  tenderNumber          String?
+  tenderAboveBelowPercent Decimal?  @db.Decimal(5, 2)
+  department            String?
+  division              String?
+  subDivision           String?
+  clientEngineer        String?
+  defectLiabilityPeriod String?
+  gstPercent            Decimal?  @db.Decimal(5, 2)
+  // System-generated, permanent, read-only — APC/<ProjectCode>/<FY>/<TalukaCode>/<SiteSeq>.
+  // Null only for sites created before the Document Numbering Standard milestone.
+  siteCode              String?
   createdAt            DateTime      @default(now())
   updatedAt            DateTime      @updatedAt
 
@@ -576,7 +642,10 @@ model Site {
   recapRevisions       SiteRecapRevision[]
   siteVisits           SiteVisit[]
   transactionAllocations TransactionAllocation[]
+  vendorBills          VendorBill[]
+  billItems            SiteBillItem[]
 
+  @@unique([companyId, siteCode])
   @@index([companyId])
   @@index([projectId])
   @@index([status])
@@ -617,11 +686,21 @@ model SiteRecapRevision {
   gstType                GstType              @default(NONE)
   gstPercent             Decimal              @default(0) @db.Decimal(5, 2)
   administrationCharges  Decimal              @default(0) @db.Decimal(14, 2)
-  // Unlimited free-form extra charges below the table — [{ label: string, amount: string }].
-  // A JSON array rather than a child table: there is nothing to query across rows for, only
-  // ever read/written as a whole alongside the rest of this revision (same reasoning as
-  // BankTransaction's other Json fields elsewhere in this schema).
+  // Legacy free-form extra charges — [{ label: string, amount: string }]. Superseded by the
+  // five named Other Charges fields below for any revision created after the Site Management &
+  // Financial Workflow Refinement milestone; kept only so older revisions still display their
+  // historical figures unchanged (never rewritten retroactively).
   otherCharges           Json                 @default("[]")
+  // Other Charges section (Workflow Refinement milestone) — a fixed, named set rather than a
+  // free-form list, per the approved requirement. otherChargesTotal is the sum of these five,
+  // stored (not purely derived) to match this model's existing convention of persisting its
+  // computed totals (subTotal/gstAmount/grandTotal) rather than recomputing them on every read.
+  msebCharges            Decimal              @default(0) @db.Decimal(14, 2)
+  royaltyCharges         Decimal              @default(0) @db.Decimal(14, 2)
+  testingCharges         Decimal              @default(0) @db.Decimal(14, 2)
+  labourCessCharges      Decimal              @default(0) @db.Decimal(14, 2)
+  otherRecoveries        Decimal              @default(0) @db.Decimal(14, 2)
+  otherChargesTotal      Decimal              @default(0) @db.Decimal(14, 2)
   subTotal               Decimal              @default(0) @db.Decimal(14, 2)
   gstAmount              Decimal              @default(0) @db.Decimal(14, 2)
   grandTotal             Decimal              @default(0) @db.Decimal(14, 2)
@@ -639,13 +718,19 @@ model SiteRecapRevision {
 }
 
 /**
- * One BOQ row of a Recapitulation Sheet revision — always one row per Sub Work that existed
- * on the Site at save time (never hand-added/removed, never hardcoded: createSiteRecapRevision
- * generates exactly one row per current SubWork). `particular` freezes the Sub Work's name at
- * save time (survives the Sub Work later being renamed/deleted, same snapshot philosophy as
- * `snapshot` on the parent revision); `subWorkId` is kept alongside for the Abstract MB's
- * carry-forward lookup, and is nullable only so a deleted Sub Work doesn't block reading old
- * revisions. `amount` is always server-recomputed as qty * rate — never trusted from the client.
+ * One row of the Recapitulation Register grid — the Site's primary planning/costing/execution
+ * line item (Workflow Refinement milestone: Recapitulation replaces Sub Work as the module users
+ * directly manage; the "Sub Works" tab is gone). Users freely Add/Insert/Delete/Reorder these
+ * rows on the current (isCurrent) revision, editing in place — a new revision is only created
+ * when the user explicitly locks/snapshots one for the audit trail, not on every edit.
+ *
+ * Each row still transparently owns a linked SubWork row (auto-created/renamed together with
+ * this item) purely so the ~10 other models that already tag `subWorkId` (DPR, Expense,
+ * VendorBill, MaterialIssue, LabourAttendance, MeasurementBook, RunningBill, SiteBillItem)
+ * continue to work unchanged — entering a row here is entering it everywhere those modules read
+ * from ("Enter Once, Use Everywhere"), without a cross-module schema migration. `subWorkId` is
+ * nullable only so a row surviving from an old revision whose SubWork was later deleted can still
+ * be read. `amount` is always server-recomputed as qty * rate — never trusted from the client.
  */
 model RecapitulationItem {
   id                  String            @id @default(cuid())
@@ -657,6 +742,7 @@ model RecapitulationItem {
   subWork             SubWork?          @relation(fields: [subWorkId], references: [id])
   sortOrder           Int               @default(0)
   particular          String
+  unit                String?
   qty                 Decimal           @default(0) @db.Decimal(14, 4)
   rate                Decimal           @default(0) @db.Decimal(14, 2)
   amount              Decimal           @default(0) @db.Decimal(14, 2)
@@ -704,33 +790,6 @@ model SiteVisit {
  * Value itself is NOT duplicated here — it stays solely on Project.contractValue and is
  * read/written through it, per the "one source of truth" rule used everywhere else in this app.
  */
-model ProjectContractInfo {
-  id                          String    @id @default(cuid())
-  companyId                   String
-  company                     Company   @relation(fields: [companyId], references: [id])
-  projectId                   String    @unique
-  project                     Project   @relation(fields: [projectId], references: [id])
-  workOrderNumber             String?
-  workOrderDate               DateTime?
-  agreementNumber             String?
-  agreementDate               DateTime?
-  tenderNumber                String?
-  department                  String?
-  division                    String?
-  subDivision                 String?
-  clientEngineer              String?
-  estimateAmount              Decimal?  @db.Decimal(14, 2)
-  workStartDate               DateTime?
-  completionDate              DateTime?
-  defectLiabilityPeriod       String?
-  securityDepositPercent      Decimal?  @db.Decimal(5, 2)
-  performanceGuaranteePercent Decimal?  @db.Decimal(5, 2)
-  gstPercent                  Decimal?  @db.Decimal(5, 2)
-  createdAt                   DateTime  @default(now())
-  updatedAt                   DateTime  @updatedAt
-
-  @@index([companyId])
-}
 
 /**
  * A project's own breakdown of work (e.g. "Foundation", "Superstructure", "Plumbing") —
@@ -782,6 +841,7 @@ model SubWork {
   runningBills         RunningBill[]
   recapitulationItems  RecapitulationItem[]
   measurementBookItems MeasurementBookItem[]
+  siteBillItems        SiteBillItem[]
 
   @@index([companyId])
   @@index([projectId])
@@ -935,6 +995,7 @@ model Vendor {
   companyId     String
   company       Company  @relation(fields: [companyId], references: [id])
   name          String
+  // System-generated, permanent, read-only — VEN/<FY>/<Seq>.
   vendorCode    String?
   category      String?
   contactPerson String?
@@ -965,6 +1026,7 @@ model Vendor {
   dprsAsContractor     DailyProgressReport[]
   mbsAsContractor      MeasurementBook[]
 
+  @@unique([companyId, vendorCode])
   @@index([companyId])
   @@index([status])
   @@index([category])
@@ -1479,6 +1541,12 @@ model MeasurementBook {
   abstractPdfName       String?
   sourceRecapRevisionId String?
   sourceRecapRevision   SiteRecapRevision?    @relation(fields: [sourceRecapRevisionId], references: [id])
+  // Form 58 footer config — Above/Below is the signed tender premium/rebate % applied to the
+  // Abstract's Total Amount; GST % is applied after that adjustment. Both default to 0 (no
+  // effect) and are the only two footer inputs ever stored — Net Value/Grand Total are always
+  // computed live from these plus the item totals, never persisted.
+  aboveBelowPercent     Decimal               @default(0) @db.Decimal(5, 2)
+  gstPercent            Decimal               @default(0) @db.Decimal(5, 2)
 
   createdById String
   createdBy   User     @relation("MBCreatedBy", fields: [createdById], references: [id])
@@ -1578,26 +1646,30 @@ model MeasurementItemFieldAudit {
 }
 
 /**
- * Running Bill — the client-billing module. Deliberately NOT a separate "Client Billing"
- * module: every Running Bill is generated from exactly one APPROVED Measurement Book
- * (measurementBookId is @unique, enforcing "one Approved MB -> at most one Running Bill"
- * at the DB level). Quantities/rates/payment% are never re-entered here — they're copied
- * from the MB's items into RunningBillItem at creation time (see running-bill.service.ts),
- * mirroring the existing rule that computed/sourced figures are snapshotted once, not
- * re-derived from a moving source on every read.
+ * Running Bill — the client-billing module, and the direct system representation of one
+ * Government Form No. 58 (one RA Bill = one Form 58 = one RunningBill row). Historically every
+ * Running Bill was generated from an Approved Measurement Book; as of the Form 58 redesign, new
+ * bills are created directly against a Site's Bill Item Master (see SiteBillItem) and
+ * measurementBookId is optional — only populated on bills created by the (retired-for-new-use,
+ * kept read-only) Measurement Book flow. raSequence is the per-Site RA Bill ordering (RA Bill 1,
+ * 2, 3...), independent of any other Site's numbering — the authoritative key for "copy from the
+ * immediately preceding bill", since billNumber itself is free text and not guaranteed sequential.
  */
 model RunningBill {
-  id                      String          @id @default(cuid())
+  id                      String           @id @default(cuid())
   companyId               String
-  company                 Company         @relation(fields: [companyId], references: [id])
+  company                 Company          @relation(fields: [companyId], references: [id])
   projectId               String
-  project                 Project         @relation(fields: [projectId], references: [id])
+  project                 Project          @relation(fields: [projectId], references: [id])
   siteId                  String
-  siteRecord              Site            @relation(fields: [siteId], references: [id])
+  siteRecord              Site             @relation(fields: [siteId], references: [id])
   subWorkId               String?
-  subWork                 SubWork?        @relation(fields: [subWorkId], references: [id])
-  measurementBookId       String          @unique
-  measurementBook         MeasurementBook @relation(fields: [measurementBookId], references: [id])
+  subWork                 SubWork?         @relation(fields: [subWorkId], references: [id])
+  measurementBookId       String?          @unique
+  measurementBook         MeasurementBook? @relation(fields: [measurementBookId], references: [id])
+  // Per-Site sequential ordering for Form 58 bills — null only for legacy MB-sourced bills that
+  // predate this column. Never user-editable; always the next integer for that Site.
+  raSequence              Int?
   billNumber              String
   billType                BillType        @default(RA_BILL)
   site                    String?
@@ -1630,7 +1702,10 @@ model RunningBill {
   documents  Document[]
   emailLogs  RunningBillEmailLog[]
 
-  @@unique([companyId, billNumber])
+  // Bill numbering is independent per Site, not per Company — the same "RA-1" label is expected
+  // to exist on every Site (see raSequence's own comment above).
+  @@unique([siteId, billNumber])
+  @@unique([siteId, raSequence])
   @@index([companyId])
   @@index([projectId])
   @@index([siteId])
@@ -1640,37 +1715,78 @@ model RunningBill {
 }
 
 /**
- * One Abstract row per BOQ item, copied from the linked Measurement Book's items at creation
- * time. previousQuantity is the cumulative quantity already certified for this boqItemNo across
- * every earlier Running Bill on the same project (computed server-side, never client-supplied) —
- * see computeItemCalc/previous-quantity lookup in running-bill.service.ts.
+ * One Abstract row per billed item. For Form 58 bills (siteBillItemId set), the row is a
+ * snapshot of that SiteBillItem's description/unit/rate at billing time PLUS this bill's own
+ * quantities — the master can be edited going forward without ever rewriting a historical bill's
+ * figures. previousQuantity is the cumulative quantity already certified for this item across
+ * every earlier Running Bill on the same Site (computed server-side, never client-supplied).
+ * Legacy MB-sourced rows have siteBillItemId null and are matched by boqItemNo instead, unchanged
+ * from before.
  */
 model RunningBillItem {
-  id               String      @id @default(cuid())
+  id               String       @id @default(cuid())
   companyId        String
-  company          Company     @relation(fields: [companyId], references: [id])
+  company          Company      @relation(fields: [companyId], references: [id])
   runningBillId    String
-  runningBill      RunningBill @relation(fields: [runningBillId], references: [id])
-  sortOrder        Int         @default(0)
+  runningBill      RunningBill  @relation(fields: [runningBillId], references: [id])
+  siteBillItemId   String?
+  siteBillItem     SiteBillItem? @relation(fields: [siteBillItemId], references: [id])
+  sortOrder        Int          @default(0)
   boqItemNo        String
   boqDescription   String
   unit             String
-  previousQuantity Decimal     @default(0) @db.Decimal(14, 4)
-  currentQuantity  Decimal     @default(0) @db.Decimal(14, 4)
-  totalQuantity    Decimal     @default(0) @db.Decimal(14, 4)
-  boqRate          Decimal     @default(0) @db.Decimal(14, 2)
-  paymentPercent   Decimal     @default(100) @db.Decimal(5, 2)
-  effectiveRate    Decimal     @default(0) @db.Decimal(14, 2)
-  previousAmount   Decimal     @default(0) @db.Decimal(14, 2)
-  currentAmount    Decimal     @default(0) @db.Decimal(14, 2)
-  totalAmount      Decimal     @default(0) @db.Decimal(14, 2)
+  previousQuantity Decimal      @default(0) @db.Decimal(14, 4)
+  currentQuantity  Decimal      @default(0) @db.Decimal(14, 4)
+  totalQuantity    Decimal      @default(0) @db.Decimal(14, 4)
+  boqRate          Decimal      @default(0) @db.Decimal(14, 2)
+  paymentPercent   Decimal      @default(100) @db.Decimal(5, 2)
+  effectiveRate    Decimal      @default(0) @db.Decimal(14, 2)
+  previousAmount   Decimal      @default(0) @db.Decimal(14, 2)
+  currentAmount    Decimal      @default(0) @db.Decimal(14, 2)
+  totalAmount      Decimal      @default(0) @db.Decimal(14, 2)
   remarks          String?
-  createdAt        DateTime    @default(now())
-  updatedAt        DateTime    @updatedAt
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
 
   @@index([companyId])
   @@index([runningBillId])
   @@index([boqItemNo])
+  @@index([siteBillItemId])
+}
+
+/**
+ * Bill Item Master — one row per billable item, per Site, forever. This is the authoritative
+ * identity Form 58 bills carry forward: RA Bill 1 creates these rows as items are entered; every
+ * later RA Bill auto-includes every active item here (Current Quantity defaults to 0 if untouched
+ * — items already billed must never disappear); a brand-new item entered on any later bill creates
+ * a new row here automatically, so it appears on every bill after that too. Rate lives here as the
+ * current/canonical value — each RunningBillItem still snapshots its own rate at billing time, so
+ * editing the master rate never rewrites historical bills.
+ */
+model SiteBillItem {
+  id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id])
+  siteId      String
+  site        Site     @relation(fields: [siteId], references: [id])
+  subWorkId   String?
+  subWork     SubWork? @relation(fields: [subWorkId], references: [id])
+  itemNo      String
+  description String
+  unit        String
+  rate        Decimal  @default(0) @db.Decimal(14, 2)
+  isActive    Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdById String
+  createdBy   User     @relation("SiteBillItemCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  billItems RunningBillItem[]
+
+  @@index([companyId])
+  @@index([siteId])
+  @@index([subWorkId])
 }
 
 /**
@@ -1852,6 +1968,8 @@ model VendorBill {
   vendor             Vendor           @relation(fields: [vendorId], references: [id])
   projectId          String?
   project            Project?         @relation(fields: [projectId], references: [id])
+  siteId             String?
+  site               Site?            @relation(fields: [siteId], references: [id])
   purchaseOrderId    String?
   purchaseOrder      PurchaseOrder?   @relation(fields: [purchaseOrderId], references: [id])
   materialReceiptId  String?
@@ -1879,6 +1997,7 @@ model VendorBill {
   @@index([companyId])
   @@index([vendorId])
   @@index([projectId])
+  @@index([siteId])
   @@index([purchaseOrderId])
   @@index([materialReceiptId])
   @@index([subWorkId])
@@ -1973,9 +2092,18 @@ model BankTransaction {
   project              Project?              @relation(fields: [projectId], references: [id])
   allocationStatus     AllocationStatus      @default(UNALLOCATED)
   source               BankTransactionSource @default(MANUAL)
-  // Groups the rows created by one Excel/CSV import call, purely for audit/undo — no separate
-  // ImportBatch model, matching the "no abstraction beyond what's needed" convention.
+  // Business/batch identifier only, kept for backward-compatible reference — the authoritative
+  // link from an imported row to its statement is bankStatementImportId below.
   importBatchId        String?
+  // The one Import Statement this row came from — set only for source=IMPORTED rows, never for
+  // MANUAL ones. This is the authoritative FK the Imported Statements feature (soft delete/
+  // restore) operates on; every IMPORTED row always has exactly one, so there are no orphans.
+  bankStatementImportId String?
+  bankStatementImport   BankStatementImport? @relation(fields: [bankStatementImportId], references: [id])
+  // Soft-delete visibility flag, flipped only by deleting/restoring the owning Import Statement
+  // (never by editing a transaction directly). false = hidden from Banking/Allocation/Reports/
+  // Dashboard but the row (and any allocations/ledger records it created) is never touched.
+  isActive              Boolean              @default(true)
 
   allocations TransactionAllocation[]
 
@@ -1990,6 +2118,98 @@ model BankTransaction {
   @@index([allocationStatus])
   @@index([projectId])
   @@index([importBatchId])
+  @@index([bankStatementImportId])
+  @@index([isActive])
+}
+
+/**
+ * One row per statement-file import attempt (whether or not anything was actually inserted) —
+ * the record that lets the importer warn "you already imported this exact file" BEFORE doing any
+ * work, using fileHash (SHA-256 of the raw file bytes, computed client-side) + companyBankAccountId
+ * as the identity. periodFrom/periodTo (min/max transaction date found in the file) are stored for
+ * display/audit only — actual duplicate *transaction* detection (the thing that makes overlapping-
+ * but-not-identical statements safe to re-import) happens row-by-row in bank-transaction.service.ts,
+ * never by comparing whole statements.
+ */
+model BankStatementImport {
+  id                   String   @id @default(cuid())
+  companyId            String
+  company              Company  @relation(fields: [companyId], references: [id])
+  companyBankAccountId String
+  companyBankAccount   CompanyBankAccount @relation(fields: [companyBankAccountId], references: [id])
+  fileName             String?
+  fileHash             String
+  periodFrom           DateTime?
+  periodTo             DateTime?
+  totalRows            Int      @default(0)
+  importedRows         Int      @default(0)
+  skippedRows          Int      @default(0)
+  importBatchId        String?
+  createdById          String
+  createdBy            User     @relation("BankStatementImportCreatedBy", fields: [createdById], references: [id])
+  createdAt            DateTime @default(now())
+  // Soft delete only — deleting a statement flips this + isActive:false on its transactions.
+  // Never cascades to allocations or the ledger records they created (Vendor Payment, Running
+  // Bill Receipt, etc.) — those are financial history and are never touched by this flag.
+  isDeleted            Boolean  @default(false)
+  deletedAt            DateTime?
+
+  transactions BankTransaction[]
+  auditLogs    BankStatementAuditLog[]
+
+  @@index([companyId])
+  @@index([companyBankAccountId])
+  @@index([fileHash])
+  @@index([isDeleted])
+}
+
+enum BankStatementAuditAction {
+  IMPORTED
+  DELETED
+  RESTORED
+}
+
+/** One row per Import/Delete/Restore event on a Bank Statement Import — full history, not just the latest state. */
+model BankStatementAuditLog {
+  id                    String                    @id @default(cuid())
+  companyId             String
+  company               Company                   @relation(fields: [companyId], references: [id])
+  bankStatementImportId String
+  bankStatementImport   BankStatementImport       @relation(fields: [bankStatementImportId], references: [id])
+  action                BankStatementAuditAction
+  performedById         String
+  performedBy           User                      @relation("BankStatementAuditPerformedBy", fields: [performedById], references: [id])
+  performedAt           DateTime                  @default(now())
+  notes                 String?
+
+  @@index([companyId])
+  @@index([bankStatementImportId])
+}
+
+/**
+ * Remembers a manual column mapping the user chose once for a bank statement layout, keyed by a
+ * signature computed from the header row's normalized text. The next file with the same header
+ * layout (same bank/account export format) auto-applies this mapping instead of re-prompting.
+ * Columns are stored by position (0-based index into the detected header row), not by name, since
+ * the signature already pins the exact header text combination those positions were chosen against.
+ */
+model BankStatementMapping {
+  id              String   @id @default(cuid())
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id])
+  signature       String
+  bankName        String?
+  dateColumn      Int
+  descriptionColumn Int?
+  debitColumn     Int?
+  creditColumn    Int?
+  balanceColumn   Int?
+  referenceColumn Int?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([companyId, signature])
+  @@index([companyId])
 }
 
 /**
@@ -2039,6 +2259,12 @@ model TransactionAllocation {
   liabilityRepaymentId String?             @unique
   liabilityRepayment   LiabilityRepayment? @relation(fields: [liabilityRepaymentId], references: [id])
 
+  // EMPLOYEE_SALARY / SITE_ADVANCE / PERSONAL_ADVANCE tag directly with the Employee, the same
+  // no-dedicated-ledger pattern as liabilityId above — Employee Reports read straight off these
+  // allocation rows (filtered by employeeId + allocationType + date range), never a second total.
+  employeeId String?
+  employee   Employee? @relation(fields: [employeeId], references: [id])
+
   createdById String
   createdBy   User     @relation(fields: [createdById], references: [id])
   createdAt   DateTime @default(now())
@@ -2048,6 +2274,87 @@ model TransactionAllocation {
   @@index([siteId])
   @@index([allocationType])
   @@index([liabilityId])
+  @@index([employeeId])
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  INACTIVE
+}
+
+/**
+ * Lightweight internal-staff registry — deliberately NOT a payroll/HR module (no attendance, no
+ * PF/ESIC, no salary structure). Exists purely so bank transactions allocated as Employee Salary /
+ * Site Advance / Personal Advance can tag a real person, and Employee Reports can aggregate those
+ * tags. Distinct from Labour (site/project daily-wage workforce, attendance-driven wage calc).
+ */
+model Employee {
+  id          String         @id @default(cuid())
+  companyId   String
+  company     Company        @relation(fields: [companyId], references: [id])
+  name        String
+  // System-generated, permanent, read-only — EMP/<FY>/<Seq>.
+  code        String?
+  mobile      String?
+  designation String?
+  department  String?
+  status      EmployeeStatus @default(ACTIVE)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  allocations TransactionAllocation[]
+
+  @@unique([companyId, code])
+  @@index([companyId])
+  @@index([status])
+}
+
+enum BankAccountOwnerType {
+  COMPANY
+  EMPLOYEE
+  VENDOR
+  CLIENT
+  PARTNER
+  LIABILITY
+  OTHER
+}
+
+enum BankAccountStatus {
+  ACTIVE
+  INACTIVE
+  CLOSED
+}
+
+/**
+ * Unified Bank Account Master — one place any bank account belonging to any kind of owner is
+ * recorded, instead of each owner type growing its own bank-account table. companyId scopes the
+ * account to a tenant; ownerType + ownerId then scopes it to whichever entity actually holds it
+ * (an Employee, Client, Partner, Liability's lender, or a free-form "Other" owner named via
+ * ownerLabel). CompanyBankAccount and VendorBankAccount remain the source of truth for Company and
+ * Vendor accounts respectively (too deeply wired into Banking/Vendor Payments to safely migrate in
+ * this phase) — this master is for every owner type that had no bank-account storage before.
+ */
+model BankAccountMaster {
+  id              String               @id @default(cuid())
+  companyId       String
+  company         Company              @relation(fields: [companyId], references: [id])
+  ownerType       BankAccountOwnerType
+  ownerId         String?
+  ownerLabel      String?
+  bankName        String
+  branch          String?
+  accountHolder   String?
+  accountNumber   String
+  ifscCode        String
+  upiId           String?
+  isPrimary       Boolean              @default(false)
+  status          BankAccountStatus    @default(ACTIVE)
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  @@index([companyId])
+  @@index([ownerType])
+  @@index([ownerId])
 }
 
 /**
@@ -2060,6 +2367,8 @@ model Partner {
   companyId    String
   company      Company     @relation(fields: [companyId], references: [id])
   name         String
+  // System-generated, permanent, read-only — PTR/<FY>/<Seq>.
+  code         String?
   partnerType  PartnerType @default(PARTNER)
   phone        String?
   email        String?
@@ -2073,6 +2382,7 @@ model Partner {
   investments PartnerInvestment[]
   settlements PartnerSettlement[]
 
+  @@unique([companyId, code])
   @@index([companyId])
   @@index([partnerType])
 }
@@ -2153,6 +2463,8 @@ model Liability {
   companyId         String
   company           Company               @relation(fields: [companyId], references: [id])
   loanName          String
+  // System-generated, permanent, read-only — LIA/<FY>/<Seq>.
+  code              String?
   liabilityType     LiabilityType
   lenderName        String?
   // Friend/Relative loans have no bank of their own — this is the lender's own mobile number.
@@ -2187,6 +2499,7 @@ model Liability {
   repayments  LiabilityRepayment[]
   allocations TransactionAllocation[]
 
+  @@unique([companyId, code])
   @@index([companyId])
   @@index([liabilityType])
   @@index([status])

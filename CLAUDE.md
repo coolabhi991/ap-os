@@ -304,7 +304,39 @@ Before declaring any backend or frontend change complete, you **must** run the r
 
 ---
 
-## 19. Permanent Development Guidelines for All Future Claude Code Sessions
+## 19. Planned Enhancements (Roadmap — NOT Implemented)
+
+This section tracks features that have been **specified by the user but deliberately not built yet**. Nothing in this section exists in the schema, API, or UI. Do not start implementing an item here unless the user explicitly asks for it in a future session — this list exists purely so the requirement isn't lost between sessions.
+
+### 19.1 Running Bill Deductions & Recovery Ledger
+
+**Status: Not implemented. No schema changes. No migrations. No code written.** Specified 2026-07-11 for consideration during the *next* workflow refinement pass, after the current Recapitulation → Abstract MB → Running Bill chain (built in the workflow-refinement session immediately prior to this one — not yet written up elsewhere in this file, re-derive its shape from the actual code in `site-control-center.service.ts` / `measurement-book.service.ts` / `running-bill.service.ts` rather than assuming this doc describes it) has seen real-world use.
+
+**Problem it solves**: Government Running Bills don't pay out the gross certified amount — they deduct several statutory/contractual amounts first. **Verified against the actual schema (2026-07-11): more of this already exists than you'd assume from the request text alone** — `RunningBillDeduction` (per-line-item: `type: DeductionType`, `label`, `amount`, `remarks`) and a `DeductionType` enum (`SECURITY_DEPOSIT, GST, LABOUR_CESS, ROYALTY, TDS, MOBILIZATION_RECOVERY, OTHER`) already exist in `schema.prisma`, and `RunningBill.totalDeductions`/`currentCertifiedAmount`/`netPayable` already give Gross/Total Deductions/Net per bill (see `running-bill.service.ts`'s `buildDeductions`). **Re-verify this against the live schema before starting** — don't take this paragraph as still-current fact by the time this is picked up.
+
+**What's actually missing** (the real gap, not what the original request assumed):
+1. `DeductionType` has no `INSURANCE` value, and `GST` isn't split into `CGST`/`SGST` — the enum needs extending (additive, backward compatible) if the user wants that granularity.
+2. **No cross-Running-Bill rollup exists at all** — nothing today aggregates `RunningBillDeduction` rows by type across a Site/Project/Company. This is the main net-new work: a `deduction-ledger.service.ts` (or similar) doing `groupBy` over `RunningBillDeduction.type` scoped by Site → Project → Company, mirroring the read-only-rollup pattern already used by `banking-reports.service.ts`/`partnership-reports.service.ts`.
+3. **No SD release/pending tracking** — a Security Deposit deduction today has no corresponding "released back to the contractor" event or state. This needs new modeling (see design notes below), not just a query over existing data.
+4. No Dashboard KPIs, no AI intents, no dedicated ledger UI tab — none of that reads this data today.
+
+**Ledgers required** (all read-only rollups over the deduction line items — must follow this repo's "never store a derivable total" rule, i.e. computed on demand, not double-stored):
+- **Site-wise Ledger**: Total SD Deducted, SD Released, SD Pending, GST Deducted, Income Tax Deducted, Labour Cess, Royalty, Insurance, Other Recoveries
+- **Project-wise Summary** (roll-up of the above across a Project's Sites)
+- **Company-wise Summary** (roll-up across the whole Company)
+
+**Future Dashboard KPIs**: Outstanding Security Deposit, Total TDS, Total Royalty, Total Labour Cess, Total Recoveries, Net Amount Received.
+
+**Future AP AI questions to support**: "How much Security Deposit is pending for this Site?", "Total Royalty deducted this year?", "Show TDS project-wise.", "Which project has the highest deductions?", "Show outstanding recoveries."
+
+**Design notes for whoever implements this** (not decisions, just things to work out then):
+- "SD Released" implies a release/refund event distinct from the original deduction — this needs its own new state (e.g. a `SecurityDepositRelease` row or a `releasedAmount`/`releasedDate` pair on `RunningBillDeduction` itself), analogous to how `LiabilityRepayment` tracks money moving back out against `Liability.outstandingAmount`. Whichever shape is chosen, "SD Pending" must stay a derived value (`deducted - released`), never a third stored number.
+- The ledger rollup service should scope through `RunningBill.siteId`/`projectId`/`companyId` (already present on `RunningBill`) — no new FK needed to reach Site/Project/Company from a `RunningBillDeduction` row.
+- Must integrate with the existing multi-tenant `companyId` scoping and the Recapitulation → Abstract MB → Running Bill → Client Payment → Bank Statement chain without duplicating any figure already captured elsewhere.
+
+---
+
+## 20. Permanent Development Guidelines for All Future Claude Code Sessions
 
 - Treat this file as authoritative for architecture/conventions, but always **re-verify against the actual code** before large changes — the codebase evolves, and this file can drift.
 - Preserve the layered `routes → controllers → services → Prisma` separation on the backend, and the per-domain `pages/ + components/ + services/` separation on the frontend, for every change, no matter how small.

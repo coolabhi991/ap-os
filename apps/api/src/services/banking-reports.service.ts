@@ -27,7 +27,7 @@ export async function getBankBookReport(companyId: string, query: { companyBankA
   let openingBalance = Number(account.openingBalance);
   if (query.fromDate) {
     const priorAgg = await prisma.bankTransaction.aggregate({
-      where: { companyId, companyBankAccountId: account.id, transactionDate: { lt: new Date(query.fromDate) } },
+      where: { companyId, companyBankAccountId: account.id, isActive: true, transactionDate: { lt: new Date(query.fromDate) } },
       _sum: { deposit: true, withdrawal: true },
     });
     openingBalance += Number(priorAgg._sum.deposit ?? 0) - Number(priorAgg._sum.withdrawal ?? 0);
@@ -79,7 +79,7 @@ export async function getCashBookReport(companyId: string, query: { fromDate?: s
     }),
     cashAccount
       ? prisma.bankTransaction.findMany({
-          where: { companyId, companyBankAccountId: cashAccount.id, ...(dateRange && { transactionDate: dateRange }) },
+          where: { companyId, companyBankAccountId: cashAccount.id, isActive: true, ...(dateRange && { transactionDate: dateRange }) },
           select: { transactionDate: true, deposit: true, withdrawal: true, description: true, referenceNumber: true },
         })
       : Promise.resolve([]),

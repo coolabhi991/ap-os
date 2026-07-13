@@ -125,9 +125,68 @@ export async function deleteBankTransaction(id: string): Promise<void> {
   await api.delete(`/bank-transactions/${id}`);
 }
 
-export async function importBankTransactions(companyBankAccountId: string, rows: ImportRow[]): Promise<{ batchId: string; count: number; data: BankTransaction[] }> {
-  const response = await api.post<{ success: boolean; data: { batchId: string; count: number; data: BankTransaction[] } }>("/bank-transactions/import", { companyBankAccountId, rows });
+export interface ImportSummary {
+  batchId: string;
+  totalFound: number;
+  imported: number;
+  skippedDuplicates: number;
+  count: number;
+  data: BankTransaction[];
+}
+
+export async function importBankTransactions(
+  companyBankAccountId: string,
+  rows: ImportRow[],
+  fileHash?: string,
+  fileName?: string
+): Promise<ImportSummary> {
+  const response = await api.post<{ success: boolean; data: ImportSummary }>("/bank-transactions/import", {
+    companyBankAccountId,
+    rows,
+    fileHash,
+    fileName,
+  });
   return response.data.data;
+}
+
+export interface StatementImportDuplicateCheck {
+  duplicate: boolean;
+  existingImport?: {
+    id: string;
+    fileName: string;
+    importedAt: string;
+    importedBy: string;
+    totalRows: number;
+    importedRows: number;
+    skippedRows: number;
+    periodFrom: string;
+    periodTo: string;
+  };
+}
+
+export async function checkStatementImportDuplicate(companyBankAccountId: string, fileHash: string): Promise<StatementImportDuplicateCheck> {
+  const response = await api.post<{ success: boolean; data: StatementImportDuplicateCheck }>("/bank-transactions/import/check", {
+    companyBankAccountId,
+    fileHash,
+  });
+  return response.data.data;
+}
+
+export interface DuplicateTransactionGroup {
+  fingerprint: string;
+  count: number;
+  transactions: BankTransaction[];
+}
+
+export async function getDuplicateBankTransactions(companyBankAccountId?: string): Promise<DuplicateTransactionGroup[]> {
+  const response = await api.get<{ success: boolean; data: DuplicateTransactionGroup[] }>("/bank-transactions/duplicates", {
+    params: { companyBankAccountId },
+  });
+  return response.data.data;
+}
+
+export async function deleteDuplicateBankTransaction(id: string, confirmAllocated = false): Promise<void> {
+  await api.delete(`/bank-transactions/duplicates/${id}`, { data: { confirmAllocated } });
 }
 
 export async function exportBankTransactionsCSV(query?: BankTransactionListQuery): Promise<void> {

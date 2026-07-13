@@ -4,6 +4,8 @@ import {
   listRunningBills,
   getRunningBillById,
   listBillableMeasurementBooks,
+  getNextRABillDraft,
+  createRunningBillFromForm58,
   createRunningBill,
   updateRunningBill,
   deleteRunningBill,
@@ -81,6 +83,33 @@ export const getRunningBillHandler = async (req: AuthRequest, res: Response) => 
   } catch (error) {
     const is404 = error instanceof Error && error.message === notFoundMessage;
     res.status(is404 ? 404 : 500).json({ success: false, message: error instanceof Error ? error.message : "Failed to load Running Bill" });
+  }
+};
+
+export const getNextRABillDraftHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const companyId = req.user!.companyId;
+    const siteId = req.query.siteId as string;
+    if (!siteId) {
+      res.status(400).json({ success: false, message: "siteId query param is required" });
+      return;
+    }
+    const data = await getNextRABillDraft(siteId, companyId);
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    const is404 = error instanceof Error && error.message === "Site not found";
+    res.status(is404 ? 404 : 500).json({ success: false, message: error instanceof Error ? error.message : "Failed to load next RA Bill draft" });
+  }
+};
+
+export const createRunningBillFromForm58Handler = async (req: AuthRequest, res: Response) => {
+  try {
+    const companyId = req.user!.companyId;
+    const createdById = req.user!.id;
+    const data = await createRunningBillFromForm58(companyId, createdById, req.body);
+    res.status(201).json({ success: true, data });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error instanceof Error ? error.message : "Failed to create RA Bill" });
   }
 };
 

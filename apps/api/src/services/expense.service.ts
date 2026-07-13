@@ -80,6 +80,18 @@ function autoNumber(): string {
   return `EXP-${y}${m}-${rand}`;
 }
 
+/**
+ * Child document numbering (Document Numbering Standard) — Site Expense inherits the Site
+ * code: <SiteCode>/EXP-<Seq>, sequential per Site. Falls back to the legacy random format for
+ * Sites created before that milestone (no siteCode yet).
+ */
+async function generateExpenseNumber(companyId: string, siteId: string): Promise<string> {
+  const site = await prisma.site.findFirst({ where: { id: siteId, companyId }, select: { siteCode: true } });
+  if (!site?.siteCode) return autoNumber();
+  const count = await prisma.expense.count({ where: { companyId, siteId } });
+  return `${site.siteCode}/EXP-${count + 1}`;
+}
+
 const include = {
   project: { select: { id: true, name: true } },
   category: { select: { id: true, name: true } },
@@ -269,7 +281,7 @@ export async function createExpense(companyId: string, createdById: string, inpu
       categoryId: input.categoryId,
       vendorId,
       subWorkId,
-      expenseNumber: autoNumber(),
+      expenseNumber: await generateExpenseNumber(companyId, input.siteId),
       expenseDate: input.expenseDate ? new Date(input.expenseDate) : new Date(),
       description: input.description || null,
       amount,
@@ -383,6 +395,30 @@ export async function getExpenseDashboard(companyId: string) {
       count: machineryAgg._count._all,
     },
     recentExpenses: recentExpenses.map(toDTO),
+  };
+}
+
+/**
+ * Site-scoped Today/Month/Site totals for the Expense Register (Register Component milestone) —
+ * computed via Prisma aggregate, never by summing a paginated list client-side, so the figures
+ * stay correct however many hundreds of expenses a Site accumulates.
+ */
+export async function getSiteExpenseSummary(companyId: string, siteId: string) {
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const baseWhere: Prisma.ExpenseWhereInput = { companyId, siteId, isDeleted: false };
+
+  const [todayAgg, monthAgg, siteAgg] = await Promise.all([
+    prisma.expense.aggregate({ where: { ...baseWhere, expenseDate: { gte: startOfDay } }, _sum: { amount: true }, _count: { _all: true } }),
+    prisma.expense.aggregate({ where: { ...baseWhere, expenseDate: { gte: startOfMonth } }, _sum: { amount: true }, _count: { _all: true } }),
+    prisma.expense.aggregate({ where: baseWhere, _sum: { amount: true }, _count: { _all: true } }),
+  ]);
+
+  return {
+    today: { amount: (todayAgg._sum.amount ?? new Prisma.Decimal(0)).toString(), count: todayAgg._count._all },
+    thisMonth: { amount: (monthAgg._sum.amount ?? new Prisma.Decimal(0)).toString(), count: monthAgg._count._all },
+    site: { amount: (siteAgg._sum.amount ?? new Prisma.Decimal(0)).toString(), count: siteAgg._count._all },
   };
 }
 

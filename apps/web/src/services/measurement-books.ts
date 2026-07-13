@@ -61,6 +61,16 @@ export interface MBRecapRow {
   currentQuantity: string;
 }
 
+export interface Form58Footer {
+  totalUpToDate: string;
+  totalSincePrevious: string;
+  totalNowToPay: string;
+  aboveBelowAmount: string;
+  netValue: string;
+  gstAmount: string;
+  grandTotal: string;
+}
+
 export interface MB {
   id: string;
   companyId: string;
@@ -85,6 +95,9 @@ export interface MB {
   items: MBItem[];
   totalQuantity: string;
   totalAmount: string;
+  aboveBelowPercent: string;
+  gstPercent: string;
+  form58: Form58Footer;
   createdById: string;
   createdBy: { id: string; name: string } | null;
   createdAt: string;
@@ -106,6 +119,8 @@ export interface MBFormData {
   abstractPdfUrl?: string;
   abstractPdfName?: string;
   sourceRecapRevisionId?: string;
+  aboveBelowPercent?: number;
+  gstPercent?: number;
   items?: MBItemInput[];
 }
 

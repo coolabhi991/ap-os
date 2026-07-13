@@ -6,6 +6,7 @@ import { getVendors } from "../../services/vendors";
 import { getVendorLedger } from "../../services/vendor-payments";
 import type { VendorLedger as VendorLedgerData } from "../../services/vendor-payments";
 import LoadingState from "../../components/ui/LoadingState";
+import ReportExportBar from "../../components/ui/ReportExportBar";
 
 export default function VendorLedger() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -41,9 +42,36 @@ export default function VendorLedger() {
   return (
     <Layout>
       <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold text-slate-900">Vendor Ledger</h1>
-          <p className="mt-2 text-slate-500">Running balance of bills and payments for a vendor.</p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900">Vendor Ledger</h1>
+            <p className="mt-2 text-slate-500">Running balance of bills and payments for a vendor.</p>
+          </div>
+          {ledger && (
+            <ReportExportBar
+              input={{
+                title: "Vendor Ledger",
+                subtitle: `Vendor: ${vendors.find((v) => v.id === vendorId)?.name ?? vendorId}${fromDate ? ` | From ${fromDate}` : ""}${toDate ? ` | To ${toDate}` : ""}`,
+                columns: [
+                  { key: "date", label: "Date" },
+                  { key: "type", label: "Type" },
+                  { key: "reference", label: "Reference" },
+                  { key: "debit", label: "Debit (Billed)", align: "right" },
+                  { key: "credit", label: "Credit (Paid)", align: "right" },
+                  { key: "balance", label: "Balance", align: "right" },
+                ],
+                rows: ledger.entries.map((e) => ({
+                  date: new Date(e.date).toLocaleDateString(),
+                  type: e.type === "BILL" ? "Bill" : "Payment",
+                  reference: e.reference,
+                  debit: e.debit,
+                  credit: e.credit,
+                  balance: e.balance,
+                })),
+                totals: { date: "TOTAL", debit: ledger.totalBilled, credit: ledger.totalPaid, balance: ledger.outstandingBalance },
+              }}
+            />
+          )}
         </div>
 
         <div className="rounded-xl bg-white p-6 shadow-sm">

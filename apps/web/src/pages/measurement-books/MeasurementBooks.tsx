@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, Download } from "lucide-react";
+import { Download } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import Layout from "../../components/layout/Layout";
@@ -87,18 +87,11 @@ export default function MeasurementBooks() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-slate-900">Measurement Books</h1>
-            <p className="mt-2 text-slate-500">Official BOQ measurement and abstract records — {total} MB{total === 1 ? "" : "s"}.</p>
+            <p className="mt-2 text-slate-500">Historical, read-only BOQ records — {total} MB{total === 1 ? "" : "s"}. Billing is now done directly via Form 58 RA Bills.</p>
           </div>
           <div className="flex gap-2">
             <button onClick={handleExport} disabled={exporting} className="flex items-center gap-2 rounded-lg border px-5 py-3 hover:bg-slate-50 disabled:opacity-60">
               <Download size={18} /> {exporting ? "Exporting..." : "Export CSV"}
-            </button>
-            <button
-              onClick={() => navigate("/measurement-books/new")}
-              className="flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-3 text-white hover:bg-blue-700"
-            >
-              <Plus size={18} />
-              New MB
             </button>
           </div>
         </div>
@@ -166,9 +159,6 @@ export default function MeasurementBooks() {
                       </td>
                       <td className="px-6 py-4 text-right" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-end gap-3">
-                          {m.status !== "APPROVED" && (
-                            <button onClick={() => navigate(`/measurement-books/${m.id}/edit`)} className="text-sm text-blue-600 hover:underline">Edit</button>
-                          )}
                           {m.status !== "APPROVED" && (
                             <button onClick={() => handleDelete(m.id)} className="text-sm text-red-600 hover:underline">Delete</button>
                           )}

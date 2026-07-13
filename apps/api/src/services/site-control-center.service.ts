@@ -4,6 +4,7 @@ import { getSpecialCategoryIds, compareProgress, CostHeadKey, CostHeads } from "
 import { sumBudgetHeads } from "./sub-work.service.js";
 import type { BudgetHeads } from "./sub-work.service.js";
 import { toSiteDTO } from "./site.service.js";
+import { getSiteWiseDeductions } from "./deduction-ledger.service.js";
 
 async function verifySiteOwnership(siteId: string, companyId: string) {
   const site = await prisma.site.findFirst({ where: { id: siteId, companyId } });
@@ -223,6 +224,7 @@ export interface OtherCharge {
 export interface RecapitulationItemInput {
   subWorkId?: string;
   particular: string;
+  unit?: string;
   qty: number;
   rate: number;
 }
@@ -243,6 +245,12 @@ function toRecapRevisionDTO(r: RecapRevisionRow) {
     gstPercent: r.gstPercent.toString(),
     administrationCharges: r.administrationCharges.toString(),
     otherCharges: (r.otherCharges as unknown as OtherCharge[]) ?? [],
+    msebCharges: r.msebCharges.toString(),
+    royaltyCharges: r.royaltyCharges.toString(),
+    testingCharges: r.testingCharges.toString(),
+    labourCessCharges: r.labourCessCharges.toString(),
+    otherRecoveries: r.otherRecoveries.toString(),
+    otherChargesTotal: r.otherChargesTotal.toString(),
     subTotal: r.subTotal.toString(),
     gstAmount: r.gstAmount.toString(),
     grandTotal: r.grandTotal.toString(),
@@ -251,6 +259,7 @@ function toRecapRevisionDTO(r: RecapRevisionRow) {
       subWorkId: i.subWorkId ?? "",
       sortOrder: i.sortOrder,
       particular: i.particular,
+      unit: i.unit ?? "",
       qty: i.qty.toString(),
       rate: i.rate.toString(),
       amount: i.amount.toString(),
@@ -309,6 +318,11 @@ export async function createSiteRecapRevision(
     gstPercent?: number;
     administrationCharges?: number;
     otherCharges?: OtherCharge[];
+    msebCharges?: number;
+    royaltyCharges?: number;
+    testingCharges?: number;
+    labourCessCharges?: number;
+    otherRecoveries?: number;
   }
 ) {
   await verifySiteOwnership(siteId, companyId);
@@ -320,18 +334,26 @@ export async function createSiteRecapRevision(
   }
   const effectiveGstPercent = resolveGstPercent(gstType, input.gstPercent ?? 0);
   const administrationCharges = Math.max(0, input.administrationCharges ?? 0);
+  // Legacy free-form charges are still accepted and stored verbatim for display continuity, but
+  // no longer contribute to the total — the five named fields below are the source of truth
+  // going forward (Other Charges section, Workflow Refinement milestone).
   const otherCharges = (input.otherCharges ?? []).filter((c) => c.label?.trim());
+  const msebCharges = Math.max(0, input.msebCharges ?? 0);
+  const royaltyCharges = Math.max(0, input.royaltyCharges ?? 0);
+  const testingCharges = Math.max(0, input.testingCharges ?? 0);
+  const labourCessCharges = Math.max(0, input.labourCessCharges ?? 0);
+  const otherRecoveries = Math.max(0, input.otherRecoveries ?? 0);
+  const otherChargesTotal = msebCharges + royaltyCharges + testingCharges + labourCessCharges + otherRecoveries;
 
   // Amount is always server-recomputed as qty * rate — the client's amount is never trusted.
   const items = (input.items ?? []).map((row, index) => {
     const qty = Number(row.qty) || 0;
     const rate = Number(row.rate) || 0;
-    return { companyId, subWorkId: row.subWorkId || null, sortOrder: index, particular: row.particular, qty, rate, amount: qty * rate };
+    return { companyId, subWorkId: row.subWorkId || null, sortOrder: index, particular: row.particular, unit: row.unit?.trim() || null, qty, rate, amount: qty * rate };
   });
 
   const subTotal = items.reduce((s, i) => s + i.amount, 0);
   const gstAmount = subTotal * (effectiveGstPercent / 100);
-  const otherChargesTotal = otherCharges.reduce((s, c) => s + (Number(c.amount) || 0), 0);
   const grandTotal = subTotal + gstAmount + administrationCharges + otherChargesTotal;
 
   const revision = await prisma.$transaction(async (tx) => {
@@ -351,6 +373,12 @@ export async function createSiteRecapRevision(
         gstPercent: effectiveGstPercent,
         administrationCharges,
         otherCharges: otherCharges as unknown as Prisma.InputJsonValue,
+        msebCharges,
+        royaltyCharges,
+        testingCharges,
+        labourCessCharges,
+        otherRecoveries,
+        otherChargesTotal,
         subTotal,
         gstAmount,
         grandTotal,
@@ -393,6 +421,200 @@ export async function getSiteRecapRevisionById(revisionId: string, companyId: st
   return toRecapRevisionDTO(revision);
 }
 
+export const RECAP_UNIT_OPTIONS = ["Nos", "M", "Cum", "Sqm", "Ltr", "Kg", "Job"];
+
+interface RecapItemMutationInput {
+  particular: string;
+  unit?: string;
+  qty: number;
+  rate: number;
+}
+
+async function recomputeAndPersistRevisionTotals(tx: Prisma.TransactionClient, revisionId: string) {
+  const revision = await tx.siteRecapRevision.findUniqueOrThrow({ where: { id: revisionId } });
+  const items = await tx.recapitulationItem.findMany({ where: { siteRecapRevisionId: revisionId } });
+  const subTotal = items.reduce((s, i) => s + Number(i.amount), 0);
+  const otherChargesTotal =
+    Number(revision.msebCharges) + Number(revision.royaltyCharges) + Number(revision.testingCharges) + Number(revision.labourCessCharges) + Number(revision.otherRecoveries);
+  const gstAmount = subTotal * (Number(revision.gstPercent) / 100);
+  const grandTotal = subTotal + otherChargesTotal + gstAmount + Number(revision.administrationCharges);
+  return tx.siteRecapRevision.update({
+    where: { id: revisionId },
+    data: { subTotal, otherChargesTotal, gstAmount, grandTotal },
+    include: recapItemInclude,
+  });
+}
+
+/**
+ * The Site's current, directly-editable Recapitulation Register — created empty on first row
+ * add. Distinct from a "locked" historical revision (still created via createSiteRecapRevision,
+ * unchanged): this is the live working grid that Add/Insert/Delete/Reorder/Inline-Edit act on
+ * in place, without bumping the revision history on every keystroke.
+ */
+async function getOrCreateCurrentRevision(siteId: string, companyId: string, createdById: string) {
+  const existing = await prisma.siteRecapRevision.findFirst({ where: { siteId, companyId, isCurrent: true } });
+  if (existing) return existing;
+  const last = await prisma.siteRecapRevision.findFirst({ where: { siteId }, orderBy: { revisionNo: "desc" } });
+  return prisma.siteRecapRevision.create({
+    data: { companyId, siteId, revisionNo: (last?.revisionNo ?? 0) + 1, isCurrent: true, snapshot: {}, createdById },
+  });
+}
+
+function validateRecapItemInput(input: RecapItemMutationInput) {
+  if (!input.particular?.trim()) throw new Error("Particular is required");
+  const qty = Number(input.qty);
+  const rate = Number(input.rate);
+  if (!Number.isFinite(qty) || qty < 0) throw new Error("Qty must be a number greater than or equal to zero");
+  if (!Number.isFinite(rate) || rate < 0) throw new Error("Rate must be a number greater than or equal to zero");
+  return { particular: input.particular.trim(), unit: input.unit?.trim() || null, qty, rate, amount: qty * rate };
+}
+
+/**
+ * Adds a Recapitulation Register row — appended at the end (Add Row), or inserted immediately
+ * after `afterItemId` (Insert Row). Auto-creates the row's linked SubWork so DPR/Expense/
+ * VendorBill/MaterialIssue/LabourAttendance/MeasurementBook/RunningBill/SiteBillItem pickers see
+ * it immediately too — entering a row here is entering it everywhere ("Enter Once, Use
+ * Everywhere"), with zero duplicate data entry.
+ */
+export async function addRecapItem(siteId: string, companyId: string, createdById: string, input: RecapItemMutationInput & { afterItemId?: string }) {
+  const site = await verifySiteOwnership(siteId, companyId);
+  const revision = await getOrCreateCurrentRevision(siteId, companyId, createdById);
+  const { particular, unit, qty, rate, amount } = validateRecapItemInput(input);
+
+  const updated = await prisma.$transaction(async (tx) => {
+    let sortOrder: number;
+    if (input.afterItemId) {
+      const after = await tx.recapitulationItem.findFirst({ where: { id: input.afterItemId, siteRecapRevisionId: revision.id } });
+      if (!after) throw new Error("Reference row not found");
+      sortOrder = after.sortOrder + 1;
+      await tx.recapitulationItem.updateMany({
+        where: { siteRecapRevisionId: revision.id, sortOrder: { gte: sortOrder } },
+        data: { sortOrder: { increment: 1 } },
+      });
+    } else {
+      const maxSort = await tx.recapitulationItem.aggregate({ where: { siteRecapRevisionId: revision.id }, _max: { sortOrder: true } });
+      sortOrder = (maxSort._max.sortOrder ?? -1) + 1;
+    }
+
+    const maxSubWorkSort = await tx.subWork.aggregate({ where: { companyId, siteId }, _max: { sortOrder: true } });
+    const subWork = await tx.subWork.create({
+      data: { companyId, projectId: site.projectId, siteId, name: particular, sortOrder: (maxSubWorkSort._max.sortOrder ?? -1) + 1 },
+    });
+
+    await tx.recapitulationItem.create({
+      data: { companyId, siteRecapRevisionId: revision.id, subWorkId: subWork.id, sortOrder, particular, unit, qty, rate, amount },
+    });
+
+    return recomputeAndPersistRevisionTotals(tx, revision.id);
+  });
+
+  return toRecapRevisionDTO(updated);
+}
+
+/** Inline-edits a row's Particular/Unit/Qty/Rate — Amount is always server-recomputed. Keeps the linked SubWork's name in sync so downstream pickers show the current name. */
+export async function updateRecapItem(itemId: string, companyId: string, input: RecapItemMutationInput) {
+  const existing = await prisma.recapitulationItem.findFirst({ where: { id: itemId, companyId } });
+  if (!existing) throw new Error("Recapitulation item not found");
+  const { particular, unit, qty, rate, amount } = validateRecapItemInput(input);
+
+  const updated = await prisma.$transaction(async (tx) => {
+    await tx.recapitulationItem.update({ where: { id: itemId }, data: { particular, unit, qty, rate, amount } });
+    if (existing.subWorkId && particular !== existing.particular) {
+      await tx.subWork.update({ where: { id: existing.subWorkId }, data: { name: particular } });
+    }
+    return recomputeAndPersistRevisionTotals(tx, existing.siteRecapRevisionId);
+  });
+
+  return toRecapRevisionDTO(updated);
+}
+
+/** Deletes a row (never its linked SubWork — historical DPR/Expense/etc referencing it keep working, matching deleteSubWork's existing non-destructive convention) and closes the Sr No gap. */
+export async function deleteRecapItem(itemId: string, companyId: string) {
+  const existing = await prisma.recapitulationItem.findFirst({ where: { id: itemId, companyId } });
+  if (!existing) throw new Error("Recapitulation item not found");
+
+  const updated = await prisma.$transaction(async (tx) => {
+    await tx.recapitulationItem.delete({ where: { id: itemId } });
+    await tx.recapitulationItem.updateMany({
+      where: { siteRecapRevisionId: existing.siteRecapRevisionId, sortOrder: { gt: existing.sortOrder } },
+      data: { sortOrder: { decrement: 1 } },
+    });
+    return recomputeAndPersistRevisionTotals(tx, existing.siteRecapRevisionId);
+  });
+
+  return toRecapRevisionDTO(updated);
+}
+
+export interface RecapItemReorderEntry {
+  id: string;
+  sortOrder: number;
+}
+
+/** Reorders rows within the current Recapitulation Register (Reorder Row). */
+export async function reorderRecapItems(siteId: string, companyId: string, order: RecapItemReorderEntry[]) {
+  const revision = await prisma.siteRecapRevision.findFirst({ where: { siteId, companyId, isCurrent: true } });
+  if (!revision) throw new Error("Recap revision not found");
+
+  const ids = order.map((o) => o.id);
+  const count = await prisma.recapitulationItem.count({ where: { id: { in: ids }, siteRecapRevisionId: revision.id } });
+  if (count !== ids.length) throw new Error("One or more rows do not belong to this Recapitulation Register");
+
+  await prisma.$transaction(order.map((o) => prisma.recapitulationItem.update({ where: { id: o.id }, data: { sortOrder: o.sortOrder } })));
+  const updated = await prisma.siteRecapRevision.findUniqueOrThrow({ where: { id: revision.id }, include: recapItemInclude });
+  return toRecapRevisionDTO(updated);
+}
+
+export interface RecapChargesInput {
+  gstType?: string;
+  gstPercent?: number;
+  administrationCharges?: number;
+  msebCharges?: number;
+  royaltyCharges?: number;
+  testingCharges?: number;
+  labourCessCharges?: number;
+  otherRecoveries?: number;
+}
+
+/**
+ * Updates the Other Charges (MSEB / Royalty / Testing / Labour Cess / Other Recoveries) and the
+ * GST section, kept as a separate action from item editing per the approved requirement that GST
+ * "must remain a completely separate section below Other Charges."
+ */
+export async function updateRecapCharges(siteId: string, companyId: string, createdById: string, input: RecapChargesInput) {
+  await verifySiteOwnership(siteId, companyId);
+  const revision = await getOrCreateCurrentRevision(siteId, companyId, createdById);
+
+  const gstType = input.gstType && GST_TYPES.includes(input.gstType) ? input.gstType : "NONE";
+  if (gstType === "CUSTOM" && (input.gstPercent === undefined || input.gstPercent < 0)) {
+    throw new Error("A valid custom GST % is required when GST type is Custom");
+  }
+  const effectiveGstPercent = resolveGstPercent(gstType, input.gstPercent ?? 0);
+  const nonNeg = (v: number | undefined, label: string) => {
+    const n = v ?? 0;
+    if (!Number.isFinite(n) || n < 0) throw new Error(`${label} must be a number greater than or equal to zero`);
+    return n;
+  };
+
+  const updated = await prisma.$transaction(async (tx) => {
+    await tx.siteRecapRevision.update({
+      where: { id: revision.id },
+      data: {
+        gstType: gstType as Prisma.SiteRecapRevisionUncheckedCreateInput["gstType"],
+        gstPercent: effectiveGstPercent,
+        administrationCharges: nonNeg(input.administrationCharges, "Administration Charges"),
+        msebCharges: nonNeg(input.msebCharges, "MSEB Charges"),
+        royaltyCharges: nonNeg(input.royaltyCharges, "Royalty"),
+        testingCharges: nonNeg(input.testingCharges, "Testing Charges"),
+        labourCessCharges: nonNeg(input.labourCessCharges, "Labour Cess"),
+        otherRecoveries: nonNeg(input.otherRecoveries, "Other Recoveries"),
+      },
+    });
+    return recomputeAndPersistRevisionTotals(tx, revision.id);
+  });
+
+  return toRecapRevisionDTO(updated);
+}
+
 /** Reports: Budget vs Actual (whole Site), including the full per-cost-head breakdown. */
 export async function getSiteBudgetVsActualReport(siteId: string, companyId: string) {
   await verifySiteOwnership(siteId, companyId);
@@ -416,6 +638,86 @@ export async function getSiteBudgetVsActualReport(siteId: string, companyId: str
 export async function getSiteCostBySubWorkReport(siteId: string, companyId: string) {
   const live = await getSiteRecapLive(siteId, companyId);
   return live.subWorks;
+}
+
+/**
+ * Sub Work Financial Summary (Workflow Refinement milestone, Items 6 & 8) — replaces the old
+ * Budget-vs-Actual "Cost by Sub Work" table with a billing/certification view per Recapitulation
+ * section: Contract Value = Work Order/Recapitulation, Total Certified = the latest Running
+ * Bill's cumulative certified amount for that section (never summed across bills — each bill's
+ * totalCertifiedAmount/RunningBillItem.totalAmount is already the running to-date figure, same
+ * rule getSiteFinancialSummary follows for the whole Site).
+ *
+ * Client Payment Received has no per-section source of truth — payments are recorded once per
+ * bill, not itemized — so it is apportioned across sections in proportion to each section's
+ * share of the latest bill's certified total. This is a reasonable allocation, not an exact
+ * ledger; documented here and in the frontend so it's never mistaken for a stored, exact figure.
+ */
+export async function getSiteSubWorkFinancialSummary(siteId: string, companyId: string) {
+  await verifySiteOwnership(siteId, companyId);
+
+  const [currentRevision, latestBill, billsAgg, subWorks] = await Promise.all([
+    prisma.siteRecapRevision.findFirst({ where: { siteId, companyId, isCurrent: true }, include: recapItemInclude }),
+    prisma.runningBill.findFirst({
+      where: { companyId, siteId, status: { not: "DRAFT" } },
+      orderBy: { raSequence: "desc" },
+      include: { items: { include: { siteBillItem: { select: { subWorkId: true } } } } },
+    }),
+    prisma.runningBill.aggregate({ where: { companyId, siteId, status: { not: "DRAFT" } }, _sum: { amountReceived: true } }),
+    prisma.subWork.findMany({ where: { companyId, siteId }, select: { id: true, physicalProgress: true } }),
+  ]);
+
+  const certifiedBySubWork = new Map<string, number>();
+  for (const item of latestBill?.items ?? []) {
+    const subWorkId = item.siteBillItem?.subWorkId;
+    if (!subWorkId) continue;
+    certifiedBySubWork.set(subWorkId, (certifiedBySubWork.get(subWorkId) ?? 0) + Number(item.totalAmount));
+  }
+  const totalCertifiedInLatestBill = Array.from(certifiedBySubWork.values()).reduce((s, v) => s + v, 0);
+  const totalClientPaymentsReceived = Number(billsAgg._sum.amountReceived ?? 0);
+  const progressBySubWork = new Map(subWorks.map((s) => [s.id, s.physicalProgress]));
+
+  const rows = (currentRevision?.items ?? []).map((item) => {
+    const contractValue = Number(item.amount);
+    const certifiedTillDate = item.subWorkId ? (certifiedBySubWork.get(item.subWorkId) ?? 0) : 0;
+    const clientPaymentReceived = totalCertifiedInLatestBill > 0 ? round2(totalClientPaymentsReceived * (certifiedTillDate / totalCertifiedInLatestBill)) : 0;
+    const outstandingPayment = round2(certifiedTillDate - clientPaymentReceived);
+    const remainingContractValue = round2(contractValue - certifiedTillDate);
+    const progressPercent = item.subWorkId ? (progressBySubWork.get(item.subWorkId) ?? 0) : 0;
+
+    return {
+      subWorkId: item.subWorkId ?? "",
+      particular: item.particular,
+      contractValue: contractValue.toFixed(2),
+      certifiedTillDate: certifiedTillDate.toFixed(2),
+      clientPaymentReceived: clientPaymentReceived.toFixed(2),
+      outstandingPayment: outstandingPayment.toFixed(2),
+      remainingContractValue: remainingContractValue.toFixed(2),
+      progressPercent,
+    };
+  });
+
+  const totals = rows.reduce(
+    (acc, r) => ({
+      contractValue: acc.contractValue + Number(r.contractValue),
+      certifiedTillDate: acc.certifiedTillDate + Number(r.certifiedTillDate),
+      clientPaymentReceived: acc.clientPaymentReceived + Number(r.clientPaymentReceived),
+      outstandingPayment: acc.outstandingPayment + Number(r.outstandingPayment),
+      remainingContractValue: acc.remainingContractValue + Number(r.remainingContractValue),
+    }),
+    { contractValue: 0, certifiedTillDate: 0, clientPaymentReceived: 0, outstandingPayment: 0, remainingContractValue: 0 }
+  );
+
+  return {
+    rows,
+    site: {
+      contractValue: totals.contractValue.toFixed(2),
+      certifiedTillDate: totals.certifiedTillDate.toFixed(2),
+      clientPaymentReceived: totals.clientPaymentReceived.toFixed(2),
+      outstandingPayment: totals.outstandingPayment.toFixed(2),
+      remainingContractValue: totals.remainingContractValue.toFixed(2),
+    },
+  };
 }
 
 /** Reports: Monthly Cost — every cost-bearing record tagged to the Site, bucketed by month. */
@@ -625,4 +927,65 @@ export async function getSiteMoneyFlow(siteId: string, companyId: string) {
       r.notes ||
       "",
   }));
+}
+
+function round2(n: number) {
+  return Math.round(n * 100) / 100;
+}
+
+/**
+ * Site Financial Summary — the automatic, always-derived billing rollup a Site maintains per the
+ * Form 58 redesign: Agreement Value, Gross Billing, every deduction-type total, Total Deductions,
+ * Net Bills Raised, Client Payments Received, Outstanding, and Remaining Agreement Value. Nothing
+ * here is stored a second time: Gross Billing reads the latest non-Draft Running Bill's own
+ * cumulative totalCertifiedAmount (already the running to-date figure — see running-bill.service.ts),
+ * deduction totals reuse getSiteWiseDeductions (the same numbers the Recovery Ledger reads), and
+ * payments/outstanding are summed straight off RunningBill.
+ */
+export async function getSiteFinancialSummary(siteId: string, companyId: string) {
+  const site = await verifySiteOwnership(siteId, companyId);
+
+  const [latestBill, billsAgg, billsCount, deductionRows] = await Promise.all([
+    prisma.runningBill.findFirst({
+      where: { companyId, siteId, status: { not: "DRAFT" } },
+      orderBy: { raSequence: "desc" },
+      select: { totalCertifiedAmount: true },
+    }),
+    prisma.runningBill.aggregate({
+      where: { companyId, siteId, status: { not: "DRAFT" } },
+      _sum: { amountReceived: true, outstandingAmount: true },
+    }),
+    prisma.runningBill.count({ where: { companyId, siteId, status: { not: "DRAFT" } } }),
+    getSiteWiseDeductions(companyId, { siteId }),
+  ]);
+
+  const agreementValue = Number(site.contractValue);
+  const grossBilling = latestBill ? Number(latestBill.totalCertifiedAmount) : 0;
+  const deductionRow = deductionRows[0];
+  const totalDeductions = deductionRow ? Number(deductionRow.totalDeductions) : 0;
+  const netBillsRaised = round2(grossBilling - totalDeductions);
+  const clientPaymentsReceived = Number(billsAgg._sum.amountReceived ?? 0);
+  const outstandingAmount = Number(billsAgg._sum.outstandingAmount ?? 0);
+  const remainingAgreementValue = round2(agreementValue - grossBilling);
+
+  return {
+    siteId,
+    agreementValue: agreementValue.toFixed(2),
+    totalRABills: billsCount,
+    grossBilling: grossBilling.toFixed(2),
+    gstStateTotal: deductionRow?.gstState ?? "0.00",
+    gstCentralTotal: deductionRow?.gstCentral ?? "0.00",
+    incomeTaxTotal: deductionRow?.incomeTax ?? "0.00",
+    securityDepositTotal: deductionRow?.sdDeducted ?? "0.00",
+    royaltyTotal: deductionRow?.royalty ?? "0.00",
+    insuranceTotal: deductionRow?.insurance ?? "0.00",
+    fineTotal: deductionRow?.fine ?? "0.00",
+    labourCessTotal: deductionRow?.labourCess ?? "0.00",
+    otherDeductionsTotal: deductionRow?.other ?? "0.00",
+    totalDeductions: totalDeductions.toFixed(2),
+    netBillsRaised: netBillsRaised.toFixed(2),
+    clientPaymentsReceived: clientPaymentsReceived.toFixed(2),
+    outstandingAmount: outstandingAmount.toFixed(2),
+    remainingAgreementValue: remainingAgreementValue.toFixed(2),
+  };
 }

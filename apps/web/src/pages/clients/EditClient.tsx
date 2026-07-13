@@ -22,7 +22,6 @@ export default function EditClient() {
       .then((client) => {
         setInitialData({
           companyName: client.companyName,
-          clientCode: client.clientCode,
           contactPerson: client.contactPerson,
           mobile: client.mobile,
           email: client.email,

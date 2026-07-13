@@ -3,6 +3,7 @@ import api from "./api";
 export interface RunningBillItem {
   id: string;
   sortOrder: number;
+  siteBillItemId: string;
   boqItemNo: string;
   boqDescription: string;
   unit: string;
@@ -39,10 +40,12 @@ export interface RunningBill {
   projectId: string;
   project: { id: string; name: string; location: string | null; contractValue: string } | null;
   siteId: string;
+  siteRecord: { id: string; name: string } | null;
   subWorkId: string;
   subWork: { id: string; name: string } | null;
   measurementBookId: string;
   measurementBook: { id: string; mbNumber: string; mbDate: string } | null;
+  raSequence: number | null;
   billNumber: string;
   billType: string;
   site: string;
@@ -80,6 +83,46 @@ export interface RunningBillFormData {
   deductions?: RunningBillDeductionInput[];
 }
 
+export interface Form58ItemInput {
+  siteBillItemId?: string;
+  itemNo?: string;
+  description?: string;
+  unit?: string;
+  rate?: number;
+  subWorkId?: string;
+  currentQuantity: number;
+}
+
+export interface Form58BillFormData {
+  siteId: string;
+  billNumber?: string;
+  billType?: string;
+  billDate?: string;
+  billPeriodFrom?: string;
+  billPeriodTo?: string;
+  remarks?: string;
+  items: Form58ItemInput[];
+  deductions?: RunningBillDeductionInput[];
+}
+
+export interface NextRABillDraftItem {
+  siteBillItemId: string;
+  itemNo: string;
+  description: string;
+  unit: string;
+  rate: string;
+  previousQuantity: string;
+  currentQuantity: string;
+}
+
+export interface NextRABillDraft {
+  siteId: string;
+  nextRaSequence: number;
+  suggestedBillNumber: string;
+  isFirstBill: boolean;
+  items: NextRABillDraftItem[];
+}
+
 export interface RunningBillListQuery {
   search?: string;
   projectId?: string;
@@ -101,15 +144,6 @@ export interface RunningBillListResponse {
   page: number;
   limit: number;
   data: RunningBill[];
-}
-
-export interface BillableMB {
-  id: string;
-  mbNumber: string;
-  mbDate: string;
-  project: { id: string; name: string } | null;
-  subWork: { id: string; name: string } | null;
-  itemCount: number;
 }
 
 export interface ReportQuery {
@@ -203,15 +237,32 @@ export const BILL_TYPE_LABELS: Record<string, string> = {
   ADVANCE_BILL: "Advance Bill",
 };
 
-export const DEDUCTION_TYPE_OPTIONS = ["SECURITY_DEPOSIT", "GST", "LABOUR_CESS", "ROYALTY", "TDS", "MOBILIZATION_RECOVERY", "OTHER"];
+export const DEDUCTION_TYPE_OPTIONS = [
+  "GST_STATE",
+  "GST_CENTRAL",
+  "INCOME_TAX",
+  "SECURITY_DEPOSIT",
+  "ROYALTY",
+  "INSURANCE",
+  "FINE",
+  "LABOUR_CESS",
+  "MOBILIZATION_RECOVERY",
+  "TDS",
+  "OTHER",
+];
 export const DEDUCTION_TYPE_LABELS: Record<string, string> = {
+  GST_STATE: "GST State",
+  GST_CENTRAL: "GST Central",
+  INCOME_TAX: "Income Tax",
   SECURITY_DEPOSIT: "Security Deposit",
-  GST: "GST",
-  LABOUR_CESS: "Labour Cess",
   ROYALTY: "Royalty",
-  TDS: "TDS",
+  INSURANCE: "Insurance",
+  FINE: "Fine",
+  LABOUR_CESS: "Labour Cess",
   MOBILIZATION_RECOVERY: "Mobilization Recovery",
-  OTHER: "Other Recovery",
+  TDS: "TDS",
+  OTHER: "Other",
+  GST: "GST (legacy)",
 };
 
 export const PAYMENT_MODES = ["CASH", "BANK", "CHEQUE", "UPI", "NEFT", "RTGS"];
@@ -236,18 +287,18 @@ export async function getRunningBill(id: string): Promise<RunningBill> {
   return response.data.data;
 }
 
-export async function getBillableMBs(projectId?: string): Promise<BillableMB[]> {
-  const response = await api.get<{ success: boolean; data: BillableMB[] }>("/running-bills/billable-mbs", { params: { projectId } });
-  return response.data.data;
-}
-
-export async function createRunningBill(data: RunningBillFormData): Promise<RunningBill> {
-  const response = await api.post<{ success: boolean; data: RunningBill }>("/running-bills", data);
-  return response.data.data;
-}
-
-export async function updateRunningBill(id: string, data: Partial<RunningBillFormData>): Promise<RunningBill> {
+export async function updateRunningBill(id: string, data: Partial<RunningBillFormData> & { items?: Form58ItemInput[] }): Promise<RunningBill> {
   const response = await api.put<{ success: boolean; data: RunningBill }>(`/running-bills/${id}`, data);
+  return response.data.data;
+}
+
+export async function getNextRABillDraft(siteId: string): Promise<NextRABillDraft> {
+  const response = await api.get<{ success: boolean; data: NextRABillDraft }>("/running-bills/next-draft", { params: { siteId } });
+  return response.data.data;
+}
+
+export async function createRunningBillFromForm58(data: Form58BillFormData): Promise<RunningBill> {
+  const response = await api.post<{ success: boolean; data: RunningBill }>("/running-bills/form58", data);
   return response.data.data;
 }
 

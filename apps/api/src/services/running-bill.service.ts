@@ -1,20 +1,22 @@
 import prisma from "../config/prisma.js";
 import { Prisma, BillStatus, BillType, DeductionType } from "@prisma/client";
 import { PAYMENT_MODES } from "./vendor-bill.service.js";
+import { createSiteBillItem } from "./site-bill-item.service.js";
 
 /**
- * Running Bill — the client-billing module. There is deliberately no separate "Client
- * Billing" module: every Running Bill is generated from exactly one APPROVED Measurement
- * Book (enforced by the @unique on RunningBill.measurementBookId). Quantities, BOQ items,
- * rates, and Payment % are never re-entered — they're copied from the MB's items here, with
- * previousQuantity computed as the running cumulative total already certified for the same
- * boqItemNo across every earlier Running Bill on the same project. This is the one place
- * that math is ever done; everything downstream (reports, exports, the frontend) only reads
- * the stored, already-computed figures.
+ * Running Bill — the client-billing module, and the direct system representation of one
+ * Government Form No. 58 (one RA Bill = one Form 58 = one RunningBill row). Two ways a bill can
+ * be created:
+ *  - Form 58 flow (current, primary): createRunningBillFromForm58 — items are drawn from the
+ *    Site's Bill Item Master (SiteBillItem), auto-carrying Previous Quantity forward; a brand new
+ *    item entered on any bill is added to the master automatically. raSequence orders bills
+ *    per-Site (RA Bill 1, 2, 3...), independent of every other Site's numbering.
+ *  - Measurement Book flow (legacy, retired from the UI, kept read-only): createRunningBill /
+ *    createRunningBillFromApprovedMB — every such bill has measurementBookId set; this path is
+ *    unchanged so historical records keep working exactly as before.
  *
- * Workflow: Measurement Book -> Running Bill (Draft -> Submitted -> Passed) -> Payment
- * Received (Partly Paid / Fully Paid). PARTLY_PAID/FULLY_PAID are never set directly —
- * see deriveRunningBillStatus.
+ * Workflow: Form 58 -> Running Bill (Draft -> Submitted -> Passed) -> Payment Received (Partly
+ * Paid / Fully Paid). PARTLY_PAID/FULLY_PAID are never set directly — see deriveRunningBillStatus.
  */
 
 export const RB_STATUSES = ["DRAFT", "SUBMITTED", "PASSED", "PARTLY_PAID", "FULLY_PAID"];
@@ -35,16 +37,37 @@ export const BILL_TYPE_LABELS: Record<string, string> = {
   ADVANCE_BILL: "Advance Bill",
 };
 
-export const DEDUCTION_TYPES = ["SECURITY_DEPOSIT", "GST", "LABOUR_CESS", "ROYALTY", "TDS", "MOBILIZATION_RECOVERY", "OTHER"];
+// GST is kept only so historical rows still resolve to a label — new Form 58 bills use
+// GST_STATE/GST_CENTRAL instead (see DEDUCTION_TYPES below, which intentionally omits it from
+// the active/default set exposed to new bills).
+export const DEDUCTION_TYPES = [
+  "GST_STATE",
+  "GST_CENTRAL",
+  "INCOME_TAX",
+  "SECURITY_DEPOSIT",
+  "ROYALTY",
+  "INSURANCE",
+  "FINE",
+  "LABOUR_CESS",
+  "MOBILIZATION_RECOVERY",
+  "TDS",
+  "OTHER",
+  "GST",
+];
 
 export const DEDUCTION_TYPE_LABELS: Record<string, string> = {
+  GST_STATE: "GST State",
+  GST_CENTRAL: "GST Central",
+  INCOME_TAX: "Income Tax",
   SECURITY_DEPOSIT: "Security Deposit",
-  GST: "GST",
-  LABOUR_CESS: "Labour Cess",
   ROYALTY: "Royalty",
-  TDS: "TDS",
+  INSURANCE: "Insurance",
+  FINE: "Fine",
+  LABOUR_CESS: "Labour Cess",
   MOBILIZATION_RECOVERY: "Mobilization Recovery",
-  OTHER: "Other Recovery",
+  TDS: "TDS",
+  OTHER: "Other",
+  GST: "GST (legacy)",
 };
 
 export { PAYMENT_MODES };
@@ -65,6 +88,31 @@ export interface RunningBillFormInput {
   billPeriodTo?: string;
   billDate?: string;
   remarks?: string;
+  deductions?: RunningBillDeductionInput[];
+}
+
+export interface Form58ItemInput {
+  // Existing Bill Item Master row — provide this for every item already on the roster.
+  siteBillItemId?: string;
+  // Only required when siteBillItemId is omitted — creates a new Bill Item Master row, which
+  // every subsequent RA Bill for this Site then auto-includes.
+  itemNo?: string;
+  description?: string;
+  unit?: string;
+  rate?: number;
+  subWorkId?: string;
+  currentQuantity: number;
+}
+
+export interface Form58BillFormInput {
+  siteId: string;
+  billNumber?: string;
+  billType?: string;
+  billDate?: string;
+  billPeriodFrom?: string;
+  billPeriodTo?: string;
+  remarks?: string;
+  items: Form58ItemInput[];
   deductions?: RunningBillDeductionInput[];
 }
 
@@ -126,6 +174,25 @@ function autoPaymentNumber(): string {
   return `RBP-${y}${m}-${rand}`;
 }
 
+/**
+ * Child document numbering (Document Numbering Standard) — Client Payment inherits the Site
+ * code: <SiteCode>/CP-<Seq>, sequential per Site. Falls back to the legacy random format for
+ * Sites created before that milestone (no siteCode yet).
+ */
+async function generateClientPaymentNumber(companyId: string, siteId: string, siteCode: string | null): Promise<string> {
+  if (!siteCode) return autoPaymentNumber();
+  const count = await prisma.runningBillPayment.count({ where: { companyId, runningBill: { siteId } } });
+  return `${siteCode}/CP-${count + 1}`;
+}
+
+function autoBillNumber(): string {
+  const now = new Date();
+  const y = now.getFullYear().toString().slice(-2);
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const rand = Math.floor(Math.random() * 9000) + 1000;
+  return `RA-${y}${m}-${rand}`;
+}
+
 /** Bill/payment status is always derived from received-vs-payable once a bill is Passed — never set directly by the client. */
 function deriveRunningBillStatus(currentStatus: BillStatus, amountReceived: number, netPayable: number): BillStatus {
   if (currentStatus === "DRAFT" || currentStatus === "SUBMITTED") return currentStatus;
@@ -136,6 +203,7 @@ function deriveRunningBillStatus(currentStatus: BillStatus, amountReceived: numb
 
 const include = {
   project: { select: { id: true, name: true, location: true, contractValue: true } },
+  siteRecord: { select: { id: true, name: true } },
   subWork: { select: { id: true, name: true } },
   measurementBook: { select: { id: true, mbNumber: true, mbDate: true } },
   createdBy: { select: { id: true, name: true } },
@@ -151,6 +219,7 @@ function itemToDTO(item: RBItemRow) {
   return {
     id: item.id,
     sortOrder: item.sortOrder,
+    siteBillItemId: item.siteBillItemId ?? "",
     boqItemNo: item.boqItemNo,
     boqDescription: item.boqDescription,
     unit: item.unit,
@@ -184,10 +253,12 @@ function toDTO(bill: RBRow) {
     projectId: bill.projectId,
     project: bill.project,
     siteId: bill.siteId,
+    siteRecord: bill.siteRecord,
     subWorkId: bill.subWorkId ?? "",
     subWork: bill.subWork,
-    measurementBookId: bill.measurementBookId,
+    measurementBookId: bill.measurementBookId ?? "",
     measurementBook: bill.measurementBook,
+    raSequence: bill.raSequence,
     billNumber: bill.billNumber,
     billType: bill.billType,
     site: bill.site ?? bill.project.location ?? "",
@@ -243,8 +314,26 @@ interface MBItemSource {
   remarks: string | null;
 }
 
+interface ResolvedRBItem {
+  siteBillItemId?: string;
+  sortOrder: number;
+  boqItemNo: string;
+  boqDescription: string;
+  unit: string;
+  previousQuantity: number;
+  currentQuantity: number;
+  totalQuantity: number;
+  boqRate: number;
+  paymentPercent: number;
+  effectiveRate: number;
+  previousAmount: number;
+  currentAmount: number;
+  totalAmount: number;
+  remarks: string | null;
+}
+
 /** The one place Previous/Current/Total Quantity and Amount are computed for a Running Bill's Abstract — never trust a client-sent value for these. */
-async function buildItemsFromMB(companyId: string, projectId: string, mbItems: MBItemSource[], excludeRunningBillId?: string) {
+async function buildItemsFromMB(companyId: string, projectId: string, mbItems: MBItemSource[], excludeRunningBillId?: string): Promise<ResolvedRBItem[]> {
   const boqItemNos = mbItems.map((i) => i.boqItemNo);
   const previousMap = await computePreviousQuantities(companyId, projectId, boqItemNos, excludeRunningBillId);
 
@@ -286,6 +375,98 @@ function buildDeductions(input: RunningBillDeductionInput[] | undefined) {
     const label = d.label?.trim() || DEDUCTION_TYPE_LABELS[type];
     return { type, label, amount: round2(amount), remarks: d.remarks || null };
   });
+}
+
+/** Sums currentQuantity across every prior RunningBillItem referencing this Bill Item Master row — the cumulative "already certified" total for this item, at this Site. Robust to bills being created/edited/deleted out of order, since it always re-sums rather than chaining off "the previous bill". */
+async function computePreviousQuantityForSiteBillItem(companyId: string, siteBillItemId: string, excludeRunningBillId?: string): Promise<number> {
+  const agg = await prisma.runningBillItem.aggregate({
+    where: { companyId, siteBillItemId, ...(excludeRunningBillId ? { runningBillId: { not: excludeRunningBillId } } : {}) },
+    _sum: { currentQuantity: true },
+  });
+  return round4(Number(agg._sum.currentQuantity ?? 0));
+}
+
+/**
+ * Resolves one Form 58 bill's item rows against the Site's Bill Item Master. Existing items
+ * (siteBillItemId provided) always use the master's current description/unit/rate — a client
+ * can never override those for an existing item, only Current Quantity. A row with no
+ * siteBillItemId is a brand-new item: it's added to the master here (via
+ * site-bill-item.service.ts, so every later bill for this Site auto-includes it too), starting
+ * at Previous Quantity 0.
+ */
+async function resolveForm58Items(
+  companyId: string,
+  createdById: string,
+  siteId: string,
+  rows: Form58ItemInput[],
+  excludeRunningBillId?: string
+): Promise<ResolvedRBItem[]> {
+  const resolved: ResolvedRBItem[] = [];
+  let sortOrder = 0;
+
+  for (const row of rows) {
+    const currentQuantity = round4(Number(row.currentQuantity) || 0);
+    if (currentQuantity < 0) throw new Error("Current Quantity must be a number greater than or equal to zero");
+
+    let siteBillItemId: string;
+    let itemNo: string;
+    let description: string;
+    let unit: string;
+    let rate: number;
+
+    if (row.siteBillItemId?.trim()) {
+      const master = await prisma.siteBillItem.findFirst({ where: { id: row.siteBillItemId, companyId, siteId } });
+      if (!master) throw new Error("Bill Item not found on this Site");
+      siteBillItemId = master.id;
+      itemNo = master.itemNo;
+      description = master.description;
+      unit = master.unit;
+      rate = Number(master.rate);
+    } else {
+      if (!row.description?.trim() || !row.unit?.trim()) throw new Error("Description and Unit are required for a new item");
+      const rateInput = Number(row.rate);
+      if (!Number.isFinite(rateInput) || rateInput < 0) throw new Error("Rate must be a number greater than or equal to zero for a new item");
+      const created = await createSiteBillItem(companyId, createdById, {
+        siteId,
+        subWorkId: row.subWorkId,
+        itemNo: row.itemNo?.trim() || String(sortOrder + 1),
+        description: row.description.trim(),
+        unit: row.unit.trim(),
+        rate: rateInput,
+      });
+      siteBillItemId = created.id;
+      itemNo = created.itemNo;
+      description = created.description;
+      unit = created.unit;
+      rate = Number(created.rate);
+    }
+
+    const previousQuantity = await computePreviousQuantityForSiteBillItem(companyId, siteBillItemId, excludeRunningBillId);
+    const totalQuantity = round4(previousQuantity + currentQuantity);
+    const previousAmount = round2(previousQuantity * rate);
+    const currentAmount = round2(currentQuantity * rate);
+    const totalAmount = round2(totalQuantity * rate);
+
+    resolved.push({
+      siteBillItemId,
+      sortOrder: sortOrder++,
+      boqItemNo: itemNo,
+      boqDescription: description,
+      unit,
+      previousQuantity,
+      currentQuantity,
+      totalQuantity,
+      boqRate: rate,
+      paymentPercent: 100,
+      effectiveRate: rate,
+      previousAmount,
+      currentAmount,
+      totalAmount,
+      remarks: null,
+    });
+  }
+
+  return resolved;
 }
 
 export async function listRunningBills(companyId: string, query: RunningBillListQuery) {
@@ -352,6 +533,125 @@ export async function listBillableMeasurementBooks(companyId: string, projectId?
   }));
 }
 
+/**
+ * The draft a new Form 58 / RA Bill screen loads before the user touches anything: every active
+ * Bill Item Master row for the Site, each with its Previous Quantity already carried forward and
+ * Current Quantity defaulted to 0 — the user only has to fill in Current Quantity for items that
+ * were actually worked on, and can add wholly new rows on top. isFirstBill is true when the Site
+ * has no master items yet (nothing to carry forward — RA Bill 1's items are entered from scratch,
+ * which itself creates the master).
+ */
+export async function getNextRABillDraft(siteId: string, companyId: string) {
+  const site = await prisma.site.findFirst({ where: { id: siteId, companyId } });
+  if (!site) throw new Error("Site not found");
+
+  const latest = await prisma.runningBill.findFirst({
+    where: { companyId, siteId, raSequence: { not: null } },
+    orderBy: { raSequence: "desc" },
+  });
+  const nextRaSequence = (latest?.raSequence ?? 0) + 1;
+
+  const masterItems = await prisma.siteBillItem.findMany({
+    where: { companyId, siteId, isActive: true },
+    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+  });
+
+  const items = await Promise.all(
+    masterItems.map(async (m) => ({
+      siteBillItemId: m.id,
+      itemNo: m.itemNo,
+      description: m.description,
+      unit: m.unit,
+      rate: m.rate.toString(),
+      previousQuantity: (await computePreviousQuantityForSiteBillItem(companyId, m.id)).toString(),
+      currentQuantity: "0",
+    }))
+  );
+
+  return {
+    siteId,
+    nextRaSequence,
+    suggestedBillNumber: `RA-${nextRaSequence}`,
+    isFirstBill: masterItems.length === 0,
+    items,
+  };
+}
+
+/**
+ * Creates one RA Bill / Form 58 directly against a Site's Bill Item Master — the primary
+ * creation path going forward (Measurement Book is no longer involved). Any active master item
+ * the caller's payload doesn't mention is still included, at Current Quantity 0, so an item that
+ * simply wasn't worked on this period never drops off the bill or the register.
+ */
+export async function createRunningBillFromForm58(companyId: string, createdById: string, input: Form58BillFormInput) {
+  if (!input.siteId?.trim()) throw new Error("Site is required");
+  const site = await prisma.site.findFirst({ where: { id: input.siteId, companyId } });
+  if (!site) throw new Error("Site not found");
+  if (!input.items?.length) throw new Error("At least one item is required");
+
+  const latest = await prisma.runningBill.findFirst({
+    where: { companyId, siteId: input.siteId, raSequence: { not: null } },
+    orderBy: { raSequence: "desc" },
+  });
+  const raSequence = (latest?.raSequence ?? 0) + 1;
+
+  // Child document numbering (Document Numbering Standard) — RA Bill inherits the Site code.
+  // Sites created before that milestone have no siteCode yet, so fall back to the old label.
+  const billNumber = input.billNumber?.trim() || (site.siteCode ? `${site.siteCode}/RA-${raSequence}` : `RA-${raSequence}`);
+  const existingNumber = await prisma.runningBill.findFirst({ where: { companyId, siteId: input.siteId, billNumber } });
+  if (existingNumber) throw new Error(`Running Bill No. "${billNumber}" already exists for this Site`);
+
+  const masterItems = await prisma.siteBillItem.findMany({ where: { companyId, siteId: input.siteId, isActive: true } });
+  const providedIds = new Set(input.items.filter((i) => i.siteBillItemId?.trim()).map((i) => i.siteBillItemId));
+  const missingRows: Form58ItemInput[] = masterItems.filter((m) => !providedIds.has(m.id)).map((m) => ({ siteBillItemId: m.id, currentQuantity: 0 }));
+
+  const resolvedItems = await resolveForm58Items(companyId, createdById, input.siteId, [...input.items, ...missingRows]);
+  const deductions = buildDeductions(input.deductions);
+
+  const previousCertifiedAmount = round2(resolvedItems.reduce((s, i) => s + i.previousAmount, 0));
+  const currentCertifiedAmount = round2(resolvedItems.reduce((s, i) => s + i.currentAmount, 0));
+  const totalCertifiedAmount = round2(resolvedItems.reduce((s, i) => s + i.totalAmount, 0));
+  const totalDeductions = round2(deductions.reduce((s, d) => s + d.amount, 0));
+  const netPayable = round2(currentCertifiedAmount - totalDeductions);
+
+  const bill = await prisma.$transaction(async (tx) => {
+    const created = await tx.runningBill.create({
+      data: {
+        companyId,
+        projectId: site.projectId,
+        siteId: site.id,
+        subWorkId: null,
+        measurementBookId: null,
+        raSequence,
+        billNumber,
+        billType: parseBillType(input.billType),
+        billPeriodFrom: input.billPeriodFrom ? new Date(input.billPeriodFrom) : null,
+        billPeriodTo: input.billPeriodTo ? new Date(input.billPeriodTo) : null,
+        billDate: input.billDate ? new Date(input.billDate) : new Date(),
+        previousCertifiedAmount,
+        currentCertifiedAmount,
+        totalCertifiedAmount,
+        totalDeductions,
+        netPayable,
+        amountReceived: 0,
+        outstandingAmount: netPayable,
+        status: "DRAFT",
+        remarks: input.remarks || null,
+        createdById,
+      },
+    });
+
+    await tx.runningBillItem.createMany({ data: resolvedItems.map((i) => ({ ...i, companyId, runningBillId: created.id })) });
+    if (deductions.length) {
+      await tx.runningBillDeduction.createMany({ data: deductions.map((d) => ({ ...d, companyId, runningBillId: created.id })) });
+    }
+
+    return tx.runningBill.findFirstOrThrow({ where: { id: created.id }, include });
+  });
+
+  return toDTO(bill);
+}
+
 export async function createRunningBill(companyId: string, createdById: string, input: RunningBillFormInput) {
   if (!input.measurementBookId?.trim()) throw new Error("Measurement Book is required");
   if (!input.billNumber?.trim()) throw new Error("Running Bill No. is required");
@@ -367,8 +667,8 @@ export async function createRunningBill(companyId: string, createdById: string, 
   const alreadyLinked = await prisma.runningBill.findFirst({ where: { measurementBookId: mb.id } });
   if (alreadyLinked) throw new Error(`This Measurement Book is already linked to Running Bill ${alreadyLinked.billNumber}`);
 
-  const existingNumber = await prisma.runningBill.findFirst({ where: { companyId, billNumber: input.billNumber.trim() } });
-  if (existingNumber) throw new Error(`Running Bill No. "${input.billNumber}" already exists`);
+  const existingNumber = await prisma.runningBill.findFirst({ where: { companyId, siteId: mb.siteId, billNumber: input.billNumber.trim() } });
+  if (existingNumber) throw new Error(`Running Bill No. "${input.billNumber}" already exists for this Site`);
 
   const items = await buildItemsFromMB(companyId, mb.projectId, mb.items);
   const deductions = buildDeductions(input.deductions);
@@ -417,7 +717,25 @@ export async function createRunningBill(companyId: string, createdById: string, 
   return toDTO(bill);
 }
 
-export async function updateRunningBill(id: string, companyId: string, input: Partial<RunningBillFormInput>) {
+/**
+ * Auto-invoked when a Measurement Book transitions to APPROVED (see measurement-book.service.ts's
+ * updateMB) — Running Bills are never manually created from scratch; every one of them is this
+ * function's output, with an auto-generated Bill No. and today's date as the Bill Date. Deductions
+ * are always empty at auto-creation time; they're added afterward via updateRunningBill while the
+ * bill is still Draft.
+ */
+export async function createRunningBillFromApprovedMB(companyId: string, createdById: string, measurementBookId: string, billDate?: string) {
+  const mb = await prisma.measurementBook.findFirst({ where: { id: measurementBookId, companyId }, select: { siteId: true } });
+  let billNumber = autoBillNumber();
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const clash = await prisma.runningBill.findFirst({ where: { companyId, siteId: mb?.siteId, billNumber } });
+    if (!clash) break;
+    billNumber = autoBillNumber();
+  }
+  return createRunningBill(companyId, createdById, { measurementBookId, billNumber, billDate });
+}
+
+export async function updateRunningBill(id: string, companyId: string, input: Partial<RunningBillFormInput> & { items?: Form58ItemInput[] }) {
   const existing = await prisma.runningBill.findFirst({
     where: { id, companyId },
     include: { measurementBook: { include: { items: { orderBy: { sortOrder: "asc" } } } } },
@@ -426,20 +744,30 @@ export async function updateRunningBill(id: string, companyId: string, input: Pa
   if (existing.status !== "DRAFT") throw new Error("Only a Draft Running Bill can be edited");
 
   if (input.billNumber && input.billNumber.trim() !== existing.billNumber) {
-    const clash = await prisma.runningBill.findFirst({ where: { companyId, billNumber: input.billNumber.trim(), id: { not: id } } });
-    if (clash) throw new Error(`Running Bill No. "${input.billNumber}" already exists`);
+    const clash = await prisma.runningBill.findFirst({ where: { companyId, siteId: existing.siteId, billNumber: input.billNumber.trim(), id: { not: id } } });
+    if (clash) throw new Error(`Running Bill No. "${input.billNumber}" already exists for this Site`);
   }
 
-  const items = await buildItemsFromMB(companyId, existing.projectId, existing.measurementBook.items, id);
+  // Legacy MB-sourced bills always re-import from the MB, unchanged from before. Form 58 bills
+  // (measurementBookId null) only recompute items when the caller actually sent corrected
+  // quantities — otherwise the existing item rows are left exactly as they are.
+  let resolvedItems: ResolvedRBItem[] | null = null;
+  if (existing.measurementBookId && existing.measurementBook) {
+    resolvedItems = await buildItemsFromMB(companyId, existing.projectId, existing.measurementBook.items, id);
+  } else if (input.items !== undefined) {
+    resolvedItems = await resolveForm58Items(companyId, existing.createdById, existing.siteId, input.items, id);
+  }
+
+  const previousCertifiedAmount = resolvedItems ? round2(resolvedItems.reduce((s, i) => s + i.previousAmount, 0)) : Number(existing.previousCertifiedAmount);
+  const currentCertifiedAmount = resolvedItems ? round2(resolvedItems.reduce((s, i) => s + i.currentAmount, 0)) : Number(existing.currentCertifiedAmount);
+  const totalCertifiedAmount = resolvedItems ? round2(resolvedItems.reduce((s, i) => s + i.totalAmount, 0)) : Number(existing.totalCertifiedAmount);
   const deductions = input.deductions !== undefined ? buildDeductions(input.deductions) : null;
 
-  const previousCertifiedAmount = round2(items.reduce((s, i) => s + i.previousAmount, 0));
-  const currentCertifiedAmount = round2(items.reduce((s, i) => s + i.currentAmount, 0));
-  const totalCertifiedAmount = round2(items.reduce((s, i) => s + i.totalAmount, 0));
-
   const bill = await prisma.$transaction(async (tx) => {
-    await tx.runningBillItem.deleteMany({ where: { runningBillId: id } });
-    await tx.runningBillItem.createMany({ data: items.map((i) => ({ ...i, companyId, runningBillId: id })) });
+    if (resolvedItems) {
+      await tx.runningBillItem.deleteMany({ where: { runningBillId: id } });
+      await tx.runningBillItem.createMany({ data: resolvedItems.map((i) => ({ ...i, companyId, runningBillId: id })) });
+    }
 
     if (deductions !== null) {
       await tx.runningBillDeduction.deleteMany({ where: { runningBillId: id } });
@@ -478,10 +806,18 @@ export async function updateRunningBill(id: string, companyId: string, input: Pa
   return toDTO(bill);
 }
 
-/** Hard delete only allowed pre-Submission — once Submitted a bill has entered the certification workflow and is never removable. */
+/**
+ * A legacy MB-sourced bill can never be deleted: it's auto-generated 1:1 from an Approved
+ * Measurement Book that can itself never be edited or re-approved, so deleting the bill would
+ * strand the MB in an Approved-but-unbillable state with no way to regenerate one. A Form 58 bill
+ * has no such constraint — it can always be recreated — so Draft ones may be deleted normally.
+ */
 export async function deleteRunningBill(id: string, companyId: string) {
   const existing = await prisma.runningBill.findFirst({ where: { id, companyId } });
   if (!existing) throw new Error("Running Bill not found");
+  if (existing.measurementBookId) {
+    throw new Error("Running Bills generated from a Measurement Book can no longer be deleted — edit the Draft bill instead");
+  }
   if (existing.status !== "DRAFT") throw new Error("Only a Draft Running Bill can be deleted");
 
   await prisma.$transaction([
@@ -566,6 +902,9 @@ export async function recordRunningBillPayment(id: string, companyId: string, cr
   const newOutstanding = round2(Number(existing.netPayable) - newAmountReceived);
   const newStatus = deriveRunningBillStatus(existing.status, newAmountReceived, Number(existing.netPayable));
 
+  const site = await prisma.site.findFirst({ where: { id: existing.siteId, companyId }, select: { siteCode: true } });
+  const paymentNumber = await generateClientPaymentNumber(companyId, existing.siteId, site?.siteCode ?? null);
+
   const { bill, paymentId } = await prisma.$transaction(async (tx) => {
     const created = await tx.runningBillPayment.create({
       data: {
@@ -573,7 +912,7 @@ export async function recordRunningBillPayment(id: string, companyId: string, cr
         runningBillId: id,
         projectId: existing.projectId,
         companyBankAccountId,
-        paymentNumber: autoPaymentNumber(),
+        paymentNumber,
         paymentDate: input.paymentDate ? new Date(input.paymentDate) : new Date(),
         amount: input.amount,
         mode,

@@ -2,19 +2,12 @@ import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { Plus, MapPin } from "lucide-react";
 import Layout from "../../components/layout/Layout";
-import ContractInformationTab from "../../components/projects/ContractInformationTab";
 import { getProject } from "../../services/projects";
 import type { Project } from "../../services/projects";
 import { getSites } from "../../services/sites";
 import type { Site } from "../../services/sites";
 import { SITE_TYPE_LABELS, SITE_STATUS_LABELS, SITE_STATUS_COLORS } from "../../services/sites";
 import LoadingState from "../../components/ui/LoadingState";
-
-const TABS = [
-  { key: "sites", label: "Sites" },
-  { key: "contract-information", label: "Contract Information" },
-] as const;
-type TabKey = (typeof TABS)[number]["key"];
 
 export default function ViewProject() {
   const { id } = useParams<{ id: string }>();
@@ -24,7 +17,6 @@ export default function ViewProject() {
   const [loading, setLoading] = useState(true);
   const [sitesLoading, setSitesLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<TabKey>("sites");
 
   useEffect(() => {
     if (!id) return;
@@ -75,20 +67,7 @@ export default function ViewProject() {
           </div>
         </div>
 
-        <div className="flex gap-2 rounded-xl bg-white p-2 shadow-sm">
-          {TABS.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className={`rounded-lg px-4 py-2 text-sm font-medium transition ${tab === t.key ? "bg-blue-600 text-white" : "text-slate-600 hover:bg-slate-100"}`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-
-        {tab === "sites" && (
-          <div className="space-y-4">
+        <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-xl font-bold text-slate-900">Sites</h2>
@@ -142,10 +121,7 @@ export default function ViewProject() {
                 ))}
               </div>
             )}
-          </div>
-        )}
-
-        {tab === "contract-information" && <ContractInformationTab project={project} />}
+        </div>
       </div>
     </Layout>
   );

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, Download, BarChart3 } from "lucide-react";
+import { Download, BarChart3 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 import Layout from "../../components/layout/Layout";
@@ -57,12 +57,12 @@ export default function RunningBills() {
   }, [search, projectFilter, statusFilter, fromDate, toDate]);
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm("Delete this Draft Running Bill?")) return;
+    if (!window.confirm("Delete this Draft RA Bill? This cannot be undone.")) return;
     try {
       await deleteRunningBill(id);
-      setBills((prev) => prev.filter((b) => b.id !== id));
+      await load();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to delete Running Bill.");
+      alert(err instanceof Error ? err.message : "Failed to delete RA Bill.");
     }
   };
 
@@ -83,7 +83,7 @@ export default function RunningBills() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-slate-900">Running Bills</h1>
-            <p className="mt-2 text-slate-500">Client billing — generated from Approved Measurement Books — {total} bill{total === 1 ? "" : "s"}.</p>
+            <p className="mt-2 text-slate-500">Client billing register — each RA Bill is a Government Form No. 58 raised directly against a Site — {total} bill{total === 1 ? "" : "s"}.</p>
           </div>
           <div className="flex gap-2">
             <button onClick={() => navigate("/running-bills/reports")} className="flex items-center gap-2 rounded-lg border px-5 py-3 hover:bg-slate-50">
@@ -91,13 +91,6 @@ export default function RunningBills() {
             </button>
             <button onClick={handleExport} disabled={exporting} className="flex items-center gap-2 rounded-lg border px-5 py-3 hover:bg-slate-50 disabled:opacity-60">
               <Download size={18} /> {exporting ? "Exporting..." : "Export CSV"}
-            </button>
-            <button
-              onClick={() => navigate("/running-bills/new")}
-              className="flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-3 text-white hover:bg-blue-700"
-            >
-              <Plus size={18} />
-              New Running Bill
             </button>
           </div>
         </div>
@@ -168,7 +161,9 @@ export default function RunningBills() {
                           {b.status === "DRAFT" && (
                             <>
                               <button onClick={() => navigate(`/running-bills/${b.id}/edit`)} className="text-sm text-blue-600 hover:underline">Edit</button>
-                              <button onClick={() => handleDelete(b.id)} className="text-sm text-red-600 hover:underline">Delete</button>
+                              {!b.measurementBookId && (
+                                <button onClick={() => handleDelete(b.id)} className="text-sm text-red-600 hover:underline">Delete</button>
+                              )}
                             </>
                           )}
                         </div>

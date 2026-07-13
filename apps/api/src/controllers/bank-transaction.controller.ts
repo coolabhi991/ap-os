@@ -9,6 +9,9 @@ import {
   deleteBankTransaction,
   importBankTransactions,
   exportBankTransactionsToCSV,
+  checkStatementImportDuplicate,
+  findDuplicateBankTransactions,
+  deleteDuplicateBankTransaction,
 } from "../services/bank-transaction.service.js";
 
 const notFoundMessage = "Bank Transaction not found";
@@ -108,6 +111,41 @@ export const importBankTransactionsHandler = async (req: AuthRequest, res: Respo
     res.status(201).json({ success: true, data });
   } catch (error) {
     res.status(400).json({ success: false, message: error instanceof Error ? error.message : "Failed to import bank transactions" });
+  }
+};
+
+export const checkStatementImportDuplicateHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const companyId = req.user!.companyId;
+    const { companyBankAccountId, fileHash } = req.body;
+    const result = await checkStatementImportDuplicate(companyId, companyBankAccountId, fileHash);
+    res.status(200).json({ success: true, data: result });
+  } catch (error) {
+    res.status(400).json({ success: false, message: error instanceof Error ? error.message : "Failed to check for a duplicate statement import" });
+  }
+};
+
+export const getDuplicateBankTransactionsHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const companyId = req.user!.companyId;
+    const { companyBankAccountId } = req.query;
+    const data = await findDuplicateBankTransactions(companyId, companyBankAccountId as string);
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error instanceof Error ? error.message : "Failed to load duplicate bank transactions" });
+  }
+};
+
+export const deleteDuplicateBankTransactionHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const companyId = req.user!.companyId;
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const confirmAllocated = req.body?.confirmAllocated === true;
+    await deleteDuplicateBankTransaction(id, companyId, confirmAllocated);
+    res.status(200).json({ success: true, message: "Duplicate transaction deleted" });
+  } catch (error) {
+    const is404 = error instanceof Error && error.message === notFoundMessage;
+    res.status(is404 ? 404 : 400).json({ success: false, message: error instanceof Error ? error.message : "Failed to delete duplicate transaction" });
   }
 };
 

@@ -1,7 +1,22 @@
 import { useEffect, useState } from "react";
-import { X, Plus, Trash2 } from "lucide-react";
-import { createAllocations, ALLOCATION_TYPES, ALLOCATION_TYPE_LABELS, SITE_SCOPED_TYPES, PARTNER_SCOPED_TYPES } from "../../services/transaction-allocations";
-import type { AllocationRowInput } from "../../services/transaction-allocations";
+import { X, Plus, Trash2, AlertTriangle } from "lucide-react";
+import {
+  createAllocations,
+  getAllocationsForTransaction,
+  deleteAllocation,
+  ALLOCATION_TYPES,
+  ALLOCATION_TYPE_LABELS,
+  SITE_SCOPED_TYPES,
+  SITE_REQUIRED_TYPES,
+  PARTNER_SCOPED_TYPES,
+  EMPLOYEE_SCOPED_TYPES,
+  LOAN_REPAYMENT_TYPES,
+  LOAN_TYPE_TO_LIABILITY_TYPE,
+  LEDGER_BACKED_TYPES,
+} from "../../services/transaction-allocations";
+import type { AllocationRowInput, TransactionAllocation } from "../../services/transaction-allocations";
+import { getEmployees } from "../../services/employees";
+import type { Employee } from "../../services/employees";
 import type { BankTransaction } from "../../services/bank-transactions";
 import { getRunningBills } from "../../services/running-bills";
 import type { RunningBill } from "../../services/running-bills";
@@ -46,6 +61,7 @@ export default function AllocateTransactionModal({ transaction, onClose, onSaved
   const [sites, setSites] = useState<Site[]>([]);
   const [partners, setPartners] = useState<Partner[]>([]);
   const [liabilities, setLiabilities] = useState<Liability[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
   const [vendorAccountsByBill, setVendorAccountsByBill] = useState<Record<string, VendorBankAccount[]>>({});
   const [loadingOptions, setLoadingOptions] = useState(true);
 
@@ -53,6 +69,39 @@ export default function AllocateTransactionModal({ transaction, onClose, onSaved
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [failures, setFailures] = useState<Array<{ index: number; allocationType: string; reason: string }>>([]);
+
+  const [existingAllocations, setExistingAllocations] = useState<TransactionAllocation[]>([]);
+  const [loadingExisting, setLoadingExisting] = useState(true);
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(null);
+
+  const loadExisting = () => {
+    setLoadingExisting(true);
+    getAllocationsForTransaction(transaction.id)
+      .then((data) => {
+        setExistingAllocations(data);
+        const alreadyAllocated = data.reduce((s, a) => s + Number(a.amount), 0);
+        const remainingNow = Math.max(0, total - alreadyAllocated);
+        setRows([emptyRow(remainingNow)]);
+      })
+      .catch(() => setExistingAllocations([]))
+      .finally(() => setLoadingExisting(false));
+  };
+
+  useEffect(() => {
+    loadExisting();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [transaction.id]);
+
+  const handleRemoveExisting = async (id: string, ledgerBacked: boolean, confirmed: boolean) => {
+    if (ledgerBacked) return;
+    try {
+      await deleteAllocation(id, confirmed);
+      setConfirmingDeleteId(null);
+      loadExisting();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to remove allocation.");
+    }
+  };
 
   useEffect(() => {
     Promise.all([
@@ -63,8 +112,9 @@ export default function AllocateTransactionModal({ transaction, onClose, onSaved
       getAllSites(),
       getPartners({ isActive: true }),
       getLiabilities({ status: "ACTIVE" }),
+      getEmployees({ status: "ACTIVE", limit: 200 }),
     ])
-      .then(([rb, vb, lab, cats, siteList, partnerList, liabilityList]) => {
+      .then(([rb, vb, lab, cats, siteList, partnerList, liabilityList, employeeList]) => {
         setRunningBills(rb.data.filter((b) => Number(b.outstandingAmount) > 0.01));
         setVendorBills(vb.data.filter((b) => Number(b.outstandingBalance) > 0.01));
         setLabourers(lab.data);
@@ -72,6 +122,7 @@ export default function AllocateTransactionModal({ transaction, onClose, onSaved
         setSites(siteList);
         setPartners(partnerList.data);
         setLiabilities(liabilityList.data);
+        setEmployees(employeeList.data);
       })
       .finally(() => setLoadingOptions(false));
   }, []);
@@ -129,6 +180,41 @@ export default function AllocateTransactionModal({ transaction, onClose, onSaved
         </p>
 
         {error && <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+
+        {!loadingExisting && existingAllocations.length > 0 && (
+          <div className="mb-4 space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <p className="text-sm font-medium text-slate-700">Existing Allocations</p>
+            {existingAllocations.map((a) => {
+              const ledgerBacked = LEDGER_BACKED_TYPES.includes(a.allocationType);
+              return (
+                <div key={a.id} className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
+                  <span>
+                    {ALLOCATION_TYPE_LABELS[a.allocationType] ?? a.allocationType} — {inr(Number(a.amount))}
+                    {a.partyName && <span className="text-slate-400"> ({a.partyName})</span>}
+                  </span>
+                  {confirmingDeleteId === a.id ? (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-red-700">Remove this allocation?</span>
+                      <button type="button" onClick={() => handleRemoveExisting(a.id, false, true)} className="rounded bg-red-600 px-2 py-1 text-xs font-medium text-white hover:bg-red-700">
+                        Confirm
+                      </button>
+                      <button type="button" onClick={() => setConfirmingDeleteId(null)} className="rounded border px-2 py-1 text-xs">Cancel</button>
+                    </div>
+                  ) : ledgerBacked ? (
+                    <span className="flex items-center gap-1 text-xs text-amber-600" title="Created a real record — remove it from its own module first">
+                      <AlertTriangle className="h-3.5 w-3.5" /> Protected
+                    </span>
+                  ) : (
+                    <button type="button" onClick={() => setConfirmingDeleteId(a.id)} className="rounded p-1 text-red-600 hover:bg-red-50" title="Remove">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
         {failures.length > 0 && (
           <div className="mb-4 space-y-1 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700">
             {failures.map((f, i) => (
@@ -157,7 +243,7 @@ export default function AllocateTransactionModal({ transaction, onClose, onSaved
                       <label className="mb-1 block text-xs font-medium">Type *</label>
                       <select
                         value={row.allocationType}
-                        onChange={(e) => updateRow(row.key, { allocationType: e.target.value, runningBillId: undefined, vendorBillId: undefined, vendorBankAccountId: undefined, labourId: undefined, categoryId: undefined, partnerId: undefined, liabilityId: undefined, principalPaid: undefined, interestPaid: undefined })}
+                        onChange={(e) => updateRow(row.key, { allocationType: e.target.value, runningBillId: undefined, vendorBillId: undefined, vendorBankAccountId: undefined, labourId: undefined, categoryId: undefined, partnerId: undefined, liabilityId: undefined, principalPaid: undefined, interestPaid: undefined, employeeId: undefined })}
                         className="w-full rounded-lg border p-2 text-sm"
                       >
                         {ALLOCATION_TYPES.map((t) => <option key={t} value={t}>{ALLOCATION_TYPE_LABELS[t]}</option>)}
@@ -264,13 +350,18 @@ export default function AllocateTransactionModal({ transaction, onClose, onSaved
                       </div>
                     )}
 
-                    {row.allocationType === "LIABILITY_REPAYMENT" && (
+                    {LOAN_REPAYMENT_TYPES.includes(row.allocationType) && (
                       <>
                         <div>
                           <label className="mb-1 block text-xs font-medium">Liability *</label>
                           <select value={row.liabilityId ?? ""} onChange={(e) => updateRow(row.key, { liabilityId: e.target.value })} className="w-full rounded-lg border p-2 text-sm">
                             <option value="">Select Liability</option>
-                            {liabilities.map((l) => <option key={l.id} value={l.id}>{l.loanName} — {inr(l.outstandingAmount)} outstanding</option>)}
+                            {liabilities
+                              .filter((l) => {
+                                const matchType = LOAN_TYPE_TO_LIABILITY_TYPE[row.allocationType];
+                                return !matchType || l.liabilityType === matchType;
+                              })
+                              .map((l) => <option key={l.id} value={l.id}>{l.loanName} — {inr(l.outstandingAmount)} outstanding</option>)}
                           </select>
                         </div>
                         <div>
@@ -304,7 +395,7 @@ export default function AllocateTransactionModal({ transaction, onClose, onSaved
                     {SITE_SCOPED_TYPES.includes(row.allocationType) && (
                       <div>
                         <label className="mb-1 block text-xs font-medium">
-                          Site {row.allocationType === "SITE_EXPENSE" && "*"}
+                          Site {SITE_REQUIRED_TYPES.includes(row.allocationType) && "*"}
                         </label>
                         <select value={row.siteId ?? ""} onChange={(e) => updateRow(row.key, { siteId: e.target.value })} className="w-full rounded-lg border p-2 text-sm">
                           <option value="">Select Site</option>
@@ -313,7 +404,26 @@ export default function AllocateTransactionModal({ transaction, onClose, onSaved
                       </div>
                     )}
 
-                    {!["RUNNING_BILL_RECEIPT", "VENDOR_PAYMENT", "LABOUR", "SITE_EXPENSE", "LIABILITY_DISBURSEMENT", "LIABILITY_REPAYMENT", ...PARTNER_SCOPED_TYPES].includes(row.allocationType) && (
+                    {EMPLOYEE_SCOPED_TYPES.includes(row.allocationType) && (
+                      <div>
+                        <label className="mb-1 block text-xs font-medium">Employee *</label>
+                        <select value={row.employeeId ?? ""} onChange={(e) => updateRow(row.key, { employeeId: e.target.value })} className="w-full rounded-lg border p-2 text-sm">
+                          <option value="">Select Employee</option>
+                          {employees.map((emp) => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
+                        </select>
+                      </div>
+                    )}
+
+                    {![
+                      "RUNNING_BILL_RECEIPT",
+                      "VENDOR_PAYMENT",
+                      "LABOUR",
+                      "SITE_EXPENSE",
+                      "LIABILITY_DISBURSEMENT",
+                      ...LOAN_REPAYMENT_TYPES,
+                      ...PARTNER_SCOPED_TYPES,
+                      ...EMPLOYEE_SCOPED_TYPES,
+                    ].includes(row.allocationType) && (
                       <div>
                         <label className="mb-1 block text-xs font-medium">Party Name</label>
                         <input value={row.partyName ?? ""} onChange={(e) => updateRow(row.key, { partyName: e.target.value })} className="w-full rounded-lg border p-2 text-sm" />

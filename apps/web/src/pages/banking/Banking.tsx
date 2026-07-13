@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Plus, Upload, Download, BarChart3, Pencil, Trash2, Star } from "lucide-react";
+import { Plus, Upload, Download, BarChart3, Pencil, Trash2, Star, ShieldAlert } from "lucide-react";
 
 import Layout from "../../components/layout/Layout";
 import BankTransactionFormModal from "../../components/banking/BankTransactionFormModal";
 import ImportTransactionsModal from "../../components/banking/ImportTransactionsModal";
 import AllocateTransactionModal from "../../components/banking/AllocateTransactionModal";
+import ImportedStatementsTab from "../../components/banking/ImportedStatementsTab";
+import BankDirectoryTab from "../../components/banking/BankDirectoryTab";
 import {
   getBankAccountsWithBalances,
   getBankTransactions,
@@ -31,6 +33,8 @@ import EmptyTableRow from "../../components/ui/EmptyTableRow";
 const TABS = [
   { key: "accounts", label: "Accounts" },
   { key: "transactions", label: "All Transactions" },
+  { key: "imported-statements", label: "Imported Statements" },
+  { key: "directory", label: "Bank Directory" },
 ] as const;
 type TabKey = (typeof TABS)[number]["key"];
 
@@ -155,6 +159,11 @@ export default function Banking() {
 
   const loadBalances = () => getBankAccountsWithBalances().then(setBalances).catch(() => {});
 
+  useEffect(() => {
+    loadBalances();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const loadTransactions = async () => {
     try {
       setTxnLoading(true);
@@ -228,9 +237,14 @@ export default function Banking() {
             <h1 className="text-3xl font-bold text-slate-900">Banking</h1>
             <p className="mt-2 text-slate-500">The single financial control center — accounts, statements, and allocations.</p>
           </div>
-          <button onClick={() => navigate("/banking/reports")} className="flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm hover:bg-slate-50">
-            <BarChart3 className="h-4 w-4" /> Reports
-          </button>
+          <div className="flex gap-2">
+            <button onClick={() => navigate("/banking/duplicates")} className="flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm hover:bg-slate-50">
+              <ShieldAlert className="h-4 w-4" /> Duplicate Transactions
+            </button>
+            <button onClick={() => navigate("/banking/reports")} className="flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm hover:bg-slate-50">
+              <BarChart3 className="h-4 w-4" /> Reports
+            </button>
+          </div>
         </div>
 
         <div className="flex gap-2 rounded-xl bg-white p-2 shadow-sm">
@@ -284,7 +298,13 @@ export default function Banking() {
                             {a.bankName} • {maskAccountNumber(a.accountNumber)} • {a.ifscCode}
                           </p>
                         )}
-                        <p className="mt-1 text-xs text-slate-400">Opening Balance: ₹{Number(a.openingBalance).toLocaleString("en-IN")} — click for Statement History</p>
+                        <p className="mt-1 text-xs text-slate-400">
+                          {(() => {
+                            const bal = balances.find((b) => b.id === a.id);
+                            return bal ? `Current Balance: ₹${Number(bal.currentBalance).toLocaleString("en-IN")} (from Bank Statement)` : "";
+                          })()}
+                          {" — click for Statement History"}
+                        </p>
                       </button>
                       <div className="flex gap-3">
                         <button onClick={() => startEditAccount(a)}><Pencil size={18} className="text-green-600" /></button>
@@ -305,10 +325,6 @@ export default function Banking() {
                     <select value={accountForm.accountType} onChange={(e) => setAccountForm({ ...accountForm, accountType: e.target.value })} className="w-full rounded-lg border p-3">
                       {ACCOUNT_TYPE_OPTIONS.map((t) => <option key={t} value={t}>{ACCOUNT_TYPE_LABELS[t]}</option>)}
                     </select>
-                  </div>
-                  <div>
-                    <label className="mb-2 block font-medium">Opening Balance *</label>
-                    <input type="number" step="0.01" value={accountForm.openingBalance} onChange={(e) => setAccountForm({ ...accountForm, openingBalance: Number(e.target.value) || 0 })} className="w-full rounded-lg border p-3" />
                   </div>
                   <div>
                     <label className="mb-2 block font-medium">Nickname</label>
@@ -456,6 +472,10 @@ export default function Banking() {
             )}
           </div>
         )}
+
+        {tab === "imported-statements" && <ImportedStatementsTab accounts={balances} />}
+
+        {tab === "directory" && <BankDirectoryTab />}
       </div>
 
       {showForm && (

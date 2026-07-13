@@ -1,5 +1,6 @@
 import prisma from "../config/prisma.js";
 import { Prisma, AllocationStatus, BankTransactionSource } from "@prisma/client";
+import { LEDGER_BACKED_TYPES, ALLOCATION_TYPE_LABELS } from "./transaction-allocation.service.js";
 
 /**
  * Banking — the single financial control center. BankTransaction is the bank/cash statement
@@ -56,6 +57,28 @@ export interface ImportRowInput {
 export interface ImportBankTransactionsInput {
   companyBankAccountId: string;
   rows: ImportRowInput[];
+  fileHash?: string;
+  fileName?: string;
+}
+
+/**
+ * Identity of a transaction for duplicate detection: same account, same day, same amounts, same
+ * reference (when present), same description. Used both when importing (skip a row that matches
+ * one already on file) and by the duplicate-transaction maintenance tool (group existing rows that
+ * share this same identity).
+ */
+function transactionFingerprint(
+  companyBankAccountId: string,
+  transactionDate: Date,
+  deposit: number,
+  withdrawal: number,
+  referenceNumber: string | null | undefined,
+  description: string | null | undefined
+): string {
+  const day = transactionDate.toISOString().slice(0, 10);
+  const ref = (referenceNumber ?? "").trim().toLowerCase();
+  const desc = (description ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+  return [companyBankAccountId, day, deposit.toFixed(2), withdrawal.toFixed(2), ref, desc].join("|");
 }
 
 function autoImportBatchId(): string {
@@ -101,7 +124,7 @@ export async function listBankAccountsWithBalances(companyId: string) {
 
   const sums = await prisma.bankTransaction.groupBy({
     by: ["companyBankAccountId"],
-    where: { companyId },
+    where: { companyId, isActive: true },
     _sum: { deposit: true, withdrawal: true },
     _count: { _all: true },
   });
@@ -135,6 +158,7 @@ export async function listBankTransactions(companyId: string, query: BankTransac
 
   const where: Prisma.BankTransactionWhereInput = {
     companyId,
+    isActive: true,
     ...(companyBankAccountId && { companyBankAccountId }),
     ...(projectId && { projectId }),
     ...(allocationStatus && ALLOCATION_STATUSES.includes(allocationStatus.toUpperCase()) && { allocationStatus: allocationStatus.toUpperCase() as AllocationStatus }),
@@ -163,7 +187,7 @@ export async function listBankTransactions(companyId: string, query: BankTransac
 }
 
 export async function getBankTransactionById(id: string, companyId: string) {
-  const txn = await prisma.bankTransaction.findFirst({ where: { id, companyId }, include });
+  const txn = await prisma.bankTransaction.findFirst({ where: { id, companyId, isActive: true }, include });
   if (!txn) throw new Error("Bank Transaction not found");
   return toDTO(txn);
 }
@@ -253,38 +277,244 @@ export async function deleteBankTransaction(id: string, companyId: string) {
   await prisma.bankTransaction.delete({ where: { id } });
 }
 
-/** Bulk-imports pre-parsed Excel/CSV rows (parsed client-side; the backend just validates and inserts). Every row is permanently read-only from the moment it's created. */
+/**
+ * Duplicate Transaction Management — the safe maintenance tool for cleaning up rows left behind
+ * by imports that predate this fix. Groups existing transactions by the same fingerprint used at
+ * import time (account, date, deposit, withdrawal, reference, description); only fingerprints
+ * with more than one row are duplicates. Never touches a whole statement/import batch — only
+ * individual duplicate rows are ever candidates for removal, and only through deleteDuplicateBankTransaction below.
+ */
+export async function findDuplicateBankTransactions(companyId: string, companyBankAccountId?: string) {
+  const rows = await prisma.bankTransaction.findMany({
+    where: { companyId, isActive: true, ...(companyBankAccountId && { companyBankAccountId }) },
+    include,
+    orderBy: { createdAt: "asc" },
+  });
+
+  const groups = new Map<string, BankTransactionRow[]>();
+  for (const row of rows) {
+    const fp = transactionFingerprint(row.companyBankAccountId, row.transactionDate, Number(row.deposit), Number(row.withdrawal), row.referenceNumber, row.description);
+    const group = groups.get(fp);
+    if (group) group.push(row);
+    else groups.set(fp, [row]);
+  }
+
+  return Array.from(groups.entries())
+    .filter(([, group]) => group.length > 1)
+    .map(([fingerprint, group]) => ({
+      fingerprint,
+      count: group.length,
+      transactions: group.map(toDTO),
+    }))
+    .sort((a, b) => b.count - a.count);
+}
+
+/**
+ * Removes exactly one duplicate transaction row — never the last remaining copy of its
+ * fingerprint, and never a row backed by a real ledger record (Vendor Payment, Running Bill
+ * Payment, Liability Repayment, etc.) since undoing that safely means reversing that ledger
+ * entry too, which is out of scope here; the user must remove that allocation first via its own
+ * module. A row with only tag-only allocations (no secondary ledger row — see
+ * transaction-allocation.service.ts's LEDGER_BACKED_TYPES) can be removed, but only when the
+ * caller explicitly confirms it.
+ */
+export async function deleteDuplicateBankTransaction(id: string, companyId: string, confirmAllocated: boolean) {
+  const existing = await prisma.bankTransaction.findFirst({
+    where: { id, companyId },
+    include: { allocations: { select: { id: true, allocationType: true } } },
+  });
+  if (!existing) throw new Error("Bank Transaction not found");
+
+  const dupCount = await prisma.bankTransaction.count({
+    where: {
+      companyId,
+      companyBankAccountId: existing.companyBankAccountId,
+      transactionDate: existing.transactionDate,
+      deposit: existing.deposit,
+      withdrawal: existing.withdrawal,
+      referenceNumber: existing.referenceNumber,
+      description: existing.description,
+    },
+  });
+  if (dupCount <= 1) throw new Error("This transaction is not a duplicate of any other transaction — refusing to delete the only copy");
+
+  if (existing.allocations.length > 0) {
+    const ledgerBacked = existing.allocations.filter((a) => LEDGER_BACKED_TYPES.includes(a.allocationType));
+    if (ledgerBacked.length > 0) {
+      throw new Error(
+        `This duplicate has a ${ALLOCATION_TYPE_LABELS[ledgerBacked[0].allocationType] ?? ledgerBacked[0].allocationType} allocation linked to a real record — remove that allocation first, then delete this duplicate`
+      );
+    }
+    if (!confirmAllocated) {
+      throw new Error(`This duplicate has ${existing.allocations.length} allocation(s) — confirmation required before deletion`);
+    }
+    await prisma.$transaction([
+      prisma.transactionAllocation.deleteMany({ where: { bankTransactionId: id } }),
+      prisma.bankTransaction.delete({ where: { id } }),
+    ]);
+    return;
+  }
+
+  await prisma.bankTransaction.delete({ where: { id } });
+}
+
+/**
+ * Pre-flight check for the Import modal: has this exact file (by content hash) already been
+ * imported into this bank account before? Called before the user commits to importing, so they
+ * can be warned and cancel — separate from the row-level dedup in importBankTransactions, which
+ * always runs regardless of this check (handles the "similar but not byte-identical file" case,
+ * e.g. an overlapping statement export).
+ */
+export async function checkStatementImportDuplicate(companyId: string, companyBankAccountId: string, fileHash: string) {
+  if (!companyBankAccountId?.trim()) throw new Error("Bank account is required");
+  if (!fileHash?.trim()) throw new Error("File hash is required");
+
+  const existing = await prisma.bankStatementImport.findFirst({
+    where: { companyId, companyBankAccountId, fileHash, isDeleted: false },
+    orderBy: { createdAt: "desc" },
+    include: { createdBy: { select: { id: true, name: true } } },
+  });
+
+  if (!existing) return { duplicate: false as const };
+
+  return {
+    duplicate: true as const,
+    existingImport: {
+      id: existing.id,
+      fileName: existing.fileName ?? "",
+      importedAt: existing.createdAt.toISOString(),
+      importedBy: existing.createdBy.name,
+      totalRows: existing.totalRows,
+      importedRows: existing.importedRows,
+      skippedRows: existing.skippedRows,
+      periodFrom: existing.periodFrom ? existing.periodFrom.toISOString().slice(0, 10) : "",
+      periodTo: existing.periodTo ? existing.periodTo.toISOString().slice(0, 10) : "",
+    },
+  };
+}
+
+/**
+ * Bulk-imports pre-parsed Excel/CSV rows (parsed client-side; the backend just validates and
+ * inserts). Every inserted row is permanently read-only from the moment it's created.
+ *
+ * Duplicate protection (the actual data-integrity guarantee — never skipped, regardless of
+ * whether the caller ran checkStatementImportDuplicate first):
+ *  - Every row is fingerprinted on (account, date, deposit, withdrawal, reference, description).
+ *  - Rows matching a transaction already on file for this account are skipped, not inserted.
+ *  - Rows that duplicate an earlier row within the SAME file are also skipped (protects against a
+ *    malformed export with repeated lines).
+ *  - A BankStatementImport audit row is always written, recording exactly how many were found,
+ *    imported, and skipped, so re-uploading the same file always shows the same true history.
+ */
 export async function importBankTransactions(companyId: string, createdById: string, input: ImportBankTransactionsInput) {
   if (!input.companyBankAccountId?.trim()) throw new Error("Bank account is required");
   const account = await prisma.companyBankAccount.findFirst({ where: { id: input.companyBankAccountId, companyId } });
   if (!account) throw new Error("Company bank account not found");
   if (!input.rows?.length) throw new Error("No transactions to import");
 
-  const batchId = autoImportBatchId();
-  const rows = input.rows.map((r, i) => {
+  const parsedRows = input.rows.map((r, i) => {
     if (!r.transactionDate) throw new Error(`Row ${i + 1}: transaction date is required`);
     const deposit = Number(r.deposit) || 0;
     const withdrawal = Number(r.withdrawal) || 0;
     if (deposit < 0 || withdrawal < 0) throw new Error(`Row ${i + 1}: amounts must be zero or greater`);
     if (deposit === 0 && withdrawal === 0) throw new Error(`Row ${i + 1}: either Deposit or Withdrawal must be greater than zero`);
     return {
-      companyId,
-      companyBankAccountId: account.id,
       transactionDate: new Date(r.transactionDate),
       deposit,
       withdrawal,
       referenceNumber: r.referenceNumber || null,
       description: r.description || null,
       category: r.category || null,
-      source: "IMPORTED" as const,
-      importBatchId: batchId,
-      createdById,
     };
   });
 
-  await prisma.bankTransaction.createMany({ data: rows });
-  const created = await prisma.bankTransaction.findMany({ where: { importBatchId: batchId }, include, orderBy: { transactionDate: "asc" } });
-  return { batchId, count: created.length, data: created.map(toDTO) };
+  const dates = parsedRows.map((r) => r.transactionDate.getTime());
+  const periodFrom = new Date(Math.min(...dates));
+  const periodTo = new Date(Math.max(...dates));
+
+  // One query for every existing transaction in this account across the file's date range —
+  // cheaper than a per-row lookup, and lets the same pass also catch duplicates within the file.
+  const existingInRange = await prisma.bankTransaction.findMany({
+    where: { companyId, companyBankAccountId: account.id, transactionDate: { gte: periodFrom, lte: periodTo } },
+    select: { transactionDate: true, deposit: true, withdrawal: true, referenceNumber: true, description: true },
+  });
+
+  const seen = new Set(
+    existingInRange.map((t) => transactionFingerprint(account.id, t.transactionDate, Number(t.deposit), Number(t.withdrawal), t.referenceNumber, t.description))
+  );
+
+  const batchId = autoImportBatchId();
+  const toInsert: Prisma.BankTransactionCreateManyInput[] = [];
+  let skipped = 0;
+
+  for (const r of parsedRows) {
+    const fp = transactionFingerprint(account.id, r.transactionDate, r.deposit, r.withdrawal, r.referenceNumber, r.description);
+    if (seen.has(fp)) {
+      skipped++;
+      continue;
+    }
+    seen.add(fp);
+    toInsert.push({
+      companyId,
+      companyBankAccountId: account.id,
+      transactionDate: r.transactionDate,
+      deposit: r.deposit,
+      withdrawal: r.withdrawal,
+      referenceNumber: r.referenceNumber,
+      description: r.description,
+      category: r.category,
+      source: "IMPORTED",
+      importBatchId: batchId,
+      createdById,
+    });
+  }
+
+  const createdRows = await prisma.$transaction(async (tx) => {
+    // Statement row created FIRST so its real id can be stamped onto every inserted transaction
+    // as the authoritative bankStatementImportId FK — importBatchId is kept alongside purely as
+    // a business/batch identifier, matching the existing convention.
+    const statement = await tx.bankStatementImport.create({
+      data: {
+        companyId,
+        companyBankAccountId: account.id,
+        fileName: input.fileName || null,
+        fileHash: input.fileHash || "",
+        periodFrom,
+        periodTo,
+        totalRows: parsedRows.length,
+        importedRows: toInsert.length,
+        skippedRows: skipped,
+        importBatchId: batchId,
+        createdById,
+      },
+    });
+
+    if (toInsert.length) {
+      await tx.bankTransaction.createMany({ data: toInsert.map((row) => ({ ...row, bankStatementImportId: statement.id })) });
+    }
+
+    await tx.bankStatementAuditLog.create({
+      data: {
+        companyId,
+        bankStatementImportId: statement.id,
+        action: "IMPORTED",
+        performedById: createdById,
+        notes: `Imported ${toInsert.length} of ${parsedRows.length} row(s) — ${skipped} skipped as duplicates`,
+      },
+    });
+
+    if (!toInsert.length) return [];
+    return tx.bankTransaction.findMany({ where: { bankStatementImportId: statement.id }, include, orderBy: { transactionDate: "asc" } });
+  });
+
+  return {
+    batchId,
+    totalFound: parsedRows.length,
+    imported: toInsert.length,
+    skippedDuplicates: skipped,
+    count: createdRows.length,
+    data: createdRows.map(toDTO),
+  };
 }
 
 function escapeCsv(value: string) {

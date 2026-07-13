@@ -1,5 +1,6 @@
 import prisma from "../config/prisma.js";
 import { Prisma, MeasurementBookStatus } from "@prisma/client";
+import { createRunningBillFromApprovedMB } from "./running-bill.service.js";
 
 export const MB_STATUSES = ["DRAFT", "SUBMITTED", "APPROVED"];
 
@@ -46,6 +47,9 @@ export interface MBFormInput {
   abstractPdfUrl?: string;
   abstractPdfName?: string;
   sourceRecapRevisionId?: string;
+  // Form 58 footer config — see toDTO's footer computation for how these feed Net Value/Grand Total.
+  aboveBelowPercent?: number;
+  gstPercent?: number;
   items?: MBItemInput[];
 }
 
@@ -279,9 +283,32 @@ function itemToDTO(item: MBRow["items"][number]) {
   };
 }
 
+/**
+ * Form 58 footer — computed live from item totals + the two stored config percentages, never
+ * persisted itself: Total Amount (sum of "Now to Pay") -> Above/Below adjustment -> Net Value
+ * (pre-GST) -> GST -> Grand Total.
+ */
+function computeForm58Footer(mb: { items: { amount: Prisma.Decimal | number; totalAmount: Prisma.Decimal | number; previousAmount: Prisma.Decimal | number }[]; aboveBelowPercent: Prisma.Decimal | number; gstPercent: Prisma.Decimal | number }) {
+  const round2 = (n: number) => Math.round(n * 100) / 100;
+  const totalUpToDate = round2(mb.items.reduce((sum, i) => sum + Number(i.totalAmount), 0));
+  const totalSincePrevious = round2(mb.items.reduce((sum, i) => sum + Number(i.previousAmount), 0));
+  const totalNowToPay = round2(mb.items.reduce((sum, i) => sum + Number(i.amount), 0));
+
+  const aboveBelowPercent = Number(mb.aboveBelowPercent);
+  const aboveBelowAmount = round2(totalNowToPay * (aboveBelowPercent / 100));
+  const netValue = round2(totalNowToPay + aboveBelowAmount);
+
+  const gstPercent = Number(mb.gstPercent);
+  const gstAmount = round2(netValue * (gstPercent / 100));
+  const grandTotal = round2(netValue + gstAmount);
+
+  return { totalUpToDate, totalSincePrevious, totalNowToPay, aboveBelowPercent, aboveBelowAmount, netValue, gstPercent, gstAmount, grandTotal };
+}
+
 function toDTO(mb: MBRow) {
   const totalQuantity = mb.items.reduce((sum, i) => sum + Number(i.quantity), 0);
   const totalAmount = mb.items.reduce((sum, i) => sum + Number(i.amount), 0);
+  const footer = computeForm58Footer(mb);
 
   return {
     id: mb.id,
@@ -307,6 +334,17 @@ function toDTO(mb: MBRow) {
     items: mb.items.map(itemToDTO),
     totalQuantity: totalQuantity.toFixed(4),
     totalAmount: totalAmount.toFixed(2),
+    aboveBelowPercent: footer.aboveBelowPercent.toString(),
+    gstPercent: footer.gstPercent.toString(),
+    form58: {
+      totalUpToDate: footer.totalUpToDate.toFixed(2),
+      totalSincePrevious: footer.totalSincePrevious.toFixed(2),
+      totalNowToPay: footer.totalNowToPay.toFixed(2),
+      aboveBelowAmount: footer.aboveBelowAmount.toFixed(2),
+      netValue: footer.netValue.toFixed(2),
+      gstAmount: footer.gstAmount.toFixed(2),
+      grandTotal: footer.grandTotal.toFixed(2),
+    },
     createdById: mb.createdById,
     createdBy: mb.createdBy,
     createdAt: mb.createdAt.toISOString(),
@@ -413,6 +451,8 @@ export async function createMB(companyId: string, createdById: string, input: MB
         abstractPdfUrl: input.abstractPdfUrl || null,
         abstractPdfName: input.abstractPdfName || null,
         sourceRecapRevisionId: input.sourceRecapRevisionId || null,
+        aboveBelowPercent: input.aboveBelowPercent ?? 0,
+        gstPercent: input.gstPercent ?? 0,
         createdById,
       },
     });
@@ -442,6 +482,17 @@ export async function updateMB(id: string, companyId: string, changedById: strin
   const existing = await prisma.measurementBook.findFirst({ where: { id, companyId }, include: { items: true } });
   if (!existing) throw new Error("Measurement Book not found");
   if (existing.status === "APPROVED") throw new Error("Cannot edit an Approved Measurement Book");
+
+  // Approving an MB automatically raises its Running Bill — never a manual, separate step. Both
+  // pre-conditions createRunningBill would itself check are verified up front so approval never
+  // commits without also being able to bill (a partially-approved-but-unbillable MB is never left).
+  // (existing.status is already guaranteed not-APPROVED by the guard above.)
+  const willApprove = input.status !== undefined && parseStatus(input.status) === "APPROVED";
+  if (willApprove) {
+    if (!existing.items.length) throw new Error("Cannot approve — this Measurement Book has no BOQ rows to bill");
+    const alreadyLinked = await prisma.runningBill.findFirst({ where: { measurementBookId: id } });
+    if (alreadyLinked) throw new Error(`This Measurement Book is already linked to Running Bill ${alreadyLinked.billNumber}`);
+  }
 
   const effectiveProjectId = input.projectId || existing.projectId;
   const effectiveSiteId = input.siteId || existing.siteId;
@@ -480,6 +531,8 @@ export async function updateMB(id: string, companyId: string, changedById: strin
         abstractPdfUrl: input.abstractPdfUrl !== undefined ? input.abstractPdfUrl || null : existing.abstractPdfUrl,
         abstractPdfName: input.abstractPdfName !== undefined ? input.abstractPdfName || null : existing.abstractPdfName,
         sourceRecapRevisionId: input.sourceRecapRevisionId !== undefined ? input.sourceRecapRevisionId || null : existing.sourceRecapRevisionId,
+        aboveBelowPercent: input.aboveBelowPercent !== undefined ? input.aboveBelowPercent : existing.aboveBelowPercent,
+        gstPercent: input.gstPercent !== undefined ? input.gstPercent : existing.gstPercent,
       },
     });
 
@@ -510,6 +563,10 @@ export async function updateMB(id: string, companyId: string, changedById: strin
 
     return tx.measurementBook.findFirstOrThrow({ where: { id: updated.id }, include });
   });
+
+  if (willApprove) {
+    await createRunningBillFromApprovedMB(companyId, changedById, id, mb.mbDate.toISOString().slice(0, 10));
+  }
 
   return toDTO(mb);
 }

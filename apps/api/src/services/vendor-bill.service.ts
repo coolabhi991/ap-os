@@ -28,6 +28,7 @@ function parseMode(m: string): string {
 
 export interface VendorBillFormInput {
   vendorId: string;
+  siteId: string;
   projectId?: string;
   purchaseOrderId?: string;
   materialReceiptId?: string;
@@ -49,6 +50,7 @@ export interface VendorBillListQuery {
   status?: string;
   vendorId?: string;
   projectId?: string;
+  siteId?: string;
   fromDate?: string;
   toDate?: string;
   overdue?: boolean;
@@ -110,9 +112,27 @@ function autoPaymentNumber(): string {
   return `PMT-${y}${m}-${rand}`;
 }
 
+/**
+ * Child document numbering (Document Numbering Standard) — Vendor Bill / Vendor Payment inherit
+ * the Vendor code: <VendorCode>/VB-<Seq> / <VendorCode>/PMT-<Seq>, sequential per Vendor. Falls
+ * back to the legacy random format for Vendors created before that milestone (no vendorCode yet).
+ */
+async function generateVendorBillNumber(companyId: string, vendorId: string, vendorCode: string | null): Promise<string> {
+  if (!vendorCode) return autoBillNumber();
+  const count = await prisma.vendorBill.count({ where: { companyId, vendorId } });
+  return `${vendorCode}/VB-${count + 1}`;
+}
+
+async function generateVendorPaymentNumber(companyId: string, vendorId: string, vendorCode: string | null): Promise<string> {
+  if (!vendorCode) return autoPaymentNumber();
+  const count = await prisma.vendorPayment.count({ where: { companyId, vendorId } });
+  return `${vendorCode}/PMT-${count + 1}`;
+}
+
 const include = {
   vendor: { select: { id: true, name: true } },
   project: { select: { id: true, name: true } },
+  site: { select: { id: true, name: true } },
   purchaseOrder: { select: { id: true, poNumber: true } },
   materialReceipt: { select: { id: true, receiptNumber: true } },
   subWork: { select: { id: true, name: true } },
@@ -141,6 +161,8 @@ function toDTO(bill: VendorBillRow) {
     vendor: bill.vendor,
     projectId: bill.projectId ?? "",
     project: bill.project,
+    siteId: bill.siteId ?? "",
+    site: bill.site,
     purchaseOrderId: bill.purchaseOrderId ?? "",
     purchaseOrder: bill.purchaseOrder,
     materialReceiptId: bill.materialReceiptId ?? "",
@@ -189,6 +211,7 @@ export async function listVendorBills(companyId: string, query: VendorBillListQu
     status,
     vendorId,
     projectId,
+    siteId,
     fromDate,
     toDate,
     overdue,
@@ -203,6 +226,7 @@ export async function listVendorBills(companyId: string, query: VendorBillListQu
     ...(parseStatus(status) && { status: parseStatus(status) }),
     ...(vendorId && { vendorId }),
     ...(projectId && { projectId }),
+    ...(siteId && { siteId }),
     ...(fromDate || toDate
       ? { billDate: { ...(fromDate ? { gte: new Date(fromDate) } : {}), ...(toDate ? { lte: new Date(toDate) } : {}) } }
       : {}),
@@ -246,10 +270,16 @@ export async function createVendorBill(companyId: string, input: VendorBillFormI
   const vendor = await prisma.vendor.findFirst({ where: { id: input.vendorId, companyId } });
   if (!vendor) throw new Error("Vendor not found");
 
-  if (input.projectId) {
-    const project = await prisma.project.findFirst({ where: { id: input.projectId, companyId } });
-    if (!project) throw new Error("Project not found");
+  if (!input.siteId?.trim()) throw new Error("Site is required");
+  const site = await prisma.site.findFirst({ where: { id: input.siteId, companyId } });
+  if (!site) throw new Error("Site not found");
+
+  // The bill's Project is always derived from the selected Site, keeping the Project -> Site
+  // relationship consistent rather than trusting a possibly-mismatched projectId from the client.
+  if (input.projectId && input.projectId !== site.projectId) {
+    throw new Error("Selected site does not belong to the selected project");
   }
+  const projectId = site.projectId;
 
   // Purchase Order and Material Receipt are optional — this company usually skips both.
   if (input.purchaseOrderId) {
@@ -264,8 +294,7 @@ export async function createVendorBill(companyId: string, input: VendorBillFormI
 
   let subWorkId: string | null = null;
   if (input.subWorkId) {
-    if (!input.projectId) throw new Error("A Sub Work can only be set when a Project is also selected");
-    const subWork = await prisma.subWork.findFirst({ where: { id: input.subWorkId, companyId, projectId: input.projectId } });
+    const subWork = await prisma.subWork.findFirst({ where: { id: input.subWorkId, companyId, projectId } });
     if (!subWork) throw new Error("Sub Work not found");
     subWorkId = subWork.id;
   }
@@ -280,11 +309,12 @@ export async function createVendorBill(companyId: string, input: VendorBillFormI
     data: {
       companyId,
       vendorId: input.vendorId,
-      projectId: input.projectId || null,
+      projectId,
+      siteId: site.id,
       purchaseOrderId: input.purchaseOrderId || null,
       materialReceiptId: input.materialReceiptId || null,
       subWorkId,
-      billNumber: input.billNumber?.trim() || autoBillNumber(),
+      billNumber: input.billNumber?.trim() || (await generateVendorBillNumber(companyId, vendor.id, vendor.vendorCode)),
       billDate: input.billDate ? new Date(input.billDate) : new Date(),
       dueDate: input.dueDate ? new Date(input.dueDate) : null,
       billAmount,
@@ -317,10 +347,14 @@ export async function updateVendorBill(id: string, companyId: string, input: Ven
     if (!vendor) throw new Error("Vendor not found");
   }
 
-  if (input.projectId) {
-    const project = await prisma.project.findFirst({ where: { id: input.projectId, companyId } });
-    if (!project) throw new Error("Project not found");
+  if (!input.siteId?.trim()) throw new Error("Site is required");
+  const site = await prisma.site.findFirst({ where: { id: input.siteId, companyId } });
+  if (!site) throw new Error("Site not found");
+
+  if (input.projectId && input.projectId !== site.projectId) {
+    throw new Error("Selected site does not belong to the selected project");
   }
+  const projectId = site.projectId;
 
   if (input.purchaseOrderId) {
     const po = await prisma.purchaseOrder.findFirst({ where: { id: input.purchaseOrderId, companyId } });
@@ -332,12 +366,10 @@ export async function updateVendorBill(id: string, companyId: string, input: Ven
     if (!mr) throw new Error("Material Receipt not found");
   }
 
-  const effectiveProjectId = input.projectId || existing.projectId;
   let subWorkId: string | null = existing.subWorkId;
   if (input.subWorkId !== undefined) {
     if (input.subWorkId) {
-      if (!effectiveProjectId) throw new Error("A Sub Work can only be set when a Project is also selected");
-      const subWork = await prisma.subWork.findFirst({ where: { id: input.subWorkId, companyId, projectId: effectiveProjectId } });
+      const subWork = await prisma.subWork.findFirst({ where: { id: input.subWorkId, companyId, projectId } });
       if (!subWork) throw new Error("Sub Work not found");
       subWorkId = subWork.id;
     } else {
@@ -364,7 +396,8 @@ export async function updateVendorBill(id: string, companyId: string, input: Ven
     where: { id },
     data: {
       vendorId: input.vendorId || existing.vendorId,
-      projectId: input.projectId || null,
+      projectId,
+      siteId: site.id,
       purchaseOrderId: input.purchaseOrderId || null,
       materialReceiptId: input.materialReceiptId || null,
       subWorkId,
@@ -434,6 +467,9 @@ export async function recordVendorBillPayment(id: string, companyId: string, inp
   const newOutstanding = Number(existing.totalAmount) - newPaidAmount;
   const newStatus = deriveBillStatus(newPaidAmount, Number(existing.totalAmount));
 
+  const payingVendor = await prisma.vendor.findFirst({ where: { id: existing.vendorId, companyId }, select: { vendorCode: true } });
+  const paymentNumber = await generateVendorPaymentNumber(companyId, existing.vendorId, payingVendor?.vendorCode ?? null);
+
   const bill = await prisma.$transaction(async (tx) => {
     await tx.vendorPayment.create({
       data: {
@@ -443,7 +479,7 @@ export async function recordVendorBillPayment(id: string, companyId: string, inp
         vendorBillId: id,
         companyBankAccountId,
         vendorBankAccountId,
-        paymentNumber: autoPaymentNumber(),
+        paymentNumber,
         paymentDate: input.paymentDate ? new Date(input.paymentDate) : new Date(),
         amount: input.amount,
         mode,
@@ -557,6 +593,7 @@ export async function exportVendorBillsToCSV(companyId: string, query: VendorBil
     "Bill Number",
     "Vendor",
     "Project",
+    "Site",
     "Bill Date",
     "Due Date",
     "Bill Amount",
@@ -580,6 +617,7 @@ export async function exportVendorBillsToCSV(companyId: string, query: VendorBil
       bill.billNumber,
       bill.vendor?.name ?? "",
       bill.project?.name ?? "",
+      bill.site?.name ?? "",
       bill.billDate,
       bill.dueDate,
       bill.billAmount,

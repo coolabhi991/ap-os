@@ -25,6 +25,8 @@ export interface VendorBill {
   vendor: { id: string; name: string } | null;
   projectId: string;
   project: { id: string; name: string } | null;
+  siteId: string;
+  site: { id: string; name: string } | null;
   purchaseOrderId: string;
   purchaseOrder: { id: string; poNumber: string } | null;
   materialReceiptId: string;
@@ -53,8 +55,8 @@ export interface VendorBill {
 export interface VendorBillFormData {
   vendorId: string;
   projectId: string;
+  siteId: string;
   purchaseOrderId: string;
-  materialReceiptId: string;
   subWorkId: string;
   billNumber: string;
   billDate: string;
@@ -73,6 +75,7 @@ export interface VendorBillListQuery {
   status?: string;
   vendorId?: string;
   projectId?: string;
+  siteId?: string;
   fromDate?: string;
   toDate?: string;
   overdue?: boolean;

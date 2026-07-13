@@ -17,13 +17,14 @@ const notFoundMessage = "Vendor Bill not found";
 export const getVendorBills = async (req: AuthRequest, res: Response) => {
   try {
     const companyId = req.user!.companyId;
-    const { search, status, vendorId, projectId, fromDate, toDate, overdue, page, limit, sortBy, sortOrder } = req.query;
+    const { search, status, vendorId, projectId, siteId, fromDate, toDate, overdue, page, limit, sortBy, sortOrder } = req.query;
 
     const result = await listVendorBills(companyId, {
       search: search as string,
       status: status as string,
       vendorId: vendorId as string,
       projectId: projectId as string,
+      siteId: siteId as string,
       fromDate: fromDate as string,
       toDate: toDate as string,
       overdue: overdue === "true",

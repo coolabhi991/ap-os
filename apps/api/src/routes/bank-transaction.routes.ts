@@ -8,6 +8,9 @@ import {
   deleteBankTransactionHandler,
   importBankTransactionsHandler,
   exportBankTransactionsHandler,
+  checkStatementImportDuplicateHandler,
+  getDuplicateBankTransactionsHandler,
+  deleteDuplicateBankTransactionHandler,
 } from "../controllers/bank-transaction.controller.js";
 import { authMiddleware } from "../middleware/auth.middleware.js";
 
@@ -16,7 +19,10 @@ const router = Router();
 // Static sub-routes — must come before /:id
 router.get("/accounts", authMiddleware, getBankAccountsWithBalancesHandler);
 router.post("/import", authMiddleware, importBankTransactionsHandler);
+router.post("/import/check", authMiddleware, checkStatementImportDuplicateHandler);
 router.get("/export", authMiddleware, exportBankTransactionsHandler);
+router.get("/duplicates", authMiddleware, getDuplicateBankTransactionsHandler);
+router.delete("/duplicates/:id", authMiddleware, deleteDuplicateBankTransactionHandler);
 
 router.get("/", authMiddleware, getBankTransactionsHandler);
 router.post("/", authMiddleware, createBankTransactionHandler);

@@ -1,9 +1,9 @@
 import prisma from "../config/prisma.js";
 import { Prisma } from "@prisma/client";
+import { getFinancialYear, padSeq } from "../utils/numbering.js";
 
 export interface VendorFormInput {
   name: string;
-  vendorCode?: string;
   category?: string;
   contactPerson?: string;
   mobile?: string;
@@ -120,14 +120,26 @@ export async function getVendorById(id: string, companyId: string) {
   return toVendorDTO(vendor);
 }
 
+/**
+ * System-generated, permanent, read-only Vendor code (Document Numbering Standard) —
+ * VEN/<FY>/<Seq>, sequential per company within the Financial Year of creation.
+ */
+async function generateVendorCode(companyId: string): Promise<string> {
+  const fy = getFinancialYear(new Date());
+  const count = await prisma.vendor.count({ where: { companyId, vendorCode: { startsWith: `VEN/${fy}/` } } });
+  return `VEN/${fy}/${padSeq(count + 1)}`;
+}
+
 export async function createVendor(companyId: string, input: VendorFormInput) {
   if (!input.name?.trim()) throw new Error("Vendor name is required");
+
+  const vendorCode = await generateVendorCode(companyId);
 
   const vendor = await prisma.vendor.create({
     data: {
       companyId,
       name: input.name.trim(),
-      vendorCode: input.vendorCode || null,
+      vendorCode,
       category: input.category || null,
       contactPerson: input.contactPerson || null,
       phone: input.mobile || null,
@@ -159,7 +171,7 @@ export async function updateVendor(
     where: { id },
     data: {
       name: input.name.trim(),
-      vendorCode: input.vendorCode || null,
+      // vendorCode is system-generated and permanent — never re-derived or overwritten on update.
       category: input.category || null,
       contactPerson: input.contactPerson || null,
       phone: input.mobile || null,
@@ -178,7 +190,20 @@ export async function updateVendor(
   return toVendorDTO(vendor);
 }
 
+/** Blocked if the vendor already has Bills/Payments — deactivate instead, so historical records keep a valid, readable reference (same guard shape as CompanyBankAccount/Employee delete). */
 export async function deleteVendor(id: string, companyId: string) {
   await getVendorById(id, companyId); // verify ownership
-  return prisma.vendor.delete({ where: { id } });
+
+  const [billCount, paymentCount] = await Promise.all([
+    prisma.vendorBill.count({ where: { vendorId: id, companyId } }),
+    prisma.vendorPayment.count({ where: { vendorId: id, companyId } }),
+  ]);
+
+  if (billCount > 0 || paymentCount > 0) {
+    const deactivated = await prisma.vendor.update({ where: { id }, data: { status: "Inactive" } });
+    return { deleted: false, data: toVendorDTO(deactivated) };
+  }
+
+  await prisma.vendor.delete({ where: { id } });
+  return { deleted: true, data: null };
 }

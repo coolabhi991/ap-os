@@ -80,9 +80,6 @@ export default function ViewMB() {
         <div className="flex flex-wrap items-center justify-between gap-4 print:hidden">
           <div className="flex items-center gap-3">
             <button onClick={() => navigate("/measurement-books")} className="rounded-lg border px-4 py-2 text-sm hover:bg-slate-50">← Back</button>
-            {mb.status !== "APPROVED" && (
-              <button onClick={() => navigate(`/measurement-books/${mb.id}/edit`)} className="rounded-lg border px-4 py-2 text-sm hover:bg-slate-50">Edit</button>
-            )}
           </div>
           <div className="flex flex-wrap gap-2">
             <button onClick={handleExportPdf} disabled={exportingPdf} className="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm hover:bg-slate-50 disabled:opacity-60">
@@ -128,61 +125,58 @@ export default function ViewMB() {
           </div>
 
           <div>
-            <h2 className="mb-3 text-base font-bold text-slate-800">Abstract Sheet</h2>
+            <h2 className="mb-3 text-base font-bold text-slate-800">Abstract Sheet — Form 58</h2>
             <div className="overflow-x-auto rounded-lg border border-slate-200">
               <table className="min-w-full text-sm">
                 <thead className="bg-slate-100">
                   <tr>
-                    <th className="px-2 py-2 text-left">Item No.</th>
-                    <th className="px-2 py-2 text-left">Description</th>
+                    <th className="px-2 py-2 text-left">Sr No</th>
+                    <th className="px-2 py-2 text-left">Item of Work</th>
+                    <th className="px-2 py-2 text-right">Qty</th>
                     <th className="px-2 py-2 text-left">Unit</th>
-                    <th className="px-2 py-2 text-right">Length</th>
-                    <th className="px-2 py-2 text-right">Breadth</th>
-                    <th className="px-2 py-2 text-right">Height</th>
-                    <th className="px-2 py-2 text-right">Quantity</th>
-                    <th className="px-2 py-2 text-right">BOQ Rate</th>
-                    <th className="px-2 py-2 text-right">Payment %</th>
-                    <th className="px-2 py-2 text-right">Eff. Rate</th>
-                    <th className="px-2 py-2 text-right">Amount</th>
-                    <th className="px-2 py-2 text-left">Remarks</th>
+                    <th className="px-2 py-2 text-right">Rate</th>
+                    <th className="px-2 py-2 text-right">Up To Date Amount</th>
+                    <th className="px-2 py-2 text-right">Since Previous</th>
+                    <th className="px-2 py-2 text-right">Now To Pay</th>
                   </tr>
                 </thead>
                 <tbody>
                   {mb.items.length === 0 ? (
-                    <EmptyTableRow colSpan={12}>No BOQ rows recorded.</EmptyTableRow>
+                    <EmptyTableRow colSpan={8}>No BOQ rows recorded.</EmptyTableRow>
                   ) : (
                     mb.items.map((item) => (
                       <tr key={item.id} className="border-t">
                         <td className="px-2 py-2">{item.boqItemNo}</td>
                         <td className="px-2 py-2">{item.boqDescription}</td>
+                        <td className="px-2 py-2 text-right font-medium">{Number(item.totalQuantity).toFixed(4)}</td>
                         <td className="px-2 py-2">{item.unit}</td>
-                        <td className="px-2 py-2 text-right">{item.length || "—"}</td>
-                        <td className="px-2 py-2 text-right">{item.breadth || "—"}</td>
-                        <td className="px-2 py-2 text-right">{item.height || "—"}</td>
-                        <td className="px-2 py-2 text-right font-medium">{Number(item.quantity).toFixed(4)}</td>
-                        <td className="px-2 py-2 text-right">₹{Number(item.boqRate).toLocaleString("en-IN")}</td>
-                        <td className="px-2 py-2 text-right">{Number(item.paymentPercent)}%</td>
                         <td className="px-2 py-2 text-right">₹{Number(item.effectiveRate).toLocaleString("en-IN")}</td>
+                        <td className="px-2 py-2 text-right">₹{Number(item.totalAmount).toLocaleString("en-IN")}</td>
+                        <td className="px-2 py-2 text-right">₹{Number(item.previousAmount).toLocaleString("en-IN")}</td>
                         <td className="px-2 py-2 text-right font-medium">₹{Number(item.amount).toLocaleString("en-IN")}</td>
-                        <td className="px-2 py-2 text-slate-500">{item.remarks || "—"}</td>
                       </tr>
                     ))
                   )}
                 </tbody>
-                {mb.items.length > 0 && (
-                  <tfoot>
-                    <tr className="border-t bg-slate-50 font-bold">
-                      <td className="px-2 py-2" colSpan={6}>Total</td>
-                      <td className="px-2 py-2 text-right">{Number(mb.totalQuantity).toFixed(4)}</td>
-                      <td className="px-2 py-2" colSpan={3}></td>
-                      <td className="px-2 py-2 text-right">₹{Number(mb.totalAmount).toLocaleString("en-IN")}</td>
-                      <td></td>
-                    </tr>
-                  </tfoot>
-                )}
               </table>
             </div>
           </div>
+
+          {mb.items.length > 0 && (
+            <div className="ml-auto max-w-sm space-y-1.5 rounded-lg border border-slate-200 bg-slate-50 p-4 text-sm">
+              <div className="flex justify-between font-medium"><span>Total Amount</span><span>₹{Number(mb.form58.totalNowToPay).toLocaleString("en-IN")}</span></div>
+              <div className="flex justify-between text-slate-500">
+                <span>Above / Below ({Number(mb.aboveBelowPercent) >= 0 ? "+" : ""}{Number(mb.aboveBelowPercent)}%) — Amount</span>
+                <span>₹{Number(mb.form58.aboveBelowAmount).toLocaleString("en-IN")}</span>
+              </div>
+              <div className="flex justify-between font-medium"><span>Net Value</span><span>₹{Number(mb.form58.netValue).toLocaleString("en-IN")}</span></div>
+              <div className="flex justify-between text-slate-500">
+                <span>GST ({Number(mb.gstPercent)}%)</span>
+                <span>₹{Number(mb.form58.gstAmount).toLocaleString("en-IN")}</span>
+              </div>
+              <div className="flex justify-between border-t border-slate-300 pt-1.5 text-base font-bold"><span>Grand Total</span><span>₹{Number(mb.form58.grandTotal).toLocaleString("en-IN")}</span></div>
+            </div>
+          )}
 
           <div className="border-t pt-4 text-xs text-slate-400">
             Prepared by: {mb.createdBy?.name ?? "—"} &nbsp;|&nbsp; Generated: {new Date().toLocaleString()}

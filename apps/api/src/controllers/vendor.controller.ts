@@ -67,8 +67,12 @@ export const deleteVendorHandler = async (req: AuthRequest, res: Response) => {
   try {
     const companyId = req.user!.companyId;
     const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-    await deleteVendor(id, companyId);
-    res.status(200).json({ success: true, message: "Vendor deleted" });
+    const result = await deleteVendor(id, companyId);
+    if (result.deleted) {
+      res.status(200).json({ success: true, message: "Vendor deleted" });
+    } else {
+      res.status(200).json({ success: true, message: "Vendor has bills or payments on file — deactivated instead of deleted", data: result.data });
+    }
   } catch (error) {
     const is404 = error instanceof Error && error.message === "Vendor not found";
     res.status(is404 ? 404 : 500).json({ success: false, message: error instanceof Error ? error.message : "Failed to delete vendor" });

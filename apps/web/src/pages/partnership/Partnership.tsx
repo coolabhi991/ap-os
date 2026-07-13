@@ -38,6 +38,8 @@ import type { AllocationLedgerRow, PartnerCapitalSummary, ProfitSharingReport } 
 import { ALLOCATION_TYPE_LABELS } from "../../services/transaction-allocations";
 import { getCompanyBankAccounts } from "../../services/company-bank-accounts";
 import type { CompanyBankAccount } from "../../services/company-bank-accounts";
+import BankAccountsModal from "../../components/banking/BankAccountsModal";
+import ReportExportBar from "../../components/ui/ReportExportBar";
 import LoadingState from "../../components/ui/LoadingState";
 import { formatCurrency as inr, todayISO } from "../../lib/utils";
 import EmptyTableRow from "../../components/ui/EmptyTableRow";
@@ -103,6 +105,7 @@ function PartnersTab({ partners, reload }: { partners: Partner[]; reload: () => 
   const [form, setForm] = useState<PartnerFormData>(emptyPartnerForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [bankAccountsFor, setBankAccountsFor] = useState<Partner | null>(null);
 
   const startAdd = () => { setEditingId(null); setForm(emptyPartnerForm); setError(null); setShowForm(true); };
   const startEdit = (p: Partner) => {
@@ -227,6 +230,7 @@ function PartnersTab({ partners, reload }: { partners: Partner[]; reload: () => 
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex justify-end gap-3">
+                      <button onClick={() => setBankAccountsFor(p)} className="text-sm text-slate-600 hover:underline">Bank Accounts</button>
                       <button onClick={() => startEdit(p)} className="text-sm text-slate-600 hover:underline">Edit</button>
                       <button onClick={() => handleDelete(p.id)} className="text-sm text-red-600 hover:underline">Delete</button>
                     </div>
@@ -237,6 +241,15 @@ function PartnersTab({ partners, reload }: { partners: Partner[]; reload: () => 
           </tbody>
         </table>
       </div>
+
+      {bankAccountsFor && (
+        <BankAccountsModal
+          ownerType="PARTNER"
+          ownerId={bankAccountsFor.id}
+          ownerName={bankAccountsFor.name}
+          onClose={() => setBankAccountsFor(null)}
+        />
+      )}
     </div>
   );
 }
@@ -704,7 +717,34 @@ function ReportsTab() {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-xl font-bold text-slate-900">Capital Summary</h2>
+      <div className="flex items-center justify-between print:hidden">
+        <h2 className="text-xl font-bold text-slate-900">Capital Summary</h2>
+        <ReportExportBar
+          input={{
+            title: "Partnership Capital Summary",
+            subtitle: `Total Invested: ${inr(summary.totalInvested)} | Total Settled: ${inr(summary.totalSettled)} | Total Active Share: ${summary.totalSharePercent}%`,
+            columns: [
+              { key: "partnerName", label: "Partner" },
+              { key: "partnerType", label: "Type" },
+              { key: "totalInvested", label: "Invested", align: "right" },
+              { key: "totalSettled", label: "Settled", align: "right" },
+              { key: "netPosition", label: "Net Position", align: "right" },
+            ],
+            rows: summary.partners.map((p) => ({
+              partnerName: p.partnerName,
+              partnerType: PARTNER_TYPE_LABELS[p.partnerType],
+              totalInvested: p.totalInvested,
+              totalSettled: p.totalSettled,
+              netPosition: p.netPosition,
+            })),
+            totals: {
+              partnerName: "TOTAL",
+              totalInvested: summary.totalInvested,
+              totalSettled: summary.totalSettled,
+            },
+          }}
+        />
+      </div>
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
           <p className="text-xs text-slate-500">Total Invested</p>

@@ -160,9 +160,12 @@ export async function deleteCompanyBankAccount(id: string, companyId: string) {
   const existing = await prisma.companyBankAccount.findFirst({ where: { id, companyId } });
   if (!existing) throw new Error("Company bank account not found");
 
-  const paymentCount = await prisma.vendorPayment.count({ where: { companyBankAccountId: id } });
+  const [paymentCount, transactionCount] = await Promise.all([
+    prisma.vendorPayment.count({ where: { companyBankAccountId: id } }),
+    prisma.bankTransaction.count({ where: { companyBankAccountId: id } }),
+  ]);
 
-  if (paymentCount > 0) {
+  if (paymentCount > 0 || transactionCount > 0) {
     const deactivated = await prisma.companyBankAccount.update({ where: { id }, data: { isActive: false, isPrimary: false } });
     return { deleted: false, data: toDTO(deactivated) };
   }

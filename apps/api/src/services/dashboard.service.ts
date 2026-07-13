@@ -73,7 +73,7 @@ export async function getControlCenter(companyId: string) {
     getPayablesReport(companyId, {}),
     listRunningBills(companyId, { page: 1, limit: RUNNING_BILLS_PREVIEW, sortBy: "billDate", sortOrder: "desc" }),
     prisma.runningBill.groupBy({ by: ["status"], where: { companyId }, _count: { _all: true } }),
-    prisma.bankTransaction.count({ where: { companyId, allocationStatus: "UNALLOCATED" } }),
+    prisma.bankTransaction.count({ where: { companyId, isActive: true, allocationStatus: "UNALLOCATED" } }),
   ]);
 
   const totalContractValue = projects.reduce((s, p) => s + Number(p.contractValue), 0);

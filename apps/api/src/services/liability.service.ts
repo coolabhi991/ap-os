@@ -1,5 +1,6 @@
 import prisma from "../config/prisma.js";
 import { Prisma, LiabilityType, LiabilityInterestType, LiabilitySecurity, LiabilityStatus } from "@prisma/client";
+import { getFinancialYear, padSeq } from "../utils/numbering.js";
 
 /**
  * Liability Master — every borrowing the company carries (Home/Car/Gold/Bank Loan, Cash Credit,
@@ -103,6 +104,7 @@ type LiabilityRow = {
   id: string;
   companyId: string;
   loanName: string;
+  code: string | null;
   liabilityType: LiabilityType;
   lenderName: string | null;
   lenderMobile: string | null;
@@ -132,6 +134,7 @@ function toDTO(l: LiabilityRow) {
     id: l.id,
     companyId: l.companyId,
     loanName: l.loanName,
+    code: l.code ?? "",
     liabilityType: l.liabilityType,
     lenderName: l.lenderName ?? "",
     lenderMobile: l.lenderMobile ?? "",
@@ -207,16 +210,28 @@ function validateInput(input: Partial<LiabilityFormInput>, isCreate: boolean) {
   if (isCreate && !input.startDate) throw new Error("Start date is required");
 }
 
+/**
+ * System-generated, permanent, read-only Liability code (Document Numbering Standard) —
+ * LIA/<FY>/<Seq>, sequential per company within the Financial Year of creation.
+ */
+async function generateLiabilityCode(companyId: string): Promise<string> {
+  const fy = getFinancialYear(new Date());
+  const count = await prisma.liability.count({ where: { companyId, code: { startsWith: `LIA/${fy}/` } } });
+  return `LIA/${fy}/${padSeq(count + 1)}`;
+}
+
 export async function createLiability(companyId: string, input: LiabilityFormInput) {
   validateInput(input, true);
   const sanctionAmount = input.sanctionAmount;
   const outstandingAmount = input.outstandingAmount !== undefined ? input.outstandingAmount : sanctionAmount;
   if (outstandingAmount < 0) throw new Error("Outstanding amount cannot be negative");
+  const code = await generateLiabilityCode(companyId);
 
   const liability = await prisma.liability.create({
     data: {
       companyId,
       loanName: input.loanName.trim(),
+      code,
       liabilityType: parseEnum(input.liabilityType as LiabilityType, LIABILITY_TYPES, "OTHER" as LiabilityType),
       lenderName: input.lenderName || null,
       lenderMobile: input.lenderMobile || null,
@@ -243,10 +258,19 @@ export async function createLiability(companyId: string, input: LiabilityFormInp
 }
 
 export async function updateLiability(id: string, companyId: string, input: Partial<LiabilityFormInput>) {
-  await getLiabilityById(id, companyId);
+  const existing = await getLiabilityById(id, companyId);
   validateInput(input, false);
   if (input.sanctionAmount !== undefined && input.sanctionAmount <= 0) throw new Error("Sanction amount must be greater than zero");
   if (input.outstandingAmount !== undefined && input.outstandingAmount < 0) throw new Error("Outstanding amount cannot be negative");
+
+  // Once a repayment exists, Outstanding is driven exclusively by the repayment ledger
+  // (liability-repayment.service.ts) — allowing a direct edit here would silently desync the two.
+  if (input.outstandingAmount !== undefined && input.outstandingAmount !== Number(existing.outstandingAmount)) {
+    const repaymentCount = await prisma.liabilityRepayment.count({ where: { liabilityId: id } });
+    if (repaymentCount > 0) {
+      throw new Error("Outstanding amount cannot be edited directly once repayments exist — record a repayment instead");
+    }
+  }
 
   const liability = await prisma.liability.update({
     where: { id },

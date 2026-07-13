@@ -17,6 +17,21 @@ export interface Site {
   performanceGuarantee: string;
   workOrderDate: string;
   completionDate: string;
+  actualCompletionDate: string;
+  // Work Order Details tab fields (Workflow Refinement milestone, Item 1).
+  workOrderNumber: string;
+  agreementNumber: string;
+  agreementDate: string;
+  tenderNumber: string;
+  tenderAboveBelowPercent: string;
+  department: string;
+  division: string;
+  subDivision: string;
+  clientEngineer: string;
+  defectLiabilityPeriod: string;
+  gstPercent: string;
+  // System-generated, permanent, read-only (Document Numbering Standard).
+  siteCode: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -36,6 +51,18 @@ export interface SiteFormData {
   performanceGuarantee: number;
   workOrderDate: string;
   completionDate: string;
+  actualCompletionDate: string;
+  workOrderNumber: string;
+  agreementNumber: string;
+  agreementDate: string;
+  tenderNumber: string;
+  tenderAboveBelowPercent: number | "";
+  department: string;
+  division: string;
+  subDivision: string;
+  clientEngineer: string;
+  defectLiabilityPeriod: string;
+  gstPercent: number | "";
 }
 
 export const SITE_TYPE_OPTIONS = ["OWN_SITE", "PARTNERSHIP_SITE", "AGENCY_SITE"];
@@ -48,9 +75,11 @@ export const SITE_TYPE_LABELS: Record<string, string> = {
 
 export const SITE_STATUS_OPTIONS = ["PLANNING", "ACTIVE", "ON_HOLD", "COMPLETED", "CANCELLED"];
 
+// "In Progress" is displayed for the underlying ACTIVE value — Site-only label divergence from
+// Project, which still shows "Active" for the same shared ProjectStatus enum value.
 export const SITE_STATUS_LABELS: Record<string, string> = {
   PLANNING: "Planning",
-  ACTIVE: "Active",
+  ACTIVE: "In Progress",
   ON_HOLD: "On Hold",
   COMPLETED: "Completed",
   CANCELLED: "Cancelled",

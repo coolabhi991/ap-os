@@ -9,7 +9,6 @@ import { createVendorBill } from "../../services/vendor-bills";
 import { getVendors } from "../../services/vendors";
 import { getProjects } from "../../services/projects";
 import { getPurchaseOrders } from "../../services/purchase-orders";
-import { getMaterialReceipts } from "../../services/material-receipts";
 
 export default function AddVendorBill() {
   const navigate = useNavigate();
@@ -19,13 +18,11 @@ export default function AddVendorBill() {
   const [vendors, setVendors] = useState<{ id: string; name: string }[]>([]);
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
   const [purchaseOrders, setPurchaseOrders] = useState<{ id: string; poNumber: string }[]>([]);
-  const [materialReceipts, setMaterialReceipts] = useState<{ id: string; receiptNumber: string }[]>([]);
 
   useEffect(() => {
     getVendors({ limit: 100 }).then((r) => setVendors(r.data)).catch(() => {});
     getProjects({ limit: 100 }).then((r) => setProjects(r.data)).catch(() => {});
     getPurchaseOrders({ limit: 100 }).then((r) => setPurchaseOrders(r.data)).catch(() => {});
-    getMaterialReceipts({ limit: 100 }).then((r) => setMaterialReceipts(r.data)).catch(() => {});
   }, []);
 
   const handleSubmit = async (data: VendorBillFormData) => {
@@ -57,7 +54,6 @@ export default function AddVendorBill() {
           vendors={vendors}
           projects={projects}
           purchaseOrders={purchaseOrders}
-          materialReceipts={materialReceipts}
         />
       </div>
     </Layout>

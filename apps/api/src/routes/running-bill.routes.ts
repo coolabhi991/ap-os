@@ -2,6 +2,8 @@ import { Router } from "express";
 import {
   getRunningBillsHandler,
   getBillableMBsHandler,
+  getNextRABillDraftHandler,
+  createRunningBillFromForm58Handler,
   getRunningBillHandler,
   createRunningBillHandler,
   updateRunningBillHandler,
@@ -27,6 +29,8 @@ const router = Router();
 
 // Static sub-routes — must come before /:id
 router.get("/billable-mbs", authMiddleware, getBillableMBsHandler);
+router.get("/next-draft", authMiddleware, getNextRABillDraftHandler);
+router.post("/form58", authMiddleware, createRunningBillFromForm58Handler);
 router.get("/reports/register", authMiddleware, getRunningBillRegisterReportHandler);
 router.get("/reports/outstanding", authMiddleware, getOutstandingBillsReportHandler);
 router.get("/reports/payment-register", authMiddleware, getPaymentRegisterReportHandler);

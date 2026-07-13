@@ -6,6 +6,7 @@ import {
   updateExpenseHandler,
   deleteExpenseHandler,
   getExpenseDashboardHandler,
+  getSiteExpenseSummaryHandler,
   getProjectExpenseSummaryHandler,
   getCategoryExpenseSummaryHandler,
   getMonthlyExpenseSummaryHandler,
@@ -24,6 +25,7 @@ const router = Router();
 // Static sub-routes — must come before /:id
 router.get("/export", authMiddleware, exportExpensesHandler);
 router.get("/dashboard", authMiddleware, getExpenseDashboardHandler);
+router.get("/site-summary", authMiddleware, getSiteExpenseSummaryHandler);
 router.get("/reports/project-summary", authMiddleware, getProjectExpenseSummaryHandler);
 router.get("/reports/category-summary", authMiddleware, getCategoryExpenseSummaryHandler);
 router.get("/reports/monthly-summary", authMiddleware, getMonthlyExpenseSummaryHandler);

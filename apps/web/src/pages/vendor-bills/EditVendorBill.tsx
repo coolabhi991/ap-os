@@ -9,7 +9,6 @@ import { getVendorBill, updateVendorBill } from "../../services/vendor-bills";
 import { getVendors } from "../../services/vendors";
 import { getProjects } from "../../services/projects";
 import { getPurchaseOrders } from "../../services/purchase-orders";
-import { getMaterialReceipts } from "../../services/material-receipts";
 
 export default function EditVendorBill() {
   const { id } = useParams<{ id: string }>();
@@ -19,7 +18,6 @@ export default function EditVendorBill() {
   const [vendors, setVendors] = useState<{ id: string; name: string }[]>([]);
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
   const [purchaseOrders, setPurchaseOrders] = useState<{ id: string; poNumber: string }[]>([]);
-  const [materialReceipts, setMaterialReceipts] = useState<{ id: string; receiptNumber: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -28,7 +26,6 @@ export default function EditVendorBill() {
     getVendors({ limit: 100 }).then((r) => setVendors(r.data)).catch(() => {});
     getProjects({ limit: 100 }).then((r) => setProjects(r.data)).catch(() => {});
     getPurchaseOrders({ limit: 100 }).then((r) => setPurchaseOrders(r.data)).catch(() => {});
-    getMaterialReceipts({ limit: 100 }).then((r) => setMaterialReceipts(r.data)).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -38,8 +35,8 @@ export default function EditVendorBill() {
         setInitialData({
           vendorId: bill.vendorId,
           projectId: bill.projectId,
+          siteId: bill.siteId,
           purchaseOrderId: bill.purchaseOrderId,
-          materialReceiptId: bill.materialReceiptId,
           billNumber: bill.billNumber,
           billDate: bill.billDate,
           dueDate: bill.dueDate,
@@ -90,7 +87,6 @@ export default function EditVendorBill() {
             vendors={vendors}
             projects={projects}
             purchaseOrders={purchaseOrders}
-            materialReceipts={materialReceipts}
             isEdit
           />
         )}

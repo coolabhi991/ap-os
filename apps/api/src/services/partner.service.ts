@@ -1,5 +1,6 @@
 import prisma from "../config/prisma.js";
 import { Prisma, PartnerType } from "@prisma/client";
+import { getFinancialYear, padSeq } from "../utils/numbering.js";
 
 /**
  * Partner Master — Owners and Partners are both rows here, global to the Company. Investments
@@ -36,6 +37,7 @@ type PartnerRow = {
   id: string;
   companyId: string;
   name: string;
+  code: string | null;
   partnerType: PartnerType;
   phone: string | null;
   email: string | null;
@@ -52,6 +54,7 @@ function toDTO(p: PartnerRow) {
     id: p.id,
     companyId: p.companyId,
     name: p.name,
+    code: p.code ?? "",
     partnerType: p.partnerType,
     phone: p.phone ?? "",
     email: p.email ?? "",
@@ -111,14 +114,26 @@ export async function getPartnerById(id: string, companyId: string) {
   return toDTO(partner);
 }
 
+/**
+ * System-generated, permanent, read-only Partner code (Document Numbering Standard) —
+ * PTR/<FY>/<Seq>, sequential per company within the Financial Year of creation.
+ */
+async function generatePartnerCode(companyId: string): Promise<string> {
+  const fy = getFinancialYear(new Date());
+  const count = await prisma.partner.count({ where: { companyId, code: { startsWith: `PTR/${fy}/` } } });
+  return `PTR/${fy}/${padSeq(count + 1)}`;
+}
+
 export async function createPartner(companyId: string, input: PartnerFormInput) {
   if (!input.name?.trim()) throw new Error("Partner name is required");
   const sharePercent = parseSharePercent(input.sharePercent);
+  const code = await generatePartnerCode(companyId);
 
   const partner = await prisma.partner.create({
     data: {
       companyId,
       name: input.name.trim(),
+      code,
       partnerType: parsePartnerType(input.partnerType),
       phone: input.phone || null,
       email: input.email || null,

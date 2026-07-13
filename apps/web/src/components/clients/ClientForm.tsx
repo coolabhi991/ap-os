@@ -14,7 +14,6 @@ export default function ClientForm({
 }: Props) {
   const [form, setForm] = useState<ClientFormData>({
     companyName: initialData?.companyName ?? "",
-    clientCode: initialData?.clientCode ?? "",
     contactPerson: initialData?.contactPerson ?? "",
     mobile: initialData?.mobile ?? "",
     email: initialData?.email ?? "",
@@ -61,18 +60,6 @@ export default function ClientForm({
           <input
             name="companyName"
             value={form.companyName}
-            onChange={handleChange}
-            className="w-full rounded-lg border p-3"
-          />
-        </div>
-
-        <div>
-          <label className="mb-2 block font-medium">
-            Client Code
-          </label>
-          <input
-            name="clientCode"
-            value={form.clientCode}
             onChange={handleChange}
             className="w-full rounded-lg border p-3"
           />

@@ -38,12 +38,6 @@ import AddPurchaseOrder from "./pages/purchase-orders/AddPurchaseOrder";
 import EditPurchaseOrder from "./pages/purchase-orders/EditPurchaseOrder";
 import ViewPurchaseOrder from "./pages/purchase-orders/ViewPurchaseOrder";
 
-/* Material Receipts */
-import MaterialReceipts from "./pages/material-receipts/MaterialReceipts";
-import AddMaterialReceipt from "./pages/material-receipts/AddMaterialReceipt";
-import EditMaterialReceipt from "./pages/material-receipts/EditMaterialReceipt";
-import ViewMaterialReceipt from "./pages/material-receipts/ViewMaterialReceipt";
-
 /* Material Issues */
 import MaterialIssues from "./pages/material-issues/MaterialIssues";
 import AddMaterialIssue from "./pages/material-issues/AddMaterialIssue";
@@ -82,6 +76,13 @@ import ExpensesDashboard from "./pages/expenses/ExpensesDashboard";
 import ExpenseCategories from "./pages/expenses/ExpenseCategories";
 import ExpenseReports from "./pages/expenses/ExpenseReports";
 
+/* Employees */
+import Employees from "./pages/employees/Employees";
+import AddEmployee from "./pages/employees/AddEmployee";
+import EditEmployee from "./pages/employees/EditEmployee";
+import ViewEmployee from "./pages/employees/ViewEmployee";
+import EmployeeReports from "./pages/employees/EmployeeReports";
+
 /* Labour Management */
 import LabourGroups from "./pages/labour/LabourGroups";
 import Labour from "./pages/labour/Labour";
@@ -106,14 +107,12 @@ import ViewDPR from "./pages/dpr/ViewDPR";
 
 /* Measurement Books */
 import MeasurementBooks from "./pages/measurement-books/MeasurementBooks";
-import AddMB from "./pages/measurement-books/AddMB";
-import EditMB from "./pages/measurement-books/EditMB";
 import ViewMB from "./pages/measurement-books/ViewMB";
 import MBReports from "./pages/measurement-books/MBReports";
 
 /* Running Bills */
 import RunningBills from "./pages/running-bills/RunningBills";
-import AddRunningBill from "./pages/running-bills/AddRunningBill";
+import AddRunningBillForm58 from "./pages/running-bills/AddRunningBillForm58";
 import EditRunningBill from "./pages/running-bills/EditRunningBill";
 import ViewRunningBill from "./pages/running-bills/ViewRunningBill";
 import RunningBillReports from "./pages/running-bills/RunningBillReports";
@@ -122,6 +121,7 @@ import RunningBillReports from "./pages/running-bills/RunningBillReports";
 import Banking from "./pages/banking/Banking";
 import BankAccountStatement from "./pages/banking/BankAccountStatement";
 import BankingReports from "./pages/banking/BankingReports";
+import DuplicateTransactions from "./pages/banking/DuplicateTransactions";
 
 /* AP AI */
 import ApAi from "./pages/ai/ApAi";
@@ -196,6 +196,13 @@ export default function App() {
       <Route path="/expenses/:id" element={<ViewExpense />} />
       <Route path="/expenses/:id/edit" element={<EditExpense />} />
 
+      {/* Employees */}
+      <Route path="/employees" element={<Employees />} />
+      <Route path="/employees/new" element={<AddEmployee />} />
+      <Route path="/employees/reports" element={<EmployeeReports />} />
+      <Route path="/employees/:id" element={<ViewEmployee />} />
+      <Route path="/employees/:id/edit" element={<EditEmployee />} />
+
       {/* Labour Management */}
       <Route path="/labour" element={<Labour />} />
       <Route path="/labour/new" element={<AddLabour />} />
@@ -211,12 +218,6 @@ export default function App() {
       <Route path="/labour/payments/new" element={<AddPayment />} />
       <Route path="/labour/:id" element={<ViewLabour />} />
       <Route path="/labour/:id/edit" element={<EditLabour />} />
-
-      {/* Material Receipts */}
-      <Route path="/material-receipts" element={<MaterialReceipts />} />
-      <Route path="/material-receipts/new" element={<AddMaterialReceipt />} />
-      <Route path="/material-receipts/:id" element={<ViewMaterialReceipt />} />
-      <Route path="/material-receipts/:id/edit" element={<EditMaterialReceipt />} />
 
       {/* Material Issues */}
       <Route path="/material-issues" element={<MaterialIssues />} />
@@ -248,20 +249,19 @@ export default function App() {
 
       {/* Measurement Books */}
       <Route path="/measurement-books" element={<MeasurementBooks />} />
-      <Route path="/measurement-books/new" element={<AddMB />} />
       <Route path="/measurement-books/reports" element={<MBReports />} />
       <Route path="/measurement-books/:id" element={<ViewMB />} />
-      <Route path="/measurement-books/:id/edit" element={<EditMB />} />
 
       {/* Running Bills */}
       <Route path="/running-bills" element={<RunningBills />} />
-      <Route path="/running-bills/new" element={<AddRunningBill />} />
+      <Route path="/running-bills/new" element={<AddRunningBillForm58 />} />
       <Route path="/running-bills/reports" element={<RunningBillReports />} />
       <Route path="/running-bills/:id" element={<ViewRunningBill />} />
       <Route path="/running-bills/:id/edit" element={<EditRunningBill />} />
 
       {/* Banking */}
       <Route path="/banking" element={<Banking />} />
+      <Route path="/banking/duplicates" element={<DuplicateTransactions />} />
       <Route path="/banking/accounts/:id" element={<BankAccountStatement />} />
       <Route path="/banking/reports" element={<BankingReports />} />
 

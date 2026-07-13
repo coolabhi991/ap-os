@@ -428,10 +428,12 @@ export async function getFundingSourceReport(companyId: string, liabilityId?: st
     },
   });
 
-  const results = [];
-  for (const l of liabilities) {
-    if (!l.allocations.length) continue;
-    for (const disbursement of l.allocations) {
+  // Flatten every (liability, disbursement) pair first, then fetch each disbursement's "spent to"
+  // allocations concurrently instead of one at a time — same queries, just no longer serialized.
+  const disbursementPairs = liabilities.flatMap((l) => l.allocations.map((disbursement) => ({ liability: l, disbursement })));
+
+  const results = await Promise.all(
+    disbursementPairs.map(async ({ liability: l, disbursement }) => {
       const bankAccountId = disbursement.bankTransaction.companyBankAccountId;
       const disbursedOn = disbursement.bankTransaction.transactionDate;
 
@@ -450,7 +452,7 @@ export async function getFundingSourceReport(companyId: string, liabilityId?: st
         byDestination.set(key, (byDestination.get(key) ?? 0) + Number(a.amount));
       }
 
-      results.push({
+      return {
         liabilityId: l.id,
         loanName: l.loanName,
         liabilityType: l.liabilityType,
@@ -458,9 +460,9 @@ export async function getFundingSourceReport(companyId: string, liabilityId?: st
         disbursedOn: disbursedOn.toISOString().slice(0, 10),
         bankAccount: disbursement.bankTransaction.companyBankAccount.nickname || disbursement.bankTransaction.companyBankAccount.bankName,
         allocatedTo: Array.from(byDestination.entries()).map(([destination, amount]) => ({ destination, amount: amount.toFixed(2) })),
-      });
-    }
-  }
+      };
+    })
+  );
   return results;
 }
 

@@ -91,6 +91,9 @@ export default function Projects() {
             onView={(id) => navigate(`/projects/${id}`)}
             onEdit={(id) => navigate(`/projects/${id}/edit`)}
             onDelete={handleDelete}
+            onViewSite={(id) => navigate(`/sites/${id}`)}
+            onEditSite={(id) => navigate(`/sites/${id}/edit`)}
+            onAddSite={(projectId) => navigate(`/projects/${projectId}/sites/new`)}
           />
         )}
       </div>

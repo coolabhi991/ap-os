@@ -1,5 +1,6 @@
 import prisma from "../config/prisma.js";
 import { Prisma, SiteType, ProjectStatus } from "@prisma/client";
+import { getFinancialYear, getTalukaCode, padSeq } from "../utils/numbering.js";
 
 export const SITE_TYPES = ["OWN_SITE", "PARTNERSHIP_SITE", "AGENCY_SITE"];
 export const SITE_TYPE_LABELS: Record<string, string> = {
@@ -25,6 +26,19 @@ export interface SiteFormInput {
   performanceGuarantee?: number;
   workOrderDate?: string;
   completionDate?: string;
+  actualCompletionDate?: string;
+  // Work Order Details tab fields (Workflow Refinement milestone, Item 1).
+  workOrderNumber?: string;
+  agreementNumber?: string;
+  agreementDate?: string;
+  tenderNumber?: string;
+  tenderAboveBelowPercent?: number;
+  department?: string;
+  division?: string;
+  subDivision?: string;
+  clientEngineer?: string;
+  defectLiabilityPeriod?: string;
+  gstPercent?: number;
 }
 
 export type SiteUpdateInput = Omit<SiteFormInput, "projectId">;
@@ -57,6 +71,19 @@ type SiteRow = {
   performanceGuarantee: Prisma.Decimal;
   workOrderDate: Date | null;
   completionDate: Date | null;
+  actualCompletionDate: Date | null;
+  workOrderNumber: string | null;
+  agreementNumber: string | null;
+  agreementDate: Date | null;
+  tenderNumber: string | null;
+  tenderAboveBelowPercent: Prisma.Decimal | null;
+  department: string | null;
+  division: string | null;
+  subDivision: string | null;
+  clientEngineer: string | null;
+  defectLiabilityPeriod: string | null;
+  gstPercent: Prisma.Decimal | null;
+  siteCode: string | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -81,9 +108,31 @@ export function toSiteDTO(s: SiteRow) {
     performanceGuarantee: s.performanceGuarantee.toString(),
     workOrderDate: dateStr(s.workOrderDate),
     completionDate: dateStr(s.completionDate),
+    actualCompletionDate: dateStr(s.actualCompletionDate),
+    workOrderNumber: s.workOrderNumber ?? "",
+    agreementNumber: s.agreementNumber ?? "",
+    agreementDate: dateStr(s.agreementDate),
+    tenderNumber: s.tenderNumber ?? "",
+    tenderAboveBelowPercent: s.tenderAboveBelowPercent ? s.tenderAboveBelowPercent.toString() : "",
+    department: s.department ?? "",
+    division: s.division ?? "",
+    subDivision: s.subDivision ?? "",
+    clientEngineer: s.clientEngineer ?? "",
+    defectLiabilityPeriod: s.defectLiabilityPeriod ?? "",
+    gstPercent: s.gstPercent ? s.gstPercent.toString() : "",
+    // System-generated, permanent, read-only (Document Numbering Standard).
+    siteCode: s.siteCode ?? "",
     createdAt: s.createdAt.toISOString(),
     updatedAt: s.updatedAt.toISOString(),
   };
+}
+
+// Optional Decimal fields arrive from the client as number | "" | undefined — "" must become
+// null before hitting Prisma, which rejects an empty string for a Decimal column.
+function normalizeOptionalDecimal(v: number | "" | undefined): number | null | undefined {
+  if (v === undefined) return undefined;
+  if (v === "") return null;
+  return v;
 }
 
 function parseSiteType(t: string | undefined): SiteType {
@@ -100,6 +149,25 @@ async function verifyProjectOwnership(projectId: string, companyId: string) {
   const project = await prisma.project.findFirst({ where: { id: projectId, companyId } });
   if (!project) throw new Error("Project not found");
   return project;
+}
+
+/**
+ * System-generated, permanent, read-only Site code (Document Numbering Standard) —
+ * APC/<ProjectCode>/<FY>/<TalukaCode>/<SiteSeq>. Financial Year comes from the Document Date
+ * (Work Order Date if provided, else today). Sequence is per Project + Financial Year + Taluka.
+ */
+async function generateSiteCode(
+  companyId: string,
+  projectCode: string | null,
+  taluka: string | undefined,
+  documentDate: Date
+): Promise<string> {
+  const fy = getFinancialYear(documentDate);
+  const talukaCode = getTalukaCode(taluka?.trim() || "General");
+  const projectPart = projectCode || "GEN";
+  const prefix = `APC/${projectPart}/${fy}/${talukaCode}/`;
+  const count = await prisma.site.count({ where: { companyId, siteCode: { startsWith: prefix } } });
+  return `${prefix}${padSeq(count + 1)}`;
 }
 
 export async function listSites(companyId: string, query: SiteListQuery) {
@@ -126,6 +194,7 @@ export async function listSites(companyId: string, query: SiteListQuery) {
         { taluka: { contains: search, mode: "insensitive" } },
         { district: { contains: search, mode: "insensitive" } },
         { engineer: { contains: search, mode: "insensitive" } },
+        { siteCode: { contains: search, mode: "insensitive" } },
       ],
     }),
   };
@@ -155,7 +224,10 @@ export async function getSiteById(id: string, companyId: string) {
 export async function createSite(companyId: string, input: SiteFormInput) {
   if (!input.projectId?.trim()) throw new Error("Project is required");
   if (!input.name?.trim()) throw new Error("Site name is required");
-  await verifyProjectOwnership(input.projectId, companyId);
+  const project = await verifyProjectOwnership(input.projectId, companyId);
+
+  const documentDate = input.workOrderDate ? new Date(input.workOrderDate) : new Date();
+  const siteCode = await generateSiteCode(companyId, project.code, input.taluka, documentDate);
 
   const site = await prisma.site.create({
     data: {
@@ -174,14 +246,30 @@ export async function createSite(companyId: string, input: SiteFormInput) {
       performanceGuarantee: input.performanceGuarantee ?? 0,
       workOrderDate: input.workOrderDate ? new Date(input.workOrderDate) : null,
       completionDate: input.completionDate ? new Date(input.completionDate) : null,
+      actualCompletionDate: input.status === "COMPLETED" && input.actualCompletionDate ? new Date(input.actualCompletionDate) : null,
+      workOrderNumber: input.workOrderNumber || null,
+      agreementNumber: input.agreementNumber || null,
+      agreementDate: input.agreementDate ? new Date(input.agreementDate) : null,
+      tenderNumber: input.tenderNumber || null,
+      tenderAboveBelowPercent: normalizeOptionalDecimal(input.tenderAboveBelowPercent) ?? null,
+      department: input.department || null,
+      division: input.division || null,
+      subDivision: input.subDivision || null,
+      clientEngineer: input.clientEngineer || null,
+      defectLiabilityPeriod: input.defectLiabilityPeriod || null,
+      gstPercent: normalizeOptionalDecimal(input.gstPercent) ?? null,
+      siteCode,
     },
   });
   return toSiteDTO(site);
 }
 
 export async function updateSite(id: string, companyId: string, input: SiteUpdateInput) {
-  await getSiteById(id, companyId);
+  const existing = await prisma.site.findFirst({ where: { id, companyId } });
+  if (!existing) throw new Error("Site not found");
   if (input.name !== undefined && !input.name.trim()) throw new Error("Site name is required");
+
+  const effectiveStatus = input.status !== undefined ? parseStatus(input.status) : existing.status;
 
   const site = await prisma.site.update({
     where: { id },
@@ -199,6 +287,24 @@ export async function updateSite(id: string, companyId: string, input: SiteUpdat
       ...(input.performanceGuarantee !== undefined && { performanceGuarantee: input.performanceGuarantee }),
       ...(input.workOrderDate !== undefined && { workOrderDate: input.workOrderDate ? new Date(input.workOrderDate) : null }),
       ...(input.completionDate !== undefined && { completionDate: input.completionDate ? new Date(input.completionDate) : null }),
+      // Actual Completion Date only ever applies while the Site is Completed — clears itself
+      // automatically if the status is ever moved off Completed again.
+      ...(effectiveStatus !== "COMPLETED"
+        ? { actualCompletionDate: null }
+        : input.actualCompletionDate !== undefined && { actualCompletionDate: input.actualCompletionDate ? new Date(input.actualCompletionDate) : null }),
+      // Work Order Details tab fields — freely editable after creation; only siteCode itself
+      // (the system-generated document number) is permanent and read-only.
+      ...(input.workOrderNumber !== undefined && { workOrderNumber: input.workOrderNumber || null }),
+      ...(input.agreementNumber !== undefined && { agreementNumber: input.agreementNumber || null }),
+      ...(input.agreementDate !== undefined && { agreementDate: input.agreementDate ? new Date(input.agreementDate) : null }),
+      ...(input.tenderNumber !== undefined && { tenderNumber: input.tenderNumber || null }),
+      ...(input.tenderAboveBelowPercent !== undefined && { tenderAboveBelowPercent: normalizeOptionalDecimal(input.tenderAboveBelowPercent) }),
+      ...(input.department !== undefined && { department: input.department || null }),
+      ...(input.division !== undefined && { division: input.division || null }),
+      ...(input.subDivision !== undefined && { subDivision: input.subDivision || null }),
+      ...(input.clientEngineer !== undefined && { clientEngineer: input.clientEngineer || null }),
+      ...(input.defectLiabilityPeriod !== undefined && { defectLiabilityPeriod: input.defectLiabilityPeriod || null }),
+      ...(input.gstPercent !== undefined && { gstPercent: normalizeOptionalDecimal(input.gstPercent) }),
     },
   });
   return toSiteDTO(site);

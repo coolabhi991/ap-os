@@ -3,6 +3,7 @@ import { AuthRequest } from "../middleware/auth.middleware.js";
 import {
   listClients,
   getClientById,
+  getClientLedger,
   createClient,
   updateClient,
   deleteClient,
@@ -40,6 +41,18 @@ export const getClient = async (req: AuthRequest, res: Response) => {
   }
 };
 
+export const getClientLedgerHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const companyId = req.user!.companyId;
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const ledger = await getClientLedger(id, companyId);
+    res.status(200).json({ success: true, data: ledger });
+  } catch (error) {
+    const is404 = error instanceof Error && error.message === "Client not found";
+    res.status(is404 ? 404 : 500).json({ success: false, message: error instanceof Error ? error.message : "Failed to load client ledger" });
+  }
+};
+
 export const createClientHandler = async (req: AuthRequest, res: Response) => {
   try {
     const companyId = req.user!.companyId;
@@ -66,8 +79,12 @@ export const deleteClientHandler = async (req: AuthRequest, res: Response) => {
   try {
     const companyId = req.user!.companyId;
     const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-    await deleteClient(id, companyId);
-    res.status(200).json({ success: true, message: "Client deleted" });
+    const result = await deleteClient(id, companyId);
+    if (result.deleted) {
+      res.status(200).json({ success: true, message: "Client deleted" });
+    } else {
+      res.status(200).json({ success: true, message: "Client has projects on file — deactivated instead of deleted", data: result.data });
+    }
   } catch (error) {
     const is404 = error instanceof Error && error.message === "Client not found";
     res.status(is404 ? 404 : 500).json({ success: false, message: error instanceof Error ? error.message : "Failed to delete client" });

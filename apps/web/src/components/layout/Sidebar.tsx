@@ -4,7 +4,6 @@ import {
   Users,
   Building2,
   HardHat,
-  Truck,
   Wallet,
   Banknote,
   HandCoins,
@@ -15,9 +14,9 @@ import {
   Sparkles,
   ChevronRight,
   NotebookPen,
-  Ruler,
   Handshake,
   PiggyBank,
+  IdCard,
 } from "lucide-react";
 
 import { NavLink } from "react-router-dom";
@@ -49,14 +48,14 @@ const menus = [
     icon: Building2,
   },
   {
+    name: "Employees",
+    path: "/employees",
+    icon: IdCard,
+  },
+  {
     name: "Labour",
     path: "/labour",
     icon: HardHat,
-  },
-  {
-    name: "Material Receipts",
-    path: "/material-receipts",
-    icon: Truck,
   },
   {
     name: "Vendor Bills",
@@ -77,11 +76,6 @@ const menus = [
     name: "Daily Progress Reports",
     path: "/dpr",
     icon: NotebookPen,
-  },
-  {
-    name: "Measurement Books",
-    path: "/measurement-books",
-    icon: Ruler,
   },
   {
     name: "Running Bills",

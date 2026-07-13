@@ -62,12 +62,22 @@ export default function EditRunningBill() {
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold text-slate-900">Edit Running Bill — {bill.billNumber}</h1>
-          <p className="mt-2 text-slate-500">Update header details and deductions. The Abstract is always re-imported from the linked Measurement Book.</p>
+          <p className="mt-2 text-slate-500">
+            {bill.measurementBookId
+              ? "Update header details and deductions. The Abstract is always re-imported from the linked Measurement Book."
+              : "Update header details and deductions. To correct a quantity mistake, delete this Draft RA Bill and create it again."}
+          </p>
         </div>
         {error && <div className="rounded-xl border border-red-200 bg-red-50 px-6 py-4 text-red-700">{error}</div>}
         <RunningBillForm
           initialData={bill}
-          source={{ mbNumber: bill.measurementBook?.mbNumber ?? "", mbDate: bill.measurementBook?.mbDate ?? "", project: bill.project?.name ?? "", subWork: bill.subWork?.name ?? "" }}
+          source={{
+            mbNumber: bill.measurementBook?.mbNumber ?? "",
+            mbDate: bill.measurementBook?.mbDate ?? "",
+            project: bill.project?.name ?? "",
+            subWork: bill.subWork?.name ?? "",
+            site: bill.siteRecord?.name ?? "",
+          }}
           items={abstractRows}
           onSubmit={handleSubmit}
           saving={saving}

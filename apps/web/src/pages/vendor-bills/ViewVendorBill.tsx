@@ -189,7 +189,8 @@ export default function ViewVendorBill() {
               <h1 className="text-3xl font-bold text-slate-900">{bill.billNumber}</h1>
               <p className="mt-2 text-slate-500">
                 {bill.vendor?.name && <span>{bill.vendor.name} • </span>}
-                {bill.project?.name && <span>{bill.project.name}</span>}
+                {bill.project?.name && <span>{bill.project.name} • </span>}
+                {bill.site?.name && <span>{bill.site.name}</span>}
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -381,6 +382,8 @@ export default function ViewVendorBill() {
           <div className="rounded-xl bg-white p-6 shadow-sm">
             <h2 className="mb-5 text-xl font-bold">Bill Details</h2>
             <div className="space-y-4">
+              <Row label="Project" value={bill.project?.name ?? ""} />
+              <Row label="Site" value={bill.site?.name ?? ""} />
               <Row label="Bill Date" value={bill.billDate} />
               <Row label="Bill Amount" value={bill.billAmount} />
               <Row label="Taxable Amount" value={bill.taxableAmount} />

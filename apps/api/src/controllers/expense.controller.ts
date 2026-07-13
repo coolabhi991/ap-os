@@ -7,6 +7,7 @@ import {
   updateExpense,
   deleteExpense,
   getExpenseDashboard,
+  getSiteExpenseSummary,
   getProjectExpenseSummary,
   getCategoryExpenseSummary,
   getMonthlyExpenseSummary,
@@ -105,6 +106,21 @@ export const getExpenseDashboardHandler = async (req: AuthRequest, res: Response
     res.status(200).json({ success: true, data: summary });
   } catch (error) {
     res.status(500).json({ success: false, message: error instanceof Error ? error.message : "Failed to load expense dashboard" });
+  }
+};
+
+export const getSiteExpenseSummaryHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const companyId = req.user!.companyId;
+    const siteId = req.query.siteId as string;
+    if (!siteId?.trim()) {
+      res.status(400).json({ success: false, message: "siteId is required" });
+      return;
+    }
+    const data = await getSiteExpenseSummary(companyId, siteId);
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error instanceof Error ? error.message : "Failed to load site expense summary" });
   }
 };
 

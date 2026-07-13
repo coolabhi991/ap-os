@@ -6,6 +6,7 @@ import type { Site } from "../../../services/sites";
 import LoadingState from "../../ui/LoadingState";
 import { formatCurrency as inr } from "../../../lib/utils";
 import EmptyTableRow from "../../ui/EmptyTableRow";
+import ReportExportBar from "../../ui/ReportExportBar";
 
 
 export default function ReportsTab({ site }: { site: Site }) {
@@ -40,11 +41,40 @@ export default function ReportsTab({ site }: { site: Site }) {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between print:hidden">
         <h2 className="text-xl font-bold text-slate-900">Reports</h2>
-        <button onClick={handleExport} disabled={exporting} className="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm hover:bg-slate-50 disabled:opacity-60">
-          <Download className="h-4 w-4" /> {exporting ? "Exporting..." : "Export Cost by Sub Work (CSV)"}
-        </button>
+        <div className="flex items-center gap-2">
+          <ReportExportBar
+            input={{
+              title: `Site Cost Report — ${site.name}`,
+              subtitle: "Cost by Sub Work",
+              columns: [
+                { key: "name", label: "Sub Work" },
+                { key: "status", label: "Status" },
+                { key: "budget", label: "Budget", align: "right" },
+                { key: "actual", label: "Actual", align: "right" },
+                { key: "physicalProgress", label: "Physical %", align: "right" },
+                { key: "financialProgress", label: "Financial %", align: "right" },
+              ],
+              rows: subWorkRows.map((r) => ({
+                name: r.name,
+                status: r.status,
+                budget: r.budget,
+                actual: r.actual,
+                physicalProgress: r.physicalProgress,
+                financialProgress: r.financialProgress,
+              })),
+              totals: {
+                name: "TOTAL",
+                budget: subWorkRows.reduce((s, r) => s + Number(r.budget), 0).toFixed(2),
+                actual: subWorkRows.reduce((s, r) => s + Number(r.actual), 0).toFixed(2),
+              },
+            }}
+          />
+          <button onClick={handleExport} disabled={exporting} className="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm hover:bg-slate-50 disabled:opacity-60">
+            <Download className="h-4 w-4" /> {exporting ? "Exporting..." : "Export CSV"}
+          </button>
+        </div>
       </div>
 
       <div className="space-y-3">

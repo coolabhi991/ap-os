@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import Layout from "../../components/layout/Layout";
 import ExpenseForm from "../../components/expenses/ExpenseForm";
@@ -13,6 +13,11 @@ import type { CompanyBankAccount } from "../../services/company-bank-accounts";
 
 export default function AddExpense() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const lockedProjectId = searchParams.get("projectId") || undefined;
+  const lockedSiteId = searchParams.get("siteId") || undefined;
+  const lockedSiteName = searchParams.get("siteName") || undefined;
+
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
@@ -26,6 +31,8 @@ export default function AddExpense() {
     getExpenseCategories(false).then(setCategories).catch(() => {});
     getCompanyBankAccounts().then((accounts) => setCompanyBankAccounts(accounts.filter((a) => a.isActive))).catch(() => {});
   }, []);
+
+  const lockedProjectName = projects.find((p) => p.id === lockedProjectId)?.name;
 
   const handleSubmit = async (data: ExpenseFormData) => {
     try {
@@ -55,6 +62,10 @@ export default function AddExpense() {
           vendors={vendors}
           categories={categories}
           companyBankAccounts={companyBankAccounts}
+          lockedProjectId={lockedProjectId}
+          lockedProjectName={lockedProjectName}
+          lockedSiteId={lockedSiteId}
+          lockedSiteName={lockedSiteName}
         />
       </div>
     </Layout>

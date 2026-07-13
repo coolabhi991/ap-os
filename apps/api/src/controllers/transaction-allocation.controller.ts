@@ -1,6 +1,6 @@
 import { Response } from "express";
 import { AuthRequest } from "../middleware/auth.middleware.js";
-import { listAllocationsForTransaction, createAllocations } from "../services/transaction-allocation.service.js";
+import { listAllocationsForTransaction, createAllocations, deleteAllocation } from "../services/transaction-allocation.service.js";
 
 export const getAllocationsHandler = async (req: AuthRequest, res: Response) => {
   try {
@@ -28,5 +28,18 @@ export const createAllocationsHandler = async (req: AuthRequest, res: Response) 
   } catch (error) {
     const is404 = error instanceof Error && error.message === "Bank Transaction not found";
     res.status(is404 ? 404 : 400).json({ success: false, message: error instanceof Error ? error.message : "Failed to save allocations" });
+  }
+};
+
+export const deleteAllocationHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const companyId = req.user!.companyId;
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const confirm = req.body?.confirm === true;
+    const result = await deleteAllocation(id, companyId, confirm);
+    res.status(200).json({ success: true, ...result });
+  } catch (error) {
+    const is404 = error instanceof Error && error.message === "Allocation not found";
+    res.status(is404 ? 404 : 400).json({ success: false, message: error instanceof Error ? error.message : "Failed to remove allocation" });
   }
 };

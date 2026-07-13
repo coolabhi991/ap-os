@@ -8,8 +8,14 @@ import {
   listSiteRecapRevisions,
   getCurrentSiteRecapRevision,
   getSiteRecapRevisionById,
+  addRecapItem,
+  updateRecapItem,
+  deleteRecapItem,
+  reorderRecapItems,
+  updateRecapCharges,
   getSiteBudgetVsActualReport,
   getSiteCostBySubWorkReport,
+  getSiteSubWorkFinancialSummary,
   getSiteMonthlyCostReport,
   getSiteCostSummaryReport,
   exportSiteCostBySubWorkToCSV,
@@ -17,6 +23,7 @@ import {
   getSiteBillReceivedReport,
   getSiteVendorBillsReport,
   getSiteMoneyFlow,
+  getSiteFinancialSummary,
 } from "../services/site-control-center.service.js";
 
 const notFoundMessage = "Site not found";
@@ -104,6 +111,65 @@ export const getSiteRecapRevisionHandler = async (req: AuthRequest, res: Respons
   }
 };
 
+export const addRecapItemHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const companyId = req.user!.companyId;
+    const userId = req.user!.id;
+    const data = await addRecapItem(getSiteId(req), companyId, userId, req.body);
+    res.status(201).json({ success: true, data });
+  } catch (error) {
+    const is404 = error instanceof Error && error.message === notFoundMessage;
+    res.status(is404 ? 404 : 400).json({ success: false, message: error instanceof Error ? error.message : "Failed to add row" });
+  }
+};
+
+export const updateRecapItemHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const companyId = req.user!.companyId;
+    const id = Array.isArray(req.params.itemId) ? req.params.itemId[0] : req.params.itemId;
+    const data = await updateRecapItem(id, companyId, req.body);
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    const is404 = error instanceof Error && error.message === "Recapitulation item not found";
+    res.status(is404 ? 404 : 400).json({ success: false, message: error instanceof Error ? error.message : "Failed to update row" });
+  }
+};
+
+export const deleteRecapItemHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const companyId = req.user!.companyId;
+    const id = Array.isArray(req.params.itemId) ? req.params.itemId[0] : req.params.itemId;
+    const data = await deleteRecapItem(id, companyId);
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    const is404 = error instanceof Error && error.message === "Recapitulation item not found";
+    res.status(is404 ? 404 : 400).json({ success: false, message: error instanceof Error ? error.message : "Failed to delete row" });
+  }
+};
+
+export const reorderRecapItemsHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const companyId = req.user!.companyId;
+    const data = await reorderRecapItems(getSiteId(req), companyId, req.body.order ?? []);
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    const is404 = error instanceof Error && error.message === "Recap revision not found";
+    res.status(is404 ? 404 : 400).json({ success: false, message: error instanceof Error ? error.message : "Failed to reorder rows" });
+  }
+};
+
+export const updateRecapChargesHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const companyId = req.user!.companyId;
+    const userId = req.user!.id;
+    const data = await updateRecapCharges(getSiteId(req), companyId, userId, req.body);
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    const is404 = error instanceof Error && error.message === notFoundMessage;
+    res.status(is404 ? 404 : 400).json({ success: false, message: error instanceof Error ? error.message : "Failed to update charges" });
+  }
+};
+
 export const getSiteBudgetVsActualHandler = async (req: AuthRequest, res: Response) => {
   try {
     const companyId = req.user!.companyId;
@@ -123,6 +189,17 @@ export const getSiteCostBySubWorkHandler = async (req: AuthRequest, res: Respons
   } catch (error) {
     const is404 = error instanceof Error && error.message === notFoundMessage;
     res.status(is404 ? 404 : 500).json({ success: false, message: error instanceof Error ? error.message : "Failed to load cost by sub work report" });
+  }
+};
+
+export const getSiteSubWorkFinancialSummaryHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const companyId = req.user!.companyId;
+    const data = await getSiteSubWorkFinancialSummary(getSiteId(req), companyId);
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    const is404 = error instanceof Error && error.message === notFoundMessage;
+    res.status(is404 ? 404 : 500).json({ success: false, message: error instanceof Error ? error.message : "Failed to load sub work financial summary" });
   }
 };
 
@@ -201,5 +278,16 @@ export const getSiteMoneyFlowHandler = async (req: AuthRequest, res: Response) =
   } catch (error) {
     const is404 = error instanceof Error && error.message === notFoundMessage;
     res.status(is404 ? 404 : 500).json({ success: false, message: error instanceof Error ? error.message : "Failed to load money flow" });
+  }
+};
+
+export const getSiteFinancialSummaryHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const companyId = req.user!.companyId;
+    const data = await getSiteFinancialSummary(getSiteId(req), companyId);
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    const is404 = error instanceof Error && error.message === notFoundMessage;
+    res.status(is404 ? 404 : 500).json({ success: false, message: error instanceof Error ? error.message : "Failed to load Site Financial Summary" });
   }
 };

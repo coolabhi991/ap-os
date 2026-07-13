@@ -1,5 +1,6 @@
 import prisma from "../config/prisma.js";
 import { ProjectStatus, Prisma } from "@prisma/client";
+import { deriveInitials } from "../utils/numbering.js";
 
 export interface ProjectListQuery {
   search?: string;
@@ -14,7 +15,6 @@ export interface ProjectListQuery {
 
 export interface ProjectCreateInput {
   name: string;
-  code?: string;
   description?: string;
   location?: string;
   manager?: string;
@@ -65,6 +65,21 @@ async function resolveProjectType(
   });
 
   return created.id;
+}
+
+/**
+ * System-generated, permanent, read-only Project code (Document Numbering Standard) — name
+ * initials, e.g. "Jal Jeevan Mission" -> "JJM", with a numeric suffix appended on collision.
+ */
+async function generateProjectCode(name: string, companyId: string): Promise<string> {
+  const base = deriveInitials(name);
+  let candidate = base;
+  let suffix = 1;
+  while (await prisma.project.findFirst({ where: { companyId, code: candidate } })) {
+    suffix += 1;
+    candidate = `${base}${suffix}`;
+  }
+  return candidate;
 }
 
 /** Map a raw status string to the Prisma enum. */
@@ -153,16 +168,17 @@ export async function createProject(
   companyId: string,
   input: ProjectCreateInput
 ) {
-  const [clientId, projectTypeId] = await Promise.all([
+  const [clientId, projectTypeId, code] = await Promise.all([
     resolveClient(input.clientName, companyId),
     resolveProjectType(input.projectTypeName, companyId),
+    generateProjectCode(input.name, companyId),
   ]);
 
   return prisma.project.create({
     data: {
       companyId,
       name: input.name,
-      code: input.code ?? null,
+      code,
       description: input.description ?? null,
       location: input.location ?? null,
       manager: input.manager ?? null,
@@ -198,7 +214,7 @@ export async function updateProject(
     where: { id },
     data: {
       name: input.name,
-      code: input.code ?? null,
+      // code is system-generated and permanent — never re-derived or overwritten on update.
       description: input.description ?? null,
       location: input.location ?? null,
       manager: input.manager ?? null,

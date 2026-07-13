@@ -87,6 +87,12 @@ export interface ExpenseDashboardSummary {
   recentExpenses: Expense[];
 }
 
+export interface SiteExpenseSummary {
+  today: { amount: string; count: number };
+  thisMonth: { amount: string; count: number };
+  site: { amount: string; count: number };
+}
+
 export interface ProjectExpenseSummaryRow {
   projectId: string;
   projectName: string;
@@ -229,6 +235,12 @@ export async function deleteExpense(id: string): Promise<void> {
 
 export async function getExpenseDashboard(): Promise<ExpenseDashboardSummary> {
   const response = await api.get<{ success: boolean; data: ExpenseDashboardSummary }>("/expenses/dashboard");
+  return response.data.data;
+}
+
+/** Today / This Month / Site totals for the Expense Register — computed server-side so the figures stay correct across hundreds of entries. */
+export async function getSiteExpenseSummary(siteId: string): Promise<SiteExpenseSummary> {
+  const response = await api.get<{ success: boolean; data: SiteExpenseSummary }>("/expenses/site-summary", { params: { siteId } });
   return response.data.data;
 }
 

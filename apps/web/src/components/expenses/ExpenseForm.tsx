@@ -27,6 +27,12 @@ interface Props {
   categories: Option[];
   vendors: Option[];
   companyBankAccounts: CompanyBankAccount[];
+  // When set, the Project/Site are already known (e.g. adding an expense from inside a Site
+  // Workspace) — the selectors are hidden and the expense is associated automatically.
+  lockedProjectId?: string;
+  lockedProjectName?: string;
+  lockedSiteId?: string;
+  lockedSiteName?: string;
 }
 
 export default function ExpenseForm({
@@ -37,10 +43,16 @@ export default function ExpenseForm({
   categories,
   vendors,
   companyBankAccounts,
+  lockedProjectId,
+  lockedProjectName,
+  lockedSiteId,
+  lockedSiteName,
 }: Props) {
+  const isLockedToSite = !!lockedProjectId && !!lockedSiteId;
+
   const [form, setForm] = useState<ExpenseFormData>({
-    projectId: initialData?.projectId ?? "",
-    siteId: initialData?.siteId ?? "",
+    projectId: initialData?.projectId ?? lockedProjectId ?? "",
+    siteId: initialData?.siteId ?? lockedSiteId ?? "",
     categoryId: initialData?.categoryId ?? "",
     vendorId: initialData?.vendorId ?? "",
     subWorkId: initialData?.subWorkId ?? "",
@@ -80,7 +92,7 @@ export default function ExpenseForm({
 
   const [sites, setSites] = useState<Site[]>([]);
   useEffect(() => {
-    if (!form.projectId) {
+    if (isLockedToSite || !form.projectId) {
       setSites([]);
       return;
     }
@@ -127,33 +139,43 @@ export default function ExpenseForm({
 
       <div>
         <h2 className="mb-4 text-lg font-semibold text-slate-700">Expense Details</h2>
+        {isLockedToSite && (
+          <div className="mb-6 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+            Adding expense for Site: <strong>{lockedSiteName || "—"}</strong>
+            {lockedProjectName && <> (Project: <strong>{lockedProjectName}</strong>)</>}
+          </div>
+        )}
         <div className="grid gap-6 md:grid-cols-2">
-          <div>
-            <label className="mb-2 block font-medium">Project *</label>
-            <select
-              value={form.projectId}
-              onChange={(e) => setForm((f) => ({ ...f, projectId: e.target.value, siteId: "", subWorkId: "" }))}
-              required
-              className="w-full rounded-lg border p-3"
-            >
-              <option value="">Select Project</option>
-              {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-          </div>
+          {!isLockedToSite && (
+            <>
+              <div>
+                <label className="mb-2 block font-medium">Project *</label>
+                <select
+                  value={form.projectId}
+                  onChange={(e) => setForm((f) => ({ ...f, projectId: e.target.value, siteId: "", subWorkId: "" }))}
+                  required
+                  className="w-full rounded-lg border p-3"
+                >
+                  <option value="">Select Project</option>
+                  {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
 
-          <div>
-            <label className="mb-2 block font-medium">Site *</label>
-            <select
-              value={form.siteId}
-              onChange={(e) => set("siteId", e.target.value)}
-              disabled={!form.projectId}
-              required
-              className="w-full rounded-lg border p-3 disabled:bg-slate-50"
-            >
-              <option value="">Select Site</option>
-              {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
-          </div>
+              <div>
+                <label className="mb-2 block font-medium">Site *</label>
+                <select
+                  value={form.siteId}
+                  onChange={(e) => set("siteId", e.target.value)}
+                  disabled={!form.projectId}
+                  required
+                  className="w-full rounded-lg border p-3 disabled:bg-slate-50"
+                >
+                  <option value="">Select Site</option>
+                  {sites.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+              </div>
+            </>
+          )}
 
           <div>
             <label className="mb-2 block font-medium">Category *</label>

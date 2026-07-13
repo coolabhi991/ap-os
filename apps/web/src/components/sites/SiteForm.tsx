@@ -23,6 +23,18 @@ const EMPTY: SiteFormData = {
   performanceGuarantee: 0,
   workOrderDate: "",
   completionDate: "",
+  actualCompletionDate: "",
+  workOrderNumber: "",
+  agreementNumber: "",
+  agreementDate: "",
+  tenderNumber: "",
+  tenderAboveBelowPercent: "",
+  department: "",
+  division: "",
+  subDivision: "",
+  clientEngineer: "",
+  defectLiabilityPeriod: "",
+  gstPercent: "",
 };
 
 function Field({ label, children, required }: { label: string; children: React.ReactNode; required?: boolean }) {
@@ -90,6 +102,19 @@ export default function SiteForm({ initialData, onSubmit, saving }: Props) {
       <div className="border-t border-slate-200 pt-4">
         <h3 className="mb-3 text-sm font-semibold text-slate-700">Contract Details (optional — can be added later)</h3>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <Field label="Work Order Number">
+            <input className={inputClass} value={data.workOrderNumber} onChange={(e) => set("workOrderNumber", e.target.value)} />
+          </Field>
+          <Field label="Tender Above / Below (%)">
+            <input
+              type="number"
+              step="0.01"
+              className={inputClass}
+              value={data.tenderAboveBelowPercent}
+              onChange={(e) => set("tenderAboveBelowPercent", e.target.value === "" ? "" : Number(e.target.value))}
+              placeholder="e.g. -5.00 for 5% below"
+            />
+          </Field>
           <Field label="Contract Value">
             <input type="number" min="0" step="0.01" className={inputClass} value={data.contractValue} onChange={(e) => set("contractValue", Number(e.target.value))} />
           </Field>
@@ -105,9 +130,14 @@ export default function SiteForm({ initialData, onSubmit, saving }: Props) {
           <Field label="Work Order Date">
             <input type="date" className={inputClass} value={data.workOrderDate} onChange={(e) => set("workOrderDate", e.target.value)} />
           </Field>
-          <Field label="Completion Date">
+          <Field label="Work Order End Date (Expected Completion)">
             <input type="date" className={inputClass} value={data.completionDate} onChange={(e) => set("completionDate", e.target.value)} />
           </Field>
+          {data.status === "COMPLETED" && (
+            <Field label="Actual Completion Date">
+              <input type="date" className={inputClass} value={data.actualCompletionDate} onChange={(e) => set("actualCompletionDate", e.target.value)} />
+            </Field>
+          )}
         </div>
       </div>
 

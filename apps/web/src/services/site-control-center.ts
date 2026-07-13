@@ -39,6 +39,28 @@ export interface SiteRecapLive extends ProgressComparison {
   subWorks: SiteSubWorkRecapRow[];
 }
 
+export interface SubWorkFinancialRow {
+  subWorkId: string;
+  particular: string;
+  contractValue: string;
+  certifiedTillDate: string;
+  clientPaymentReceived: string;
+  outstandingPayment: string;
+  remainingContractValue: string;
+  progressPercent: number;
+}
+
+export interface SubWorkFinancialSummary {
+  rows: SubWorkFinancialRow[];
+  site: {
+    contractValue: string;
+    certifiedTillDate: string;
+    clientPaymentReceived: string;
+    outstandingPayment: string;
+    remainingContractValue: string;
+  };
+}
+
 export const GST_TYPES = ["NONE", "FIVE", "TWELVE", "EIGHTEEN", "CUSTOM"];
 export const GST_TYPE_LABELS: Record<string, string> = { NONE: "None", FIVE: "5%", TWELVE: "12%", EIGHTEEN: "18%", CUSTOM: "Custom" };
 
@@ -47,11 +69,14 @@ export interface OtherCharge {
   amount: string;
 }
 
+export const RECAP_UNIT_OPTIONS = ["Nos", "M", "Cum", "Sqm", "Ltr", "Kg", "Job"];
+
 export interface RecapitulationItem {
   id?: string;
   subWorkId: string;
   sortOrder: number;
   particular: string;
+  unit: string;
   qty: string;
   rate: string;
   amount: string;
@@ -69,6 +94,12 @@ export interface SiteRecapRevision {
   gstPercent: string;
   administrationCharges: string;
   otherCharges: OtherCharge[];
+  msebCharges: string;
+  royaltyCharges: string;
+  testingCharges: string;
+  labourCessCharges: string;
+  otherRecoveries: string;
+  otherChargesTotal: string;
   subTotal: string;
   gstAmount: string;
   grandTotal: string;
@@ -89,11 +120,35 @@ export interface RecapitulationDraft {
 export interface CreateRecapRevisionInput {
   label?: string;
   notes?: string;
-  items: { subWorkId?: string; particular: string; qty: number; rate: number }[];
+  items: { subWorkId?: string; particular: string; unit?: string; qty: number; rate: number }[];
   gstType: string;
   gstPercent?: number;
   administrationCharges?: number;
   otherCharges?: OtherCharge[];
+  msebCharges?: number;
+  royaltyCharges?: number;
+  testingCharges?: number;
+  labourCessCharges?: number;
+  otherRecoveries?: number;
+}
+
+export interface RecapItemMutationInput {
+  particular: string;
+  unit?: string;
+  qty: number;
+  rate: number;
+  afterItemId?: string;
+}
+
+export interface RecapChargesInput {
+  gstType?: string;
+  gstPercent?: number;
+  administrationCharges?: number;
+  msebCharges?: number;
+  royaltyCharges?: number;
+  testingCharges?: number;
+  labourCessCharges?: number;
+  otherRecoveries?: number;
 }
 
 export interface SiteBudgetVsActual extends ProgressComparison {
@@ -172,6 +227,32 @@ export async function getSiteMoneyFlow(siteId: string): Promise<SiteMoneyFlowRow
   return response.data.data;
 }
 
+export interface SiteFinancialSummary {
+  siteId: string;
+  agreementValue: string;
+  totalRABills: number;
+  grossBilling: string;
+  gstStateTotal: string;
+  gstCentralTotal: string;
+  incomeTaxTotal: string;
+  securityDepositTotal: string;
+  royaltyTotal: string;
+  insuranceTotal: string;
+  fineTotal: string;
+  labourCessTotal: string;
+  otherDeductionsTotal: string;
+  totalDeductions: string;
+  netBillsRaised: string;
+  clientPaymentsReceived: string;
+  outstandingAmount: string;
+  remainingAgreementValue: string;
+}
+
+export async function getSiteFinancialSummary(siteId: string): Promise<SiteFinancialSummary> {
+  const response = await api.get<{ success: boolean; data: SiteFinancialSummary }>("/site-control-center/financial-summary", { params: { siteId } });
+  return response.data.data;
+}
+
 export async function getSiteRecapLive(siteId: string): Promise<SiteRecapLive> {
   const response = await api.get<{ success: boolean; data: SiteRecapLive }>("/site-control-center/recap/live", { params: { siteId } });
   return response.data.data;
@@ -197,6 +278,32 @@ export async function getRecapitulationDraft(siteId: string): Promise<Recapitula
   return response.data.data;
 }
 
+/** Add Row (appended) / Insert Row (when afterItemId is set) on the Site's live Recapitulation Register. */
+export async function addRecapItem(siteId: string, input: RecapItemMutationInput): Promise<SiteRecapRevision> {
+  const response = await api.post<{ success: boolean; data: SiteRecapRevision }>("/site-control-center/recap/items", input, { params: { siteId } });
+  return response.data.data;
+}
+
+export async function updateRecapItem(itemId: string, input: Omit<RecapItemMutationInput, "afterItemId">): Promise<SiteRecapRevision> {
+  const response = await api.put<{ success: boolean; data: SiteRecapRevision }>(`/site-control-center/recap/items/${itemId}`, input);
+  return response.data.data;
+}
+
+export async function deleteRecapItem(siteId: string, itemId: string): Promise<SiteRecapRevision> {
+  const response = await api.delete<{ success: boolean; data: SiteRecapRevision }>(`/site-control-center/recap/items/${itemId}`, { params: { siteId } });
+  return response.data.data;
+}
+
+export async function reorderRecapItems(siteId: string, order: { id: string; sortOrder: number }[]): Promise<SiteRecapRevision> {
+  const response = await api.put<{ success: boolean; data: SiteRecapRevision }>("/site-control-center/recap/items/reorder", { order }, { params: { siteId } });
+  return response.data.data;
+}
+
+export async function updateRecapCharges(siteId: string, input: RecapChargesInput): Promise<SiteRecapRevision> {
+  const response = await api.put<{ success: boolean; data: SiteRecapRevision }>("/site-control-center/recap/charges", input, { params: { siteId } });
+  return response.data.data;
+}
+
 export async function getSiteBudgetVsActualReport(siteId: string): Promise<SiteBudgetVsActual> {
   const response = await api.get<{ success: boolean; data: SiteBudgetVsActual }>("/site-control-center/reports/budget-vs-actual", { params: { siteId } });
   return response.data.data;
@@ -204,6 +311,11 @@ export async function getSiteBudgetVsActualReport(siteId: string): Promise<SiteB
 
 export async function getSiteCostBySubWorkReport(siteId: string): Promise<SiteSubWorkRecapRow[]> {
   const response = await api.get<{ success: boolean; data: SiteSubWorkRecapRow[] }>("/site-control-center/reports/cost-by-sub-work", { params: { siteId } });
+  return response.data.data;
+}
+
+export async function getSiteSubWorkFinancialSummary(siteId: string): Promise<SubWorkFinancialSummary> {
+  const response = await api.get<{ success: boolean; data: SubWorkFinancialSummary }>("/site-control-center/reports/sub-work-financial-summary", { params: { siteId } });
   return response.data.data;
 }
 

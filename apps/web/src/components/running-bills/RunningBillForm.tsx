@@ -101,10 +101,16 @@ export default function RunningBillForm({ initialData, source, items, onSubmit, 
 
       {/* SOURCE */}
       <div>
-        <h2 className="mb-4 text-lg font-semibold text-slate-700">Sourced From Measurement Book</h2>
+        <h2 className="mb-4 text-lg font-semibold text-slate-700">{source.mbNumber ? "Sourced From Measurement Book" : "Form 58 — Site Bill Item Master"}</h2>
         <div className="grid gap-4 rounded-lg border border-slate-200 bg-slate-50 p-4 md:grid-cols-4">
-          <div><p className="text-xs text-slate-500">MB Number</p><p className="font-medium">{source.mbNumber}</p></div>
-          <div><p className="text-xs text-slate-500">MB Date</p><p className="font-medium">{source.mbDate}</p></div>
+          {source.mbNumber ? (
+            <>
+              <div><p className="text-xs text-slate-500">MB Number</p><p className="font-medium">{source.mbNumber}</p></div>
+              <div><p className="text-xs text-slate-500">MB Date</p><p className="font-medium">{source.mbDate}</p></div>
+            </>
+          ) : (
+            <div><p className="text-xs text-slate-500">Site</p><p className="font-medium">{source.site || "—"}</p></div>
+          )}
           <div><p className="text-xs text-slate-500">Project</p><p className="font-medium">{source.project}</p></div>
           <div><p className="text-xs text-slate-500">Sub Work</p><p className="font-medium">{source.subWork || "—"}</p></div>
         </div>

@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import type { VendorBillFormData } from "../../services/vendor-bills";
 import { getSubWorks } from "../../services/sub-works";
 import type { SubWork } from "../../services/sub-works";
+import { getSites } from "../../services/sites";
+import type { Site } from "../../services/sites";
 import { todayISO } from "../../lib/utils";
 
 interface Option {
@@ -14,16 +16,11 @@ interface POOption {
   poNumber: string;
 }
 
-interface MROption {
-  id: string;
-  receiptNumber: string;
-}
-
 interface FormState {
   vendorId: string;
   projectId: string;
+  siteId: string;
   purchaseOrderId: string;
-  materialReceiptId: string;
   subWorkId: string;
   billNumber: string;
   billDate: string;
@@ -42,7 +39,6 @@ interface Props {
   vendors?: Option[];
   projects?: Option[];
   purchaseOrders?: POOption[];
-  materialReceipts?: MROption[];
   onSubmit: (data: VendorBillFormData) => void;
   saving?: boolean;
   isEdit?: boolean;
@@ -53,7 +49,6 @@ export default function VendorBillForm({
   vendors = [],
   projects = [],
   purchaseOrders = [],
-  materialReceipts = [],
   onSubmit,
   saving = false,
   isEdit = false,
@@ -61,8 +56,8 @@ export default function VendorBillForm({
   const [form, setForm] = useState<FormState>({
     vendorId: initialData?.vendorId ?? "",
     projectId: initialData?.projectId ?? "",
+    siteId: initialData?.siteId ?? "",
     purchaseOrderId: initialData?.purchaseOrderId ?? "",
-    materialReceiptId: initialData?.materialReceiptId ?? "",
     subWorkId: initialData?.subWorkId ?? "",
     billNumber: initialData?.billNumber ?? "",
     billDate: initialData?.billDate ?? todayISO(),
@@ -80,7 +75,7 @@ export default function VendorBillForm({
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
   ) => {
     if (e.target.name === "projectId") {
-      setForm({ ...form, projectId: e.target.value, subWorkId: "" });
+      setForm({ ...form, projectId: e.target.value, siteId: "", subWorkId: "" });
       return;
     }
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -98,13 +93,25 @@ export default function VendorBillForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.projectId]);
 
+  const [sites, setSites] = useState<Site[]>([]);
+  useEffect(() => {
+    if (!form.projectId) {
+      setSites([]);
+      return;
+    }
+    getSites(form.projectId)
+      .then(setSites)
+      .catch(() => setSites([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.projectId]);
+
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     onSubmit({
       vendorId: form.vendorId,
       projectId: form.projectId,
+      siteId: form.siteId,
       purchaseOrderId: form.purchaseOrderId,
-      materialReceiptId: form.materialReceiptId,
       subWorkId: form.subWorkId,
       billNumber: form.billNumber,
       billDate: form.billDate,
@@ -138,13 +145,30 @@ export default function VendorBillForm({
           </div>
 
           <div>
-            <label className="mb-2 block font-medium">Project</label>
-            <select name="projectId" value={form.projectId} onChange={handleChange} className="w-full rounded-lg border p-3">
-              <option value="">Not project-specific</option>
+            <label className="mb-2 block font-medium">Project *</label>
+            <select name="projectId" value={form.projectId} onChange={handleChange} required className="w-full rounded-lg border p-3">
+              <option value="">Select Project</option>
               {projects.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
                 </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-2 block font-medium">Site *</label>
+            <select
+              name="siteId"
+              value={form.siteId}
+              onChange={handleChange}
+              required
+              disabled={!form.projectId}
+              className="w-full rounded-lg border p-3 disabled:bg-slate-50"
+            >
+              <option value="">{form.projectId ? "Select Site" : "Select a Project first"}</option>
+              {sites.map((s) => (
+                <option key={s.id} value={s.id}>{s.name}</option>
               ))}
             </select>
           </div>
@@ -178,10 +202,10 @@ export default function VendorBillForm({
         </div>
       </div>
 
-      {/* Optional linkage — this company usually skips both */}
+      {/* Optional linkage — this company usually skips this */}
       <div>
         <h2 className="mb-4 text-lg font-semibold text-slate-700">
-          Purchase Order &amp; Material Receipt <span className="font-normal text-slate-400">(optional)</span>
+          Purchase Order <span className="font-normal text-slate-400">(optional)</span>
         </h2>
         <p className="mb-4 text-sm text-slate-400">
           Most vendor bills are raised directly from a phone order and site delivery, without a Purchase
@@ -195,18 +219,6 @@ export default function VendorBillForm({
               {purchaseOrders.map((po) => (
                 <option key={po.id} value={po.id}>
                   {po.poNumber}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div>
-            <label className="mb-2 block font-medium">Material Receipt</label>
-            <select name="materialReceiptId" value={form.materialReceiptId} onChange={handleChange} className="w-full rounded-lg border p-3">
-              <option value="">None</option>
-              {materialReceipts.map((mr) => (
-                <option key={mr.id} value={mr.id}>
-                  {mr.receiptNumber}
                 </option>
               ))}
             </select>

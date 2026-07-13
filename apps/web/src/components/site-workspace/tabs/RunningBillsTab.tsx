@@ -30,7 +30,7 @@ export default function RunningBillsTab({ site }: { site: Site }) {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold text-slate-900">Running Bills</h2>
-        <button onClick={() => navigate("/running-bills/new")} className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700">Add Running Bill</button>
+        <button onClick={() => navigate(`/running-bills/new?siteId=${site.id}`)} className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700">New RA Bill</button>
       </div>
 
       {loading && <LoadingState />}

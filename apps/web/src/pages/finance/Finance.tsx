@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Printer } from "lucide-react";
 
 import Layout from "../../components/layout/Layout";
 import LoadingState from "../../components/ui/LoadingState";
@@ -23,6 +23,8 @@ import {
 import type { Liability, LiabilityFormData } from "../../services/liabilities";
 import { getLiabilityRepayments } from "../../services/liability-repayments";
 import type { LiabilityRepayment } from "../../services/liability-repayments";
+import BankAccountsModal from "../../components/banking/BankAccountsModal";
+import ReportExportBar from "../../components/ui/ReportExportBar";
 import {
   getFinanceDashboard,
   getLiabilitySummaryReport,
@@ -240,6 +242,7 @@ function LiabilitiesTab() {
   const [error, setError] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [bankAccountsFor, setBankAccountsFor] = useState<Liability | null>(null);
 
   const load = () => {
     setLoading(true);
@@ -466,6 +469,7 @@ function LiabilitiesTab() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-3">
+                        <button onClick={() => setBankAccountsFor(l)} className="text-sm text-slate-600 hover:underline">Bank Accounts</button>
                         <button onClick={() => startEdit(l)} className="text-sm text-blue-600 hover:underline">Edit</button>
                         <button onClick={() => handleDelete(l.id)} aria-label="Delete" className="rounded p-1 text-red-600 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button>
                       </div>
@@ -476,6 +480,15 @@ function LiabilitiesTab() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {bankAccountsFor && (
+        <BankAccountsModal
+          ownerType="LIABILITY"
+          ownerId={bankAccountsFor.id}
+          ownerName={bankAccountsFor.loanName}
+          onClose={() => setBankAccountsFor(null)}
+        />
       )}
     </div>
   );
@@ -671,16 +684,21 @@ function ReportsTab() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap gap-2">
-        {REPORT_KEYS.map((r) => (
-          <button
-            key={r}
-            onClick={() => setReport(r)}
-            className={`rounded-lg px-4 py-2 text-sm font-medium transition ${report === r ? "bg-slate-900 text-white" : "bg-white text-slate-600 shadow-sm hover:bg-slate-100"}`}
-          >
-            {REPORT_LABELS[r]}
-          </button>
-        ))}
+      <div className="flex flex-wrap items-center justify-between gap-2 print:hidden">
+        <div className="flex flex-wrap gap-2">
+          {REPORT_KEYS.map((r) => (
+            <button
+              key={r}
+              onClick={() => setReport(r)}
+              className={`rounded-lg px-4 py-2 text-sm font-medium transition ${report === r ? "bg-slate-900 text-white" : "bg-white text-slate-600 shadow-sm hover:bg-slate-100"}`}
+            >
+              {REPORT_LABELS[r]}
+            </button>
+          ))}
+        </div>
+        <button onClick={() => window.print()} className="flex items-center gap-2 rounded-lg border bg-white px-4 py-2 text-sm hover:bg-slate-50">
+          <Printer className="h-4 w-4" /> Print
+        </button>
       </div>
       {report === "liability-summary" && <LiabilitySummaryReportView />}
       {report === "outstanding" && <OutstandingReportView />}
@@ -701,35 +719,66 @@ function LiabilitySummaryReportView() {
   useEffect(() => { getLiabilitySummaryReport().then(setRows).finally(() => setLoading(false)); }, []);
   if (loading) return <LoadingState />;
   return (
-    <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-      <table className="min-w-full text-sm">
-        <thead className="bg-slate-100">
-          <tr>
-            <th className="px-4 py-3 text-left">Loan Name</th>
-            <th className="px-4 py-3 text-left">Type</th>
-            <th className="px-4 py-3 text-right">Sanctioned</th>
-            <th className="px-4 py-3 text-right">Outstanding</th>
-            <th className="px-4 py-3 text-right">Repaid So Far</th>
-            <th className="px-4 py-3 text-left">Status</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.length === 0 ? (
-            <EmptyTableRow colSpan={6}>No liabilities recorded yet.</EmptyTableRow>
-          ) : (
-            rows.map((r) => (
-              <tr key={r.id} className="border-t">
-                <td className="px-4 py-3 font-medium">{r.loanName}</td>
-                <td className="px-4 py-3">{LIABILITY_TYPE_LABELS[r.liabilityType] ?? r.liabilityType}</td>
-                <td className="px-4 py-3 text-right">{inr(r.sanctionAmount)}</td>
-                <td className="px-4 py-3 text-right font-medium">{inr(r.outstandingAmount)}</td>
-                <td className="px-4 py-3 text-right">{inr(r.repaidSoFar)}</td>
-                <td className="px-4 py-3">{LIABILITY_STATUS_LABELS[r.status] ?? r.status}</td>
-              </tr>
-            ))
-          )}
-        </tbody>
-      </table>
+    <div className="space-y-3">
+      <div className="flex justify-end print:hidden">
+        <ReportExportBar
+          input={{
+            title: "Liability Summary Report",
+            columns: [
+              { key: "loanName", label: "Loan Name" },
+              { key: "liabilityType", label: "Type" },
+              { key: "sanctionAmount", label: "Sanctioned", align: "right" },
+              { key: "outstandingAmount", label: "Outstanding", align: "right" },
+              { key: "repaidSoFar", label: "Repaid So Far", align: "right" },
+              { key: "status", label: "Status" },
+            ],
+            rows: rows.map((r) => ({
+              loanName: r.loanName,
+              liabilityType: LIABILITY_TYPE_LABELS[r.liabilityType] ?? r.liabilityType,
+              sanctionAmount: r.sanctionAmount,
+              outstandingAmount: r.outstandingAmount,
+              repaidSoFar: r.repaidSoFar,
+              status: LIABILITY_STATUS_LABELS[r.status] ?? r.status,
+            })),
+            totals: {
+              loanName: "TOTAL",
+              sanctionAmount: rows.reduce((s, r) => s + Number(r.sanctionAmount), 0).toFixed(2),
+              outstandingAmount: rows.reduce((s, r) => s + Number(r.outstandingAmount), 0).toFixed(2),
+              repaidSoFar: rows.reduce((s, r) => s + Number(r.repaidSoFar), 0).toFixed(2),
+            },
+          }}
+        />
+      </div>
+      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+        <table className="min-w-full text-sm">
+          <thead className="bg-slate-100">
+            <tr>
+              <th className="px-4 py-3 text-left">Loan Name</th>
+              <th className="px-4 py-3 text-left">Type</th>
+              <th className="px-4 py-3 text-right">Sanctioned</th>
+              <th className="px-4 py-3 text-right">Outstanding</th>
+              <th className="px-4 py-3 text-right">Repaid So Far</th>
+              <th className="px-4 py-3 text-left">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length === 0 ? (
+              <EmptyTableRow colSpan={6}>No liabilities recorded yet.</EmptyTableRow>
+            ) : (
+              rows.map((r) => (
+                <tr key={r.id} className="border-t">
+                  <td className="px-4 py-3 font-medium">{r.loanName}</td>
+                  <td className="px-4 py-3">{LIABILITY_TYPE_LABELS[r.liabilityType] ?? r.liabilityType}</td>
+                  <td className="px-4 py-3 text-right">{inr(r.sanctionAmount)}</td>
+                  <td className="px-4 py-3 text-right font-medium">{inr(r.outstandingAmount)}</td>
+                  <td className="px-4 py-3 text-right">{inr(r.repaidSoFar)}</td>
+                  <td className="px-4 py-3">{LIABILITY_STATUS_LABELS[r.status] ?? r.status}</td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -781,7 +830,32 @@ function EMIScheduleReportView() {
   useEffect(() => { getEMISchedule().then(setRows).finally(() => setLoading(false)); }, []);
   if (loading) return <LoadingState />;
   return (
-    <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+    <div className="space-y-3">
+      <div className="flex justify-end print:hidden">
+        <ReportExportBar
+          input={{
+            title: "EMI Schedule Report",
+            columns: [
+              { key: "loanName", label: "Loan Name" },
+              { key: "liabilityType", label: "Type" },
+              { key: "emiAmount", label: "EMI Amount", align: "right" },
+              { key: "emiDate", label: "EMI Day", align: "right" },
+              { key: "daysUntil", label: "Days Until Due", align: "right" },
+              { key: "outstandingAmount", label: "Outstanding", align: "right" },
+            ],
+            rows: rows.map((r) => ({
+              loanName: r.loanName,
+              liabilityType: LIABILITY_TYPE_LABELS[r.liabilityType] ?? r.liabilityType,
+              emiAmount: r.emiAmount,
+              emiDate: r.emiDate ?? "",
+              daysUntil: r.daysUntil,
+              outstandingAmount: r.outstandingAmount,
+            })),
+            totals: { loanName: "TOTAL", emiAmount: rows.reduce((s, r) => s + Number(r.emiAmount), 0).toFixed(2) },
+          }}
+        />
+      </div>
+      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
       <table className="min-w-full text-sm">
         <thead className="bg-slate-100">
           <tr>
@@ -810,6 +884,7 @@ function EMIScheduleReportView() {
           )}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }
