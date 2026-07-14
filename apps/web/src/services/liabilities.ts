@@ -30,6 +30,11 @@ export const LIABILITY_TYPE_LABELS: Record<string, string> = {
   OTHER: "Other",
 };
 
+// Types whose "sanction amount" behaves as a revolving credit limit rather than a one-time
+// disbursed principal — Outstanding reaching zero must never auto-close these (Liability Status
+// Lifecycle review); status only changes via explicit user action for these types.
+export const REVOLVING_LIABILITY_TYPES = ["CASH_CREDIT", "OVERDRAFT", "CREDIT_CARD"];
+
 export const LIABILITY_INTEREST_TYPES = ["MONTHLY", "ANNUAL", "FIXED", "FLOATING", "NONE"];
 export const LIABILITY_INTEREST_TYPE_LABELS: Record<string, string> = {
   MONTHLY: "Monthly",
@@ -48,10 +53,11 @@ export const LIABILITY_SECURITY_LABELS: Record<string, string> = {
   OTHER: "Other",
 };
 
-export const LIABILITY_STATUSES = ["ACTIVE", "CLOSED"];
-export const LIABILITY_STATUS_LABELS: Record<string, string> = { ACTIVE: "Active", CLOSED: "Closed" };
+export const LIABILITY_STATUSES = ["ACTIVE", "ON_HOLD", "CLOSED"];
+export const LIABILITY_STATUS_LABELS: Record<string, string> = { ACTIVE: "Active", ON_HOLD: "On Hold", CLOSED: "Closed" };
 export const LIABILITY_STATUS_COLORS: Record<string, string> = {
   ACTIVE: "bg-emerald-100 text-emerald-700",
+  ON_HOLD: "bg-amber-100 text-amber-700",
   CLOSED: "bg-slate-200 text-slate-600",
 };
 

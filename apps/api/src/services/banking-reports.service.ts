@@ -249,6 +249,105 @@ export async function getOutstandingSummaryReport(companyId: string) {
   };
 }
 
+/**
+ * Bank Charges Report — BANK_CHARGES has no dedicated ledger table (a pure company-level bank
+ * fee has no Site/Project to attach an Expense to, since Expense.siteId/projectId are required).
+ * Generated entirely from TransactionAllocation rows tagged BANK_CHARGES, mirroring the exact
+ * pattern already used by employee-report.service.ts for EMPLOYEE_SALARY/SITE_ADVANCE/
+ * PERSONAL_ADVANCE — no second total, no new table, the allocation itself is the one entry point.
+ */
+export async function getBankChargesReport(companyId: string, query: { fromDate?: string; toDate?: string; companyBankAccountId?: string }) {
+  const { fromDate, toDate, companyBankAccountId } = query;
+
+  const rows = await prisma.transactionAllocation.findMany({
+    where: {
+      companyId,
+      allocationType: "BANK_CHARGES",
+      bankTransaction: {
+        ...(companyBankAccountId && { companyBankAccountId }),
+        ...((fromDate || toDate) && {
+          transactionDate: {
+            ...(fromDate ? { gte: new Date(fromDate) } : {}),
+            ...(toDate ? { lte: new Date(toDate) } : {}),
+          },
+        }),
+      },
+    },
+    include: {
+      bankTransaction: {
+        select: { transactionDate: true, referenceNumber: true, companyBankAccount: { select: { id: true, nickname: true, bankName: true } } },
+      },
+    },
+    orderBy: { bankTransaction: { transactionDate: "desc" } },
+  });
+
+  const total = rows.reduce((s, r) => s + Number(r.amount), 0);
+
+  return {
+    total: total.toFixed(2),
+    count: rows.length,
+    transactions: rows.map((r) => ({
+      id: r.id,
+      date: r.bankTransaction.transactionDate.toISOString().slice(0, 10),
+      bankAccountId: r.bankTransaction.companyBankAccount?.id ?? "",
+      bankAccount: r.bankTransaction.companyBankAccount?.nickname || r.bankTransaction.companyBankAccount?.bankName || "",
+      amount: r.amount.toString(),
+      referenceNumber: r.bankTransaction.referenceNumber ?? "",
+      notes: r.notes ?? "",
+    })),
+  };
+}
+
+/**
+ * Internal Transfer Register — every INTERNAL_TRANSFER allocation, one row per side (the source
+ * BankTransaction it was allocated on, plus the Transfer To Account it was tagged against).
+ * Read-only rollup over TransactionAllocation, same pattern as getBankChargesReport — no separate
+ * transfer ledger table, since both accounts' balances already update themselves independently
+ * from their own BankTransaction rows.
+ */
+export async function getInternalTransferReport(companyId: string, query: { fromDate?: string; toDate?: string }) {
+  const { fromDate, toDate } = query;
+
+  const rows = await prisma.transactionAllocation.findMany({
+    where: {
+      companyId,
+      allocationType: "INTERNAL_TRANSFER",
+      ...((fromDate || toDate) && {
+        bankTransaction: {
+          transactionDate: {
+            ...(fromDate ? { gte: new Date(fromDate) } : {}),
+            ...(toDate ? { lte: new Date(toDate) } : {}),
+          },
+        },
+      }),
+    },
+    include: {
+      bankTransaction: {
+        select: { transactionDate: true, deposit: true, withdrawal: true, referenceNumber: true, companyBankAccount: { select: { id: true, nickname: true, bankName: true } } },
+      },
+      transferToAccount: { select: { id: true, nickname: true, bankName: true } },
+    },
+    orderBy: { bankTransaction: { transactionDate: "desc" } },
+  });
+
+  return {
+    total: rows.reduce((s, r) => s + Number(r.amount), 0).toFixed(2),
+    count: rows.length,
+    transfers: rows.map((r) => ({
+      id: r.id,
+      date: r.bankTransaction.transactionDate.toISOString().slice(0, 10),
+      // Direction is relative to `account` below — IN means money arrived into `account` FROM
+      // `counterAccount`; OUT means money left `account` TO `counterAccount`.
+      direction: Number(r.bankTransaction.deposit) > 0 ? "IN" : "OUT",
+      amount: r.amount.toString(),
+      account: r.bankTransaction.companyBankAccount?.nickname || r.bankTransaction.companyBankAccount?.bankName || "",
+      counterAccount: r.transferToAccount?.nickname || r.transferToAccount?.bankName || "",
+      referenceNumber: r.bankTransaction.referenceNumber ?? "",
+      notes: r.notes ?? "",
+    })),
+  };
+}
+
 export async function exportReceivablesToCSV(companyId: string, query: { projectId?: string }) {
   const rows = await getReceivablesReport(companyId, query);
   const headers = ["Bill Number", "Bill Date", "Project", "Status", "Net Payable", "Amount Received", "Outstanding", "Expected Payment Date", "Days Outstanding"];

@@ -7,6 +7,8 @@ import {
   getReceivablesReportHandler,
   getPayablesReportHandler,
   getOutstandingSummaryReportHandler,
+  getBankChargesReportHandler,
+  getInternalTransferReportHandler,
   exportReceivablesHandler,
   exportPayablesHandler,
   exportBankBookCsvHandler,
@@ -41,5 +43,7 @@ router.get("/receivables/export", authMiddleware, exportReceivablesHandler);
 router.get("/payables", authMiddleware, getPayablesReportHandler);
 router.get("/payables/export", authMiddleware, exportPayablesHandler);
 router.get("/outstanding-summary", authMiddleware, getOutstandingSummaryReportHandler);
+router.get("/bank-charges", authMiddleware, getBankChargesReportHandler);
+router.get("/internal-transfers", authMiddleware, getInternalTransferReportHandler);
 
 export default router;

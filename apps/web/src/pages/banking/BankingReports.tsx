@@ -11,6 +11,8 @@ import {
   getReceivablesReport,
   getPayablesReport,
   getOutstandingSummary,
+  getBankChargesReport,
+  getInternalTransferReport,
   exportReceivablesCSV,
   exportPayablesCSV,
   exportBankBookCSV,
@@ -30,6 +32,8 @@ import type {
   ReceivableRow,
   PayableRow,
   OutstandingSummary,
+  BankChargesReport,
+  InternalTransferReport,
 } from "../../services/banking-reports";
 import { getBankAccountsWithBalances, ALLOCATION_STATUS_LABELS, ALLOCATION_STATUS_COLORS } from "../../services/bank-transactions";
 import type { BankAccountBalance } from "../../services/bank-transactions";
@@ -37,7 +41,7 @@ import { getProjects } from "../../services/projects";
 import { formatCurrency as inr } from "../../lib/utils";
 import EmptyTableRow from "../../components/ui/EmptyTableRow";
 
-type ReportTab = "bank-book" | "cash-book" | "reconciliation" | "cash-flow" | "receivables" | "payables" | "outstanding-summary";
+type ReportTab = "bank-book" | "cash-book" | "reconciliation" | "cash-flow" | "receivables" | "payables" | "outstanding-summary" | "bank-charges" | "internal-transfers";
 
 const TABS: { key: ReportTab; label: string }[] = [
   { key: "bank-book", label: "Bank Book" },
@@ -47,6 +51,8 @@ const TABS: { key: ReportTab; label: string }[] = [
   { key: "receivables", label: "Receivable Report" },
   { key: "payables", label: "Payable Report" },
   { key: "outstanding-summary", label: "Outstanding Summary" },
+  { key: "bank-charges", label: "Bank Charges" },
+  { key: "internal-transfers", label: "Internal Transfers" },
 ];
 
 
@@ -69,6 +75,8 @@ export default function BankingReports() {
   const [receivables, setReceivables] = useState<ReceivableRow[]>([]);
   const [payables, setPayables] = useState<PayableRow[]>([]);
   const [outstandingSummary, setOutstandingSummary] = useState<OutstandingSummary | null>(null);
+  const [bankCharges, setBankCharges] = useState<BankChargesReport | null>(null);
+  const [internalTransfers, setInternalTransfers] = useState<InternalTransferReport | null>(null);
 
   useEffect(() => {
     getBankAccountsWithBalances().then((a) => {
@@ -83,7 +91,7 @@ export default function BankingReports() {
     try {
       setLoading(true);
       setError(null);
-      const [bb, cb, recon, cf, recv, pay, summary] = await Promise.all([
+      const [bb, cb, recon, cf, recv, pay, summary, charges, transfers] = await Promise.all([
         accountId ? getBankBookReport({ companyBankAccountId: accountId, fromDate: fromDate || undefined, toDate: toDate || undefined }) : Promise.resolve(null),
         getCashBookReport({ fromDate: fromDate || undefined, toDate: toDate || undefined }),
         getBankReconciliationReport({ companyBankAccountId: accountId || undefined, fromDate: fromDate || undefined, toDate: toDate || undefined }),
@@ -91,6 +99,8 @@ export default function BankingReports() {
         getReceivablesReport({ projectId: projectId || undefined }),
         getPayablesReport({ projectId: projectId || undefined }),
         getOutstandingSummary(),
+        getBankChargesReport({ fromDate: fromDate || undefined, toDate: toDate || undefined }),
+        getInternalTransferReport({ fromDate: fromDate || undefined, toDate: toDate || undefined }),
       ]);
       setBankBook(bb);
       setCashBook(cb);
@@ -99,6 +109,8 @@ export default function BankingReports() {
       setReceivables(recv);
       setPayables(pay);
       setOutstandingSummary(summary);
+      setBankCharges(charges);
+      setInternalTransfers(transfers);
     } catch {
       setError("Failed to load banking reports.");
     } finally {
@@ -461,6 +473,87 @@ export default function BankingReports() {
                       </tbody>
                     </table>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {tab === "bank-charges" && bankCharges && (
+              <div className="space-y-4">
+                <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                  <p className="text-sm text-slate-500">Total Bank Charges ({bankCharges.count})</p>
+                  <p className="mt-1 text-2xl font-bold">{inr(bankCharges.total)}</p>
+                </div>
+                <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-slate-100">
+                      <tr>
+                        <th className="px-4 py-2 text-left">Date</th>
+                        <th className="px-4 py-2 text-left">Bank Account</th>
+                        <th className="px-4 py-2 text-left">Reference</th>
+                        <th className="px-4 py-2 text-left">Notes</th>
+                        <th className="px-4 py-2 text-right">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {bankCharges.transactions.length === 0 ? (
+                        <EmptyTableRow colSpan={5}>No bank charges recorded in this period.</EmptyTableRow>
+                      ) : (
+                        bankCharges.transactions.map((t) => (
+                          <tr key={t.id} className="border-t">
+                            <td className="px-4 py-2">{t.date}</td>
+                            <td className="px-4 py-2">{t.bankAccount || "—"}</td>
+                            <td className="px-4 py-2 text-slate-500">{t.referenceNumber || "—"}</td>
+                            <td className="px-4 py-2 text-slate-500">{t.notes || "—"}</td>
+                            <td className="px-4 py-2 text-right font-medium">{inr(t.amount)}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {tab === "internal-transfers" && internalTransfers && (
+              <div className="space-y-4">
+                <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+                  <p className="text-sm text-slate-500">Total Internal Transfers ({internalTransfers.count})</p>
+                  <p className="mt-1 text-2xl font-bold">{inr(internalTransfers.total)}</p>
+                  <p className="mt-1 text-xs text-slate-400">Each row is one side of a transfer — match by date/amount to find the corresponding entry on the other account.</p>
+                </div>
+                <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-slate-100">
+                      <tr>
+                        <th className="px-4 py-2 text-left">Date</th>
+                        <th className="px-4 py-2 text-left">Account</th>
+                        <th className="px-4 py-2 text-left">Direction</th>
+                        <th className="px-4 py-2 text-left">Transfer To Account</th>
+                        <th className="px-4 py-2 text-left">Reference</th>
+                        <th className="px-4 py-2 text-right">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {internalTransfers.transfers.length === 0 ? (
+                        <EmptyTableRow colSpan={6}>No internal transfers recorded in this period.</EmptyTableRow>
+                      ) : (
+                        internalTransfers.transfers.map((t) => (
+                          <tr key={t.id} className="border-t">
+                            <td className="px-4 py-2">{t.date}</td>
+                            <td className="px-4 py-2">{t.account || "—"}</td>
+                            <td className="px-4 py-2">
+                              <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${t.direction === "IN" ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>
+                                {t.direction === "IN" ? "Received" : "Sent"}
+                              </span>
+                            </td>
+                            <td className="px-4 py-2">{t.counterAccount || "—"}</td>
+                            <td className="px-4 py-2 text-slate-500">{t.referenceNumber || "—"}</td>
+                            <td className="px-4 py-2 text-right font-medium">{inr(t.amount)}</td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             )}

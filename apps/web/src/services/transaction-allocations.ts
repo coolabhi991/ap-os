@@ -109,6 +109,8 @@ export interface TransactionAllocation {
   employee: { id: string; name: string } | null;
   partyName: string;
   notes: string;
+  transferToAccountId: string;
+  transferToAccount: { id: string; nickname: string | null; bankName: string } | null;
   runningBillPaymentId: string;
   runningBillPayment: { id: string; paymentNumber: string; runningBillId: string; billNumber: string } | null;
   vendorPaymentId: string;
@@ -146,11 +148,26 @@ export interface AllocationRowInput {
   principalPaid?: number;
   interestPaid?: number;
   employeeId?: string;
+  transferAccountId?: string;
+}
+
+export interface TransferSuggestionCandidate {
+  id: string;
+  transactionDate: string;
+  amount: string;
+  description: string;
+  allocationStatus: string;
+}
+
+export interface TransferSuggestion {
+  allocationId: string;
+  candidates: TransferSuggestionCandidate[];
 }
 
 export interface CreateAllocationsResult {
   created: TransactionAllocation[];
   failed: Array<{ index: number; allocationType: string; reason: string }>;
+  transferSuggestions: TransferSuggestion[];
   allocated: number;
   total: number;
   allocationStatus: string;

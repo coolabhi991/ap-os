@@ -25,11 +25,12 @@ async function computeSiteCostHeads(companyId: string, siteId: string, subWorkId
   const { machineryId, fuelId, otherId } = await getSpecialCategoryIds(companyId);
   const excludeIds = [machineryId, fuelId, otherId].filter((x): x is string => !!x);
 
-  const subWorkIds = subWorkId
-    ? [subWorkId]
-    : (await prisma.subWork.findMany({ where: { companyId, siteId }, select: { id: true } })).map((s) => s.id);
-
-  const vendorBillFilter: Prisma.VendorBillWhereInput = subWorkIds.length ? { subWorkId: { in: subWorkIds } } : { id: "__none__" };
+  // Site Cost must count every Vendor Bill belonging to this Site the moment it's created, not
+  // just at payment time — matching Site Financial's "cost occurs at Vendor Bill creation" rule.
+  // Filtered by siteId directly (never by subWorkId IN (this site's sub-works)) so a Vendor Bill
+  // left unassigned to any particular Sub Work — a common case for whole-site purchases — is
+  // never silently excluded from the Site's total (Liability Status Lifecycle-style review fix).
+  const vendorBillFilter: Prisma.VendorBillWhereInput = subWorkId ? { siteId, subWorkId } : { siteId };
   const siteFilter = subWorkId ? { siteId, subWorkId } : { siteId };
 
   const [materialAgg, vendorBillsAgg, labourAgg, machineryAgg, fuelAgg, otherAgg, siteExpAgg] = await Promise.all([
@@ -723,12 +724,11 @@ export async function getSiteSubWorkFinancialSummary(siteId: string, companyId: 
 /** Reports: Monthly Cost — every cost-bearing record tagged to the Site, bucketed by month. */
 export async function getSiteMonthlyCostReport(siteId: string, companyId: string) {
   await verifySiteOwnership(siteId, companyId);
-  const subWorkIds = (await prisma.subWork.findMany({ where: { companyId, siteId }, select: { id: true } })).map((s) => s.id);
 
   const [vendorBills, attendances, expenses] = await Promise.all([
-    subWorkIds.length
-      ? prisma.vendorBill.findMany({ where: { companyId, subWorkId: { in: subWorkIds } }, select: { billDate: true, totalAmount: true } })
-      : Promise.resolve([]),
+    // Filtered by siteId directly — a Vendor Bill left unassigned to any Sub Work must still
+    // count as this Site's cost (see computeSiteCostHeads above).
+    prisma.vendorBill.findMany({ where: { companyId, siteId }, select: { billDate: true, totalAmount: true } }),
     prisma.labourAttendance.findMany({ where: { companyId, siteId, isDeleted: false }, select: { attendanceDate: true, wageAmount: true } }),
     prisma.expense.findMany({ where: { companyId, siteId, isDeleted: false, labourPayment: null }, select: { expenseDate: true, amount: true } }),
   ]);
@@ -877,11 +877,10 @@ export async function getSiteBillReceivedReport(siteId: string, companyId: strin
 export async function getSiteVendorBillsReport(siteId: string, companyId: string) {
   await verifySiteOwnership(siteId, companyId);
 
-  const subWorkIds = (await prisma.subWork.findMany({ where: { companyId, siteId }, select: { id: true } })).map((s) => s.id);
-  if (!subWorkIds.length) return [];
-
+  // Filtered by siteId directly — a Vendor Bill left unassigned to any Sub Work (a common case
+  // for whole-site purchases) must still appear here, not just bills tied to a specific Sub Work.
   const bills = await prisma.vendorBill.findMany({
-    where: { companyId, subWorkId: { in: subWorkIds } },
+    where: { companyId, siteId },
     include: { vendor: { select: { id: true, name: true } } },
     orderBy: { billDate: "desc" },
   });

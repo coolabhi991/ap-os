@@ -1,6 +1,6 @@
 import prisma from "../config/prisma.js";
 import { Prisma, LiabilityType } from "@prisma/client";
-import { LIABILITY_TYPES, deriveLiabilityStatus } from "./liability.service.js";
+import { LIABILITY_TYPES, REVOLVING_LIABILITY_TYPES, deriveLiabilityStatus } from "./liability.service.js";
 import { sourceBankTransactionSelect, toSourceBankTransactionDTO } from "../utils/bank-traceability.js";
 
 /**
@@ -116,11 +116,17 @@ export async function recordLiabilityRepayment(companyId: string, createdById: s
       },
     });
 
-    // Outstanding = 0 -> Status automatically becomes Closed (Business Rules) — re-derived here,
-    // never set independently, so it can never drift from the balance that determines it.
+    // Non-revolving (term loan) types: Outstanding = 0 -> Status automatically becomes Closed,
+    // re-derived here so it can never drift from the balance that determines it. Revolving types
+    // (Cash Credit/Overdraft/Credit Card) never have status touched by a repayment — an interest
+    // or principal payment legitimately zeroing the balance mid-cycle must not auto-close the
+    // facility (Liability Status Lifecycle review); only an explicit Liability edit may.
     await tx.liability.update({
       where: { id: input.liabilityId },
-      data: { outstandingAmount: newOutstanding, status: deriveLiabilityStatus(newOutstanding) },
+      data: {
+        outstandingAmount: newOutstanding,
+        ...(REVOLVING_LIABILITY_TYPES.includes(liability.liabilityType) ? {} : { status: deriveLiabilityStatus(newOutstanding) }),
+      },
     });
 
     return { repayment: created };

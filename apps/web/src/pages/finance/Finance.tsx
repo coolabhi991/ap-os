@@ -13,6 +13,7 @@ import {
   deleteLiability,
   LIABILITY_TYPES,
   LIABILITY_TYPE_LABELS,
+  REVOLVING_LIABILITY_TYPES,
   LIABILITY_INTEREST_TYPES,
   LIABILITY_INTEREST_TYPE_LABELS,
   LIABILITY_SECURITY_TYPES,
@@ -421,6 +422,16 @@ function LiabilitiesTab() {
                 {LIABILITY_SECURITY_TYPES.map((s) => <option key={s} value={s}>{LIABILITY_SECURITY_LABELS[s]}</option>)}
               </select>
             </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Status</label>
+              <select value={form.status ?? ""} onChange={(e) => setForm({ ...form, status: e.target.value })} className="w-full rounded-lg border p-2.5">
+                <option value="">Auto (based on Outstanding)</option>
+                {LIABILITY_STATUSES.map((s) => <option key={s} value={s}>{LIABILITY_STATUS_LABELS[s]}</option>)}
+              </select>
+              {REVOLVING_LIABILITY_TYPES.includes(form.liabilityType) && (
+                <p className="mt-1 text-xs text-slate-400">Cash Credit / Overdraft never auto-closes when Outstanding reaches zero — set Status explicitly to close or hold this facility.</p>
+              )}
+            </div>
             <div className="md:col-span-3">
               <label className="mb-1 block text-sm font-medium">Notes</label>
               <input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} className="w-full rounded-lg border p-2.5" />
@@ -505,6 +516,7 @@ const emptyCreditCardForm: LiabilityFormData = {
   statementDate: undefined,
   minimumDue: 0,
   startDate: todayISO(),
+  status: "ACTIVE",
   notes: "",
 };
 
@@ -551,6 +563,7 @@ function CreditCardsTab() {
       statementDate: c.statementDate ?? undefined,
       minimumDue: Number(c.minimumDue),
       startDate: c.startDate,
+      status: c.status,
       notes: c.notes,
     });
     setError(null);
@@ -637,6 +650,14 @@ function CreditCardsTab() {
             <div>
               <label className="mb-1 block text-sm font-medium">Card Since</label>
               <input type="date" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} required className="w-full rounded-lg border p-2.5" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Status</label>
+              <select value={form.status ?? ""} onChange={(e) => setForm({ ...form, status: e.target.value })} className="w-full rounded-lg border p-2.5">
+                <option value="">Auto (based on Outstanding)</option>
+                {LIABILITY_STATUSES.map((s) => <option key={s} value={s}>{LIABILITY_STATUS_LABELS[s]}</option>)}
+              </select>
+              <p className="mt-1 text-xs text-slate-400">Never auto-closes when Outstanding reaches zero — set Status explicitly to close or hold this card.</p>
             </div>
             <div className="md:col-span-3">
               <label className="mb-1 block text-sm font-medium">Notes</label>

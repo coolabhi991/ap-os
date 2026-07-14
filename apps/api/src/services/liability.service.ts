@@ -63,16 +63,19 @@ export const LIABILITY_SECURITY_LABELS: Record<string, string> = {
   OTHER: "Other",
 };
 
-export const LIABILITY_STATUSES = ["ACTIVE", "CLOSED"];
-export const LIABILITY_STATUS_LABELS: Record<string, string> = { ACTIVE: "Active", CLOSED: "Closed" };
+export const LIABILITY_STATUSES = ["ACTIVE", "ON_HOLD", "CLOSED"];
+export const LIABILITY_STATUS_LABELS: Record<string, string> = { ACTIVE: "Active", ON_HOLD: "On Hold", CLOSED: "Closed" };
 
 /**
- * Status is never manually entered (Liability Management milestone, Business Rules) — it is
- * always derived from outstandingAmount: Outstanding <= 0 => Closed, otherwise Active. Called
- * from createLiability/updateLiability (so the stored column always agrees with this function)
- * and from recordLiabilityRepayment/expense.service.ts's Credit Card wiring whenever
- * outstandingAmount changes, so the column is never a second, independently-editable source of
- * truth — it's just a cached copy of what this function would return.
+ * Default status calculator for non-revolving Liability types (term loans: Home/Car/Gold/Bank
+ * Loan, Friend/Relative/Private/Personal loans) — Outstanding <= 0 => Closed, otherwise Active.
+ * Used only as the automatic DEFAULT when no explicit status is supplied, and only for types
+ * where "fully repaid => closed" is actually correct (a one-time disbursed principal that only
+ * ever goes down). Never applied to REVOLVING_LIABILITY_TYPES (Liability Status Lifecycle
+ * review) — a Cash Credit/Overdraft/Credit Card facility legitimately touches zero outstanding
+ * mid-cycle and must stay whatever status the owner last set it to; only explicit user action
+ * (updateLiability with a status) may close or hold it. See toDTO/createLiability/updateLiability
+ * below for how this interacts with the stored `status` column.
  */
 export function deriveLiabilityStatus(outstandingAmount: number): LiabilityStatus {
   return outstandingAmount <= 0 ? ("CLOSED" as LiabilityStatus) : ("ACTIVE" as LiabilityStatus);
@@ -170,8 +173,12 @@ function toDTO(l: LiabilityRow, totalRepaid = 0) {
     startDate: l.startDate.toISOString().slice(0, 10),
     endDate: l.endDate ? l.endDate.toISOString().slice(0, 10) : "",
     security: l.security,
-    // Never manually entered — always derived from outstandingAmount (Business Rules).
-    status: deriveLiabilityStatus(Number(l.outstandingAmount)),
+    // The stored column is authoritative (Liability Status Lifecycle review) — createLiability/
+    // updateLiability/recordLiabilityRepayment/expense.service.ts's Credit Card wiring are the
+    // only writers, and each of them decides whether to auto-derive or preserve an explicit
+    // manual value before writing. Never recomputed here, or a manual ACTIVE/ON_HOLD override
+    // on a revolving facility would be silently overwritten back to CLOSED on every read.
+    status: l.status,
     notes: l.notes ?? "",
     createdAt: l.createdAt.toISOString(),
     updatedAt: l.updatedAt.toISOString(),
@@ -251,13 +258,14 @@ export async function createLiability(companyId: string, input: LiabilityFormInp
   const outstandingAmount = input.outstandingAmount !== undefined ? input.outstandingAmount : sanctionAmount;
   if (outstandingAmount < 0) throw new Error("Outstanding amount cannot be negative");
   const code = await generateLiabilityCode(companyId);
+  const liabilityType = parseEnum(input.liabilityType as LiabilityType, LIABILITY_TYPES, "OTHER" as LiabilityType);
 
   const liability = await prisma.liability.create({
     data: {
       companyId,
       loanName: input.loanName.trim(),
       code,
-      liabilityType: parseEnum(input.liabilityType as LiabilityType, LIABILITY_TYPES, "OTHER" as LiabilityType),
+      liabilityType,
       lenderName: input.lenderName || null,
       lenderMobile: input.lenderMobile || null,
       bankName: input.bankName || null,
@@ -275,8 +283,16 @@ export async function createLiability(companyId: string, input: LiabilityFormInp
       startDate: new Date(input.startDate),
       endDate: input.endDate ? new Date(input.endDate) : null,
       security: parseEnum(input.security as LiabilitySecurity, LIABILITY_SECURITY_TYPES, "NONE" as LiabilitySecurity),
-      // Status is never accepted from input — always derived from outstandingAmount (Business Rules).
-      status: deriveLiabilityStatus(outstandingAmount),
+      // Explicit status wins if supplied. Otherwise: revolving types (Cash Credit/Overdraft/
+      // Credit Card) always start ACTIVE regardless of outstandingAmount — a freshly sanctioned
+      // but undrawn facility is still an open facility, not a closed one. Non-revolving types
+      // keep the original auto-derive-from-outstanding default.
+      status:
+        input.status && LIABILITY_STATUSES.includes(input.status)
+          ? (input.status as LiabilityStatus)
+          : REVOLVING_LIABILITY_TYPES.includes(liabilityType)
+            ? ("ACTIVE" as LiabilityStatus)
+            : deriveLiabilityStatus(outstandingAmount),
       notes: input.notes || null,
     },
   });
@@ -302,6 +318,11 @@ export async function updateLiability(id: string, companyId: string, input: Part
     }
   }
 
+  const effectiveType =
+    input.liabilityType !== undefined
+      ? parseEnum(input.liabilityType as LiabilityType, LIABILITY_TYPES, "OTHER" as LiabilityType)
+      : (existing.liabilityType as LiabilityType);
+
   const liability = await prisma.liability.update({
     where: { id },
     data: {
@@ -324,9 +345,16 @@ export async function updateLiability(id: string, companyId: string, input: Part
       ...(input.startDate !== undefined && { startDate: new Date(input.startDate) }),
       ...(input.endDate !== undefined && { endDate: input.endDate ? new Date(input.endDate) : null }),
       ...(input.security !== undefined && { security: parseEnum(input.security as LiabilitySecurity, LIABILITY_SECURITY_TYPES, "NONE" as LiabilitySecurity) }),
-      // Status is never accepted from input (input.status is ignored) — always re-derived from
-      // whichever outstandingAmount applies after this update (Business Rules).
-      status: deriveLiabilityStatus(input.outstandingAmount !== undefined ? input.outstandingAmount : Number(existing.outstandingAmount)),
+      // Explicit status always wins — this is the "owner has final control" / reopen-manually
+      // path (Liability Status Lifecycle review), and applies to every type. Otherwise: revolving
+      // types (Cash Credit/Overdraft/Credit Card) are left untouched — outstanding hitting zero
+      // must never silently flip status, only an explicit edit may. Non-revolving types keep the
+      // original auto-derive-from-outstanding behavior when edited without an explicit status.
+      ...(input.status && LIABILITY_STATUSES.includes(input.status)
+        ? { status: input.status as LiabilityStatus }
+        : effectiveType && REVOLVING_LIABILITY_TYPES.includes(effectiveType)
+          ? {}
+          : { status: deriveLiabilityStatus(input.outstandingAmount !== undefined ? input.outstandingAmount : Number(existing.outstandingAmount)) }),
       ...(input.notes !== undefined && { notes: input.notes || null }),
     },
   });

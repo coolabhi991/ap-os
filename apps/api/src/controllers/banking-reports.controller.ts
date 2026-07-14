@@ -8,6 +8,8 @@ import {
   getReceivablesReport,
   getPayablesReport,
   getOutstandingSummaryReport,
+  getBankChargesReport,
+  getInternalTransferReport,
   exportReceivablesToCSV,
   exportPayablesToCSV,
   exportBankBookToCSV,
@@ -92,6 +94,30 @@ export const getOutstandingSummaryReportHandler = async (req: AuthRequest, res: 
     res.status(200).json({ success: true, data });
   } catch (error) {
     res.status(500).json({ success: false, message: error instanceof Error ? error.message : "Failed to load Outstanding Summary" });
+  }
+};
+
+export const getBankChargesReportHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const companyId = req.user!.companyId;
+    const data = await getBankChargesReport(companyId, {
+      fromDate: req.query.fromDate as string,
+      toDate: req.query.toDate as string,
+      companyBankAccountId: req.query.companyBankAccountId as string,
+    });
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error instanceof Error ? error.message : "Failed to load Bank Charges Report" });
+  }
+};
+
+export const getInternalTransferReportHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const companyId = req.user!.companyId;
+    const data = await getInternalTransferReport(companyId, { fromDate: req.query.fromDate as string, toDate: req.query.toDate as string });
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error instanceof Error ? error.message : "Failed to load Internal Transfer Register" });
   }
 };
 

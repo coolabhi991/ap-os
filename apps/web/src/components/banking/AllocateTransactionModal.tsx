@@ -36,6 +36,8 @@ import { getPartners } from "../../services/partners";
 import type { Partner } from "../../services/partners";
 import { getLiabilities } from "../../services/liabilities";
 import type { Liability } from "../../services/liabilities";
+import { getCompanyBankAccounts } from "../../services/company-bank-accounts";
+import type { CompanyBankAccount } from "../../services/company-bank-accounts";
 import { formatCurrency as inr } from "../../lib/utils";
 
 interface Props {
@@ -105,6 +107,7 @@ export default function AllocateTransactionModal({ transaction, onClose, onSaved
   const [partners, setPartners] = useState<Partner[]>([]);
   const [liabilities, setLiabilities] = useState<Liability[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
+  const [bankAccounts, setBankAccounts] = useState<CompanyBankAccount[]>([]);
   const [vendorAccountsByBill, setVendorAccountsByBill] = useState<Record<string, VendorBankAccount[]>>({});
   const [loadingOptions, setLoadingOptions] = useState(true);
 
@@ -156,8 +159,9 @@ export default function AllocateTransactionModal({ transaction, onClose, onSaved
       getPartners({ isActive: true }),
       getLiabilities({ status: "ACTIVE" }),
       getEmployees({ status: "ACTIVE", limit: 200 }),
+      getCompanyBankAccounts(),
     ])
-      .then(([rb, vb, lab, cats, siteList, partnerList, liabilityList, employeeList]) => {
+      .then(([rb, vb, lab, cats, siteList, partnerList, liabilityList, employeeList, accountList]) => {
         setRunningBills(rb.data.filter((b) => Number(b.outstandingAmount) > 0.01));
         setVendorBills(vb.data.filter((b) => Number(b.outstandingBalance) > 0.01));
         setLabourers(lab.data);
@@ -166,8 +170,10 @@ export default function AllocateTransactionModal({ transaction, onClose, onSaved
         setPartners(partnerList.data);
         setLiabilities(liabilityList.data);
         setEmployees(employeeList.data);
+        setBankAccounts(accountList.filter((a) => a.isActive && a.id !== transaction.companyBankAccountId));
       })
       .finally(() => setLoadingOptions(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const loadVendorAccounts = async (billId: string, vendorId: string) => {
@@ -197,6 +203,13 @@ export default function AllocateTransactionModal({ transaction, onClose, onSaved
       const result = await createAllocations(transaction.id, payload);
       if (result.failed.length > 0) {
         setFailures(result.failed);
+      }
+      if (result.transferSuggestions?.length > 0) {
+        const count = result.transferSuggestions.reduce((s, t) => s + t.candidates.length, 0);
+        alert(
+          `Found ${count} possible matching transaction${count === 1 ? "" : "s"} on the destination account (same amount, unallocated, within 10 days) — ` +
+          `open that account's statement and allocate it as Internal Transfer too to complete both sides.`
+        );
       }
       if (result.created.length > 0) {
         onSaved();
@@ -235,6 +248,9 @@ export default function AllocateTransactionModal({ transaction, onClose, onSaved
                   <span>
                     {ALLOCATION_TYPE_LABELS[a.allocationType] ?? a.allocationType} — {inr(Number(a.amount))}
                     {a.partyName && <span className="text-slate-400"> ({a.partyName})</span>}
+                    {a.transferToAccount && (
+                      <span className="text-slate-400"> (to {a.transferToAccount.nickname || a.transferToAccount.bankName})</span>
+                    )}
                     {linked && (
                       <button
                         type="button"
@@ -296,7 +312,7 @@ export default function AllocateTransactionModal({ transaction, onClose, onSaved
                       <label className="mb-1 block text-xs font-medium">Type *</label>
                       <select
                         value={row.allocationType}
-                        onChange={(e) => updateRow(row.key, { allocationType: e.target.value, runningBillId: undefined, vendorBillId: undefined, vendorBankAccountId: undefined, labourId: undefined, categoryId: undefined, partnerId: undefined, liabilityId: undefined, principalPaid: undefined, interestPaid: undefined, employeeId: undefined })}
+                        onChange={(e) => updateRow(row.key, { allocationType: e.target.value, runningBillId: undefined, vendorBillId: undefined, vendorBankAccountId: undefined, labourId: undefined, categoryId: undefined, partnerId: undefined, liabilityId: undefined, principalPaid: undefined, interestPaid: undefined, employeeId: undefined, transferAccountId: undefined })}
                         className="w-full rounded-lg border p-2 text-sm"
                       >
                         {ALLOCATION_TYPES.map((t) => <option key={t} value={t}>{ALLOCATION_TYPE_LABELS[t]}</option>)}
@@ -445,6 +461,16 @@ export default function AllocateTransactionModal({ transaction, onClose, onSaved
                       </>
                     )}
 
+                    {row.allocationType === "INTERNAL_TRANSFER" && (
+                      <div>
+                        <label className="mb-1 block text-xs font-medium">Transfer To Account *</label>
+                        <select value={row.transferAccountId ?? ""} onChange={(e) => updateRow(row.key, { transferAccountId: e.target.value })} className="w-full rounded-lg border p-2 text-sm">
+                          <option value="">Select Account</option>
+                          {bankAccounts.map((a) => <option key={a.id} value={a.id}>{a.nickname || a.bankName}</option>)}
+                        </select>
+                      </div>
+                    )}
+
                     {SITE_SCOPED_TYPES.includes(row.allocationType) && (
                       <div>
                         <label className="mb-1 block text-xs font-medium">
@@ -473,6 +499,7 @@ export default function AllocateTransactionModal({ transaction, onClose, onSaved
                       "LABOUR",
                       "SITE_EXPENSE",
                       "LIABILITY_DISBURSEMENT",
+                      "INTERNAL_TRANSFER",
                       ...LOAN_REPAYMENT_TYPES,
                       ...PARTNER_SCOPED_TYPES,
                       ...EMPLOYEE_SCOPED_TYPES,

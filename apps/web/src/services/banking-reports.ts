@@ -92,6 +92,39 @@ export interface OutstandingSummary {
   accountBalances: { id: string; nickname: string; bankName: string; accountType: string; currentBalance: string; isActive: boolean }[];
 }
 
+export interface BankChargeRow {
+  id: string;
+  date: string;
+  bankAccountId: string;
+  bankAccount: string;
+  amount: string;
+  referenceNumber: string;
+  notes: string;
+}
+
+export interface BankChargesReport {
+  total: string;
+  count: number;
+  transactions: BankChargeRow[];
+}
+
+export interface InternalTransferRow {
+  id: string;
+  date: string;
+  direction: "IN" | "OUT";
+  amount: string;
+  account: string;
+  counterAccount: string;
+  referenceNumber: string;
+  notes: string;
+}
+
+export interface InternalTransferReport {
+  total: string;
+  count: number;
+  transfers: InternalTransferRow[];
+}
+
 export interface ReportQuery {
   companyBankAccountId?: string;
   projectId?: string;
@@ -136,6 +169,16 @@ export async function getPayablesReport(query?: { projectId?: string }): Promise
 
 export async function getOutstandingSummary(): Promise<OutstandingSummary> {
   const response = await api.get<{ success: boolean; data: OutstandingSummary }>("/banking-reports/outstanding-summary");
+  return response.data.data;
+}
+
+export async function getBankChargesReport(query?: { fromDate?: string; toDate?: string; companyBankAccountId?: string }): Promise<BankChargesReport> {
+  const response = await api.get<{ success: boolean; data: BankChargesReport }>("/banking-reports/bank-charges", { params: query });
+  return response.data.data;
+}
+
+export async function getInternalTransferReport(query?: { fromDate?: string; toDate?: string }): Promise<InternalTransferReport> {
+  const response = await api.get<{ success: boolean; data: InternalTransferReport }>("/banking-reports/internal-transfers", { params: query });
   return response.data.data;
 }
 

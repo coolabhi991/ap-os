@@ -130,11 +130,13 @@ export interface AllocationRowInput {
   principalPaid?: number;
   interestPaid?: number;
   employeeId?: string;
+  transferAccountId?: string;
 }
 
 const include = {
   site: { select: { id: true, name: true } },
   employee: { select: { id: true, name: true } },
+  transferToAccount: { select: { id: true, nickname: true, bankName: true } },
   runningBillPayment: { select: { id: true, paymentNumber: true, runningBillId: true, runningBill: { select: { id: true, billNumber: true } } } },
   vendorPayment: { select: { id: true, paymentNumber: true, vendor: { select: { id: true, name: true } }, vendorBill: { select: { id: true, billNumber: true } } } },
   labourPayment: { select: { id: true, labour: { select: { id: true, name: true } } } },
@@ -161,6 +163,8 @@ function toDTO(a: AllocationRow) {
     employee: a.employee,
     partyName: a.partyName ?? "",
     notes: a.notes ?? "",
+    transferToAccountId: a.transferToAccountId ?? "",
+    transferToAccount: a.transferToAccount,
     runningBillPaymentId: a.runningBillPaymentId ?? "",
     runningBillPayment: a.runningBillPayment
       ? {
@@ -457,6 +461,15 @@ export async function createAllocations(companyId: string, createdById: string, 
         if (!liability) throw new Error("Liability not found");
       }
 
+      if (allocationType === "INTERNAL_TRANSFER") {
+        if (!row.transferAccountId?.trim()) throw new Error("Transfer To Account is required for an Internal Transfer allocation");
+        const transferAccount = await prisma.companyBankAccount.findFirst({ where: { id: row.transferAccountId, companyId } });
+        if (!transferAccount) throw new Error("Transfer To Account not found");
+        if (transferAccount.id === txn.companyBankAccountId) {
+          throw new Error("Transfer To Account must be different from this transaction's own account");
+        }
+      }
+
       if (EMPLOYEE_TAG_TYPES.includes(allocationType)) {
         if (!row.employeeId?.trim()) throw new Error(`Employee is required for a ${ALLOCATION_TYPE_LABELS[allocationType]} allocation`);
         const employee = await prisma.employee.findFirst({ where: { id: row.employeeId, companyId } });
@@ -480,6 +493,7 @@ export async function createAllocations(companyId: string, createdById: string, 
           partyName: row.partyName || null,
           notes: row.notes || null,
           ...(allocationType === "LIABILITY_DISBURSEMENT" && { liabilityId: row.liabilityId || null }),
+          ...(allocationType === "INTERNAL_TRANSFER" && { transferToAccountId: row.transferAccountId || null }),
           ...(EMPLOYEE_TAG_TYPES.includes(allocationType) && { employeeId: row.employeeId || null }),
           ...ledgerIdsWithoutSite,
           createdById,
@@ -493,5 +507,50 @@ export async function createAllocations(companyId: string, createdById: string, 
   }
 
   const status = await recomputeAllocationStatus(bankTransactionId);
-  return { created, failed, ...status };
+
+  // Internal Transfer traceability: both accounts' balances already update themselves
+  // independently from their own BankTransaction rows — nothing to write there. What's missing
+  // is visibility into whether the "other half" of this transfer has already landed in the
+  // destination account's statement. This is a read-only best-effort suggestion (same amount,
+  // opposite direction, +/-10 days, not yet fully allocated) — never auto-created, since silently
+  // linking two real bank transactions on a heuristic amount/date match is exactly the kind of
+  // mistake that must stay a human decision on financial data.
+  const transferSuggestions: Array<{
+    allocationId: string;
+    candidates: Array<{ id: string; transactionDate: string; amount: string; description: string; allocationStatus: string }>;
+  }> = [];
+  const isSourceDeposit = Number(txn.deposit) > 0;
+  for (const c of created) {
+    if (c.allocationType !== "INTERNAL_TRANSFER" || !c.transferToAccountId) continue;
+    const windowStart = new Date(txn.transactionDate);
+    windowStart.setDate(windowStart.getDate() - 10);
+    const windowEnd = new Date(txn.transactionDate);
+    windowEnd.setDate(windowEnd.getDate() + 10);
+    const candidates = await prisma.bankTransaction.findMany({
+      where: {
+        companyId,
+        companyBankAccountId: c.transferToAccountId,
+        isActive: true,
+        allocationStatus: { not: "FULLY_ALLOCATED" },
+        transactionDate: { gte: windowStart, lte: windowEnd },
+        ...(isSourceDeposit ? { withdrawal: Number(c.amount) } : { deposit: Number(c.amount) }),
+      },
+      select: { id: true, transactionDate: true, deposit: true, withdrawal: true, description: true, allocationStatus: true },
+      take: 5,
+    });
+    if (candidates.length > 0) {
+      transferSuggestions.push({
+        allocationId: c.id,
+        candidates: candidates.map((cand) => ({
+          id: cand.id,
+          transactionDate: cand.transactionDate.toISOString().slice(0, 10),
+          amount: (Number(cand.deposit) > 0 ? cand.deposit : cand.withdrawal).toString(),
+          description: cand.description ?? "",
+          allocationStatus: cand.allocationStatus,
+        })),
+      });
+    }
+  }
+
+  return { created, failed, transferSuggestions, ...status };
 }

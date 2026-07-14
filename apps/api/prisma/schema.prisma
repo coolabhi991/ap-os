@@ -317,6 +317,7 @@ enum LiabilitySecurity {
 
 enum LiabilityStatus {
   ACTIVE
+  ON_HOLD
   CLOSED
 }
 
@@ -442,6 +443,7 @@ model CompanyBankAccount {
   partnerSettlements  PartnerSettlement[]
   liabilityRepayments LiabilityRepayment[]
   bankStatementImports BankStatementImport[]
+  internalTransfersIn  TransactionAllocation[]
 
   @@index([companyId])
 }
@@ -2368,6 +2370,14 @@ model TransactionAllocation {
   employeeId String?
   employee   Employee? @relation(fields: [employeeId], references: [id])
 
+  // INTERNAL_TRANSFER only: which OWN CompanyBankAccount the money moved to/from — replaces the
+  // old free-text partyName for this type (an internal transfer moves between the company's own
+  // accounts, never an external party). Same straight-pass-through-pointer pattern as liabilityId
+  // above; no dedicated ledger row, since both sides' account balances already update themselves
+  // independently from their own BankTransaction rows.
+  transferToAccountId String?
+  transferToAccount   CompanyBankAccount? @relation(fields: [transferToAccountId], references: [id])
+
   createdById String
   createdBy   User     @relation(fields: [createdById], references: [id])
   createdAt   DateTime @default(now())
@@ -2378,6 +2388,7 @@ model TransactionAllocation {
   @@index([allocationType])
   @@index([liabilityId])
   @@index([employeeId])
+  @@index([transferToAccountId])
 }
 
 enum EmployeeStatus {

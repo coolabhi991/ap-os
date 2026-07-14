@@ -1,6 +1,5 @@
 import prisma from "../config/prisma.js";
 import { Prisma } from "@prisma/client";
-import { deriveLiabilityStatus } from "./liability.service.js";
 import { sourceBankTransactionSelect, toSourceBankTransactionDTO } from "../utils/bank-traceability.js";
 
 export const PAYMENT_MODES = ["CASH", "COMPANY_BANK", "CREDIT_CARD", "VENDOR_CREDIT"];
@@ -340,7 +339,10 @@ export async function createExpense(companyId: string, createdById: string, inpu
     if (liabilityId) {
       const card = await tx.liability.findUniqueOrThrow({ where: { id: liabilityId } });
       const newOutstanding = Math.round((Number(card.outstandingAmount) + amount) * 100) / 100;
-      await tx.liability.update({ where: { id: liabilityId }, data: { outstandingAmount: newOutstanding, status: deriveLiabilityStatus(newOutstanding) } });
+      // Credit Card is always a REVOLVING_LIABILITY_TYPE — status is never touched here, only
+      // outstandingAmount. An interest/spend cycle legitimately zeroing the balance must not
+      // auto-close the card (Liability Status Lifecycle review); only an explicit edit may.
+      await tx.liability.update({ where: { id: liabilityId }, data: { outstandingAmount: newOutstanding } });
     }
 
     return created;
@@ -392,7 +394,8 @@ export async function updateExpense(id: string, companyId: string, input: Expens
     const adjustLiability = async (liabId: string, delta: number) => {
       const card = await tx.liability.findUniqueOrThrow({ where: { id: liabId } });
       const newOutstanding = Math.round((Number(card.outstandingAmount) + delta) * 100) / 100;
-      await tx.liability.update({ where: { id: liabId }, data: { outstandingAmount: newOutstanding, status: deriveLiabilityStatus(newOutstanding) } });
+      // Credit Card is always a REVOLVING_LIABILITY_TYPE — status is never touched here (see the create-path comment above).
+      await tx.liability.update({ where: { id: liabId }, data: { outstandingAmount: newOutstanding } });
     };
 
     if (oldLiabilityId && newLiabilityId && oldLiabilityId === newLiabilityId) {
@@ -427,7 +430,8 @@ export async function deleteExpense(id: string, companyId: string) {
     if (existing.paymentMode === "CREDIT_CARD" && existing.liabilityId) {
       const card = await tx.liability.findUniqueOrThrow({ where: { id: existing.liabilityId } });
       const newOutstanding = Math.round((Number(card.outstandingAmount) - Number(existing.amount)) * 100) / 100;
-      await tx.liability.update({ where: { id: existing.liabilityId }, data: { outstandingAmount: newOutstanding, status: deriveLiabilityStatus(newOutstanding) } });
+      // Credit Card is always a REVOLVING_LIABILITY_TYPE — status is never touched here (see the create-path comment above).
+      await tx.liability.update({ where: { id: existing.liabilityId }, data: { outstandingAmount: newOutstanding } });
     }
   });
 }
