@@ -1,5 +1,8 @@
 import prisma from "../config/prisma.js";
 import { DocumentType } from "@prisma/client";
+import path from "path";
+import fs from "fs";
+import { UPLOAD_DIR } from "../middleware/upload.middleware.js";
 
 export interface DocumentFormInput {
   projectId?: string;
@@ -9,9 +12,14 @@ export interface DocumentFormInput {
   measurementBookId?: string;
   runningBillId?: string;
   documentType?: string;
-  fileName?: string;
-  fileUrl?: string;
   notes?: string;
+}
+
+export interface UploadedFileInfo {
+  originalName: string;
+  storedFileName: string;
+  mimeType: string;
+  sizeBytes: number;
 }
 
 export const DOCUMENT_TYPES = [
@@ -77,7 +85,9 @@ function toDTO(d: {
   documentType: DocumentType;
   documentNumber: string;
   fileName: string | null;
-  fileUrl: string | null;
+  filePath: string | null;
+  mimeType: string | null;
+  fileSizeBytes: number | null;
   notes: string | null;
   uploadedAt: Date;
   createdAt: Date;
@@ -95,7 +105,9 @@ function toDTO(d: {
     documentType: d.documentType,
     documentNumber: d.documentNumber,
     fileName: d.fileName ?? "",
-    fileUrl: d.fileUrl ?? "",
+    hasFile: !!d.filePath,
+    mimeType: d.mimeType ?? "",
+    fileSizeBytes: d.fileSizeBytes ?? 0,
     notes: d.notes ?? "",
     uploadedAt: d.uploadedAt.toISOString(),
     createdAt: d.createdAt.toISOString(),
@@ -174,7 +186,7 @@ export async function listDocumentsByVendor(companyId: string, vendorId: string)
   return documents.map(toDTO);
 }
 
-export async function createDocument(companyId: string, input: DocumentFormInput) {
+export async function createDocument(companyId: string, input: DocumentFormInput, file: UploadedFileInfo | null) {
   if (!input.projectId?.trim() && !input.vendorId?.trim()) {
     throw new Error("Either a Project or a Vendor is required");
   }
@@ -209,8 +221,8 @@ export async function createDocument(companyId: string, input: DocumentFormInput
     if (!bill) throw new Error("Running Bill not found");
   }
 
-  if (!input.fileName?.trim() && !input.fileUrl?.trim()) {
-    throw new Error("Either a file name or file URL is required");
+  if (!file) {
+    throw new Error("A file is required");
   }
 
   const document = await prisma.document.create({
@@ -224,8 +236,10 @@ export async function createDocument(companyId: string, input: DocumentFormInput
       runningBillId: input.runningBillId || null,
       documentType: parseDocumentType(input.documentType),
       documentNumber: autoNumber(),
-      fileName: input.fileName || null,
-      fileUrl: input.fileUrl || null,
+      fileName: file.originalName,
+      filePath: file.storedFileName,
+      mimeType: file.mimeType,
+      fileSizeBytes: file.sizeBytes,
       notes: input.notes || null,
     },
   });
@@ -233,8 +247,24 @@ export async function createDocument(companyId: string, input: DocumentFormInput
   return toDTO(document);
 }
 
+/** Resolves a Document to its on-disk path + display metadata for the authenticated download/preview route — never a public static path. */
+export async function getDocumentFile(id: string, companyId: string) {
+  const doc = await prisma.document.findFirst({ where: { id, companyId } });
+  if (!doc) throw new Error("Document not found");
+  if (!doc.filePath) throw new Error("This document has no uploaded file");
+
+  const absolutePath = path.join(UPLOAD_DIR, doc.filePath);
+  if (!fs.existsSync(absolutePath)) throw new Error("The uploaded file is missing from storage");
+
+  return { absolutePath, fileName: doc.fileName || doc.filePath, mimeType: doc.mimeType || "application/octet-stream" };
+}
+
 export async function deleteDocument(id: string, companyId: string) {
   const existing = await prisma.document.findFirst({ where: { id, companyId } });
   if (!existing) throw new Error("Document not found");
   await prisma.document.delete({ where: { id } });
+  if (existing.filePath) {
+    const absolutePath = path.join(UPLOAD_DIR, existing.filePath);
+    fs.unlink(absolutePath, () => {});
+  }
 }

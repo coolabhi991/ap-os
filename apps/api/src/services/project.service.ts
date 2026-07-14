@@ -1,6 +1,7 @@
 import prisma from "../config/prisma.js";
 import { ProjectStatus, Prisma } from "@prisma/client";
 import { deriveInitials } from "../utils/numbering.js";
+import { getLatestExtensionTillDateBySite } from "./work-order-extension.service.js";
 
 export interface ProjectListQuery {
   search?: string;
@@ -238,4 +239,116 @@ export async function deleteProject(id: string, companyId: string) {
   await getProjectById(id, companyId);
 
   return prisma.project.delete({ where: { id } });
+}
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+/**
+ * Project Executive Dashboard — every Project's roll-up (Total Sites, Total Project Cost, Total
+ * Client Payments Received, Total Outstanding) plus the full Site table beneath it, computed
+ * entirely on demand from Site Work Orders / RA Bills / Client Payments (never stored/duplicated,
+ * per the "Enter Once, Use Everywhere" principle):
+ *
+ * - Total Project Cost = sum of Site.contractValue (Tender Cost) across the Project's Sites —
+ *   never Project.contractValue, which stays a separate, independently-editable legacy field
+ *   used elsewhere in the app; this dashboard never reads or writes it.
+ * - A Site's "Total Certified" (source for Financial Progress) is the LATEST non-DRAFT
+ *   RunningBill's totalCertifiedAmount — that field is already a running cumulative-to-date
+ *   figure per bill (see running-bill.service.ts), so summing it across bills would double-count.
+ *   This mirrors the exact pattern already used by getProjectBillingSummaryReport in
+ *   running-bill.service.ts (bills queried oldest-first, latest overwrites).
+ * - Client Payments Received / Outstanding Amount ARE summed across a Site's bills — each bill's
+ *   amountReceived/outstandingAmount is that bill's own independent figure (not cumulative), so
+ *   summing them is the correct total money received/still owed across every bill raised.
+ * - Physical Progress = average of the Site's SubWork.physicalProgress values (same formula as
+ *   site-control-center.service.ts's computeSitePhysicalProgress, computed here as one bulk
+ *   groupBy across every Site instead of N per-Site queries).
+ * - Financial Progress = Total Certified / Tender Cost * 100 — how much of the contract value has
+ *   been billed to date.
+ */
+export async function getProjectExecutiveDashboard(companyId: string) {
+  const [projects, sites] = await Promise.all([
+    prisma.project.findMany({
+      where: { companyId },
+      include: { client: { select: { id: true, name: true } } },
+      orderBy: { name: "asc" },
+    }),
+    prisma.site.findMany({ where: { companyId }, orderBy: { name: "asc" } }),
+  ]);
+
+  const siteIds = sites.map((s) => s.id);
+
+  const [bills, subWorkAgg, extensionTillDateBySite] = await Promise.all([
+    prisma.runningBill.findMany({
+      where: { companyId, status: { not: "DRAFT" }, siteId: { in: siteIds } },
+      select: { siteId: true, totalCertifiedAmount: true, amountReceived: true, outstandingAmount: true, createdAt: true },
+      orderBy: { createdAt: "asc" },
+    }),
+    prisma.subWork.groupBy({ by: ["siteId"], where: { companyId, siteId: { in: siteIds } }, _avg: { physicalProgress: true } }),
+    getLatestExtensionTillDateBySite(companyId, siteIds),
+  ]);
+
+  const financialsBySite = new Map<string, { certified: number; received: number; outstanding: number }>();
+  for (const b of bills) {
+    if (!b.siteId) continue;
+    const bucket = financialsBySite.get(b.siteId) ?? { certified: 0, received: 0, outstanding: 0 };
+    // totalCertifiedAmount is already the running cumulative-to-date figure on each bill — bills
+    // are queried oldest-first, so the latest bill always overwrites with the up-to-date total.
+    bucket.certified = Number(b.totalCertifiedAmount);
+    bucket.received += Number(b.amountReceived);
+    bucket.outstanding += Number(b.outstandingAmount);
+    financialsBySite.set(b.siteId, bucket);
+  }
+
+  const physicalProgressBySite = new Map(subWorkAgg.map((s) => [s.siteId, Math.round(s._avg.physicalProgress ?? 0)]));
+
+  const siteRows = sites.map((s) => {
+    const financial = financialsBySite.get(s.id) ?? { certified: 0, received: 0, outstanding: 0 };
+    const tenderCost = Number(s.contractValue);
+    const financialProgress = tenderCost > 0 ? round2((financial.certified / tenderCost) * 100) : 0;
+    return {
+      id: s.id,
+      projectId: s.projectId,
+      name: s.name,
+      taluka: s.taluka ?? "",
+      siteType: s.siteType,
+      tenderCost: s.contractValue.toString(),
+      workOrderDate: s.workOrderDate ? s.workOrderDate.toISOString().slice(0, 10) : "",
+      completionDate: s.completionDate ? s.completionDate.toISOString().slice(0, 10) : "",
+      extensionTillDate: extensionTillDateBySite.get(s.id) ?? "",
+      clientPaymentsReceived: financial.received.toFixed(2),
+      outstandingAmount: financial.outstanding.toFixed(2),
+      physicalProgress: physicalProgressBySite.get(s.id) ?? 0,
+      financialProgress,
+      status: s.status,
+    };
+  });
+
+  const sitesByProject = new Map<string, typeof siteRows>();
+  for (const row of siteRows) {
+    const arr = sitesByProject.get(row.projectId) ?? [];
+    arr.push(row);
+    sitesByProject.set(row.projectId, arr);
+  }
+
+  return projects.map((p) => {
+    const projSites = sitesByProject.get(p.id) ?? [];
+    const totalProjectCost = projSites.reduce((s, r) => s + Number(r.tenderCost), 0);
+    const totalClientPaymentsReceived = projSites.reduce((s, r) => s + Number(r.clientPaymentsReceived), 0);
+    const totalOutstanding = projSites.reduce((s, r) => s + Number(r.outstandingAmount), 0);
+    return {
+      id: p.id,
+      name: p.name,
+      code: p.code ?? "",
+      client: p.client,
+      status: p.status,
+      totalSites: projSites.length,
+      totalProjectCost: totalProjectCost.toFixed(2),
+      totalClientPaymentsReceived: totalClientPaymentsReceived.toFixed(2),
+      totalOutstanding: totalOutstanding.toFixed(2),
+      sites: projSites,
+    };
+  });
 }

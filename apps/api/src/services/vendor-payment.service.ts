@@ -1,6 +1,7 @@
 import prisma from "../config/prisma.js";
 import { Prisma } from "@prisma/client";
 import { recordVendorBillPayment, PAYMENT_MODES } from "./vendor-bill.service.js";
+import { sourceBankTransactionSelect, toSourceBankTransactionDTO } from "../utils/bank-traceability.js";
 
 /**
  * Vendor Payments: the record-payment side of Vendor Bill → Vendor Payment,
@@ -51,6 +52,7 @@ const include = {
   vendorBill: { select: { id: true, billNumber: true, totalAmount: true, outstandingBalance: true, status: true } },
   companyBankAccount: { select: bankAccountSelect },
   vendorBankAccount: { select: bankAccountSelect },
+  allocation: { select: { bankTransaction: { select: sourceBankTransactionSelect } } },
 };
 
 type PaymentRow = Prisma.VendorPaymentGetPayload<{ include: typeof include }>;
@@ -87,6 +89,7 @@ function toDTO(p: PaymentRow) {
     paidToName: p.paidToName ?? "",
     paidToReason: p.paidToReason ?? "",
     status: p.status,
+    sourceBankTransaction: toSourceBankTransactionDTO(p.allocation),
     createdAt: p.createdAt.toISOString(),
     updatedAt: p.updatedAt.toISOString(),
   };

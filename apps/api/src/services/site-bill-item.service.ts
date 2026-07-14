@@ -79,10 +79,12 @@ export async function createSiteBillItem(companyId: string, createdById: string,
   if (!Number.isFinite(rate) || rate < 0) throw new Error("Rate must be a number greater than or equal to zero");
 
   await verifySiteOwnership(input.siteId, companyId);
-  if (input.subWorkId) {
-    const subWork = await prisma.subWork.findFirst({ where: { id: input.subWorkId, companyId, siteId: input.siteId } });
-    if (!subWork) throw new Error("Sub Work not found");
-  }
+  // Form 58 UI & Workflow Refinement — every Item must originate from a real Sub Work (which
+  // itself always originates from the Recapitulation Register); an "Unassigned" bucket must
+  // never be creatable again.
+  if (!input.subWorkId?.trim()) throw new Error("Sub Work is required");
+  const subWork = await prisma.subWork.findFirst({ where: { id: input.subWorkId, companyId, siteId: input.siteId } });
+  if (!subWork) throw new Error("Sub Work not found");
 
   const maxSort = await prisma.siteBillItem.aggregate({ where: { siteId: input.siteId, companyId }, _max: { sortOrder: true } });
 

@@ -19,6 +19,8 @@ import { getVendors } from "../../services/vendors";
 import type { Vendor } from "../../services/vendors";
 import { getCompanyBankAccounts } from "../../services/company-bank-accounts";
 import type { CompanyBankAccount } from "../../services/company-bank-accounts";
+import { getLiabilities } from "../../services/liabilities";
+import type { Liability } from "../../services/liabilities";
 import type { Site } from "../../services/sites";
 import { formatCurrency as inr, todayISO } from "../../lib/utils";
 import LoadingState from "../ui/LoadingState";
@@ -37,6 +39,7 @@ interface Row {
   amount: number;
   paymentMode: string;
   companyBankAccountId: string;
+  liabilityId: string;
   remarks: string;
   attachmentFileName: string;
   // Carried along for the create/update payload, not shown as Register columns.
@@ -61,6 +64,7 @@ function toRow(e: Expense): Row {
     amount: Number(e.amount),
     paymentMode: e.paymentMode,
     companyBankAccountId: e.companyBankAccountId,
+    liabilityId: e.liabilityId,
     remarks: e.remarks,
     attachmentFileName: e.attachmentFileName,
     projectId: e.projectId,
@@ -78,7 +82,12 @@ export default function ExpenseRegister({ site }: { site: Site }) {
   const [rows, setRows] = useState<Row[]>([]);
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
-  const [bankAccounts, setBankAccounts] = useState<CompanyBankAccount[]>([]);
+  const [companyAccounts, setCompanyAccounts] = useState<CompanyBankAccount[]>([]);
+  const [creditCards, setCreditCards] = useState<Liability[]>([]);
+  // Source Account Workflow — the same Company Bank Accounts Master doubles as the Cash Account
+  // Master (it already supports named Cash-type rows, e.g. "Company Cash", "Site Petty Cash").
+  const bankAccounts = companyAccounts.filter((a) => a.accountType === "BANK");
+  const cashAccounts = companyAccounts.filter((a) => a.accountType === "CASH");
   const [summary, setSummary] = useState<SiteExpenseSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -94,7 +103,8 @@ export default function ExpenseRegister({ site }: { site: Site }) {
       loadSummary(),
       getExpenseCategories(false).then(setCategories),
       getVendors({ limit: 100 }).then((r) => setVendors(r.data)),
-      getCompanyBankAccounts().then((accounts) => setBankAccounts(accounts.filter((a) => a.isActive))),
+      getCompanyBankAccounts().then((accounts) => setCompanyAccounts(accounts.filter((a) => a.isActive))),
+      getLiabilities({ liabilityType: "CREDIT_CARD" }).then((r) => setCreditCards(r.data)),
     ])
       .catch(() => setError("Failed to load the Expense Register."))
       .finally(() => setLoading(false));
@@ -113,6 +123,7 @@ export default function ExpenseRegister({ site }: { site: Site }) {
     amount: 0,
     paymentMode: "",
     companyBankAccountId: "",
+    liabilityId: "",
     remarks: "",
     attachmentFileName: "",
     projectId: site.projectId,
@@ -135,6 +146,7 @@ export default function ExpenseRegister({ site }: { site: Site }) {
     amount: row.amount,
     paymentMode: row.paymentMode,
     companyBankAccountId: row.companyBankAccountId,
+    liabilityId: row.liabilityId,
     attachmentFileName: row.attachmentFileName,
     attachmentFileUrl: row.attachmentFileUrl,
     remarks: row.remarks,
@@ -164,7 +176,9 @@ export default function ExpenseRegister({ site }: { site: Site }) {
   const validateRow = (row: Row): string | null => {
     if (!row.categoryId) return "Category is required.";
     if (!row.paymentMode) return "Payment mode is required.";
-    if (row.paymentMode === "COMPANY_BANK" && !row.companyBankAccountId) return "Select the company bank account.";
+    if (row.paymentMode === "CASH" && !row.companyBankAccountId) return "Select the Source Account.";
+    if (row.paymentMode === "COMPANY_BANK" && !row.companyBankAccountId) return "Select the Source Account.";
+    if (row.paymentMode === "CREDIT_CARD" && !row.liabilityId) return "Select the Source Account.";
     if (row.paymentMode === "VENDOR_CREDIT" && !row.vendorId) return "Vendor is required for Vendor Credit.";
     if (!row.amount || row.amount <= 0) return "Enter an amount greater than zero.";
     return null;
@@ -188,11 +202,20 @@ export default function ExpenseRegister({ site }: { site: Site }) {
         className={inputClass}
         value={String(value ?? "")}
         onChange={(e) => {
-          // Switching away from COMPANY_BANK clears the now-irrelevant bank account in the same update.
-          if (e.target.value !== "COMPANY_BANK" && row.companyBankAccountId) {
-            onRowChange({ paymentMode: e.target.value, companyBankAccountId: "" } as Partial<Row>);
+          // Switching Payment Mode clears whichever Source Account field no longer applies —
+          // CASH/COMPANY_BANK both use companyBankAccountId (filtered by accountType at render
+          // time below), CREDIT_CARD uses liabilityId.
+          const next = e.target.value;
+          const clearBank = next !== "CASH" && next !== "COMPANY_BANK" && row.companyBankAccountId;
+          const clearCard = next !== "CREDIT_CARD" && row.liabilityId;
+          if (clearBank || clearCard) {
+            onRowChange({
+              paymentMode: next,
+              ...(clearBank && { companyBankAccountId: "" }),
+              ...(clearCard && { liabilityId: "" }),
+            } as Partial<Row>);
           } else {
-            onChange(e.target.value);
+            onChange(next);
           }
         }}
       >
@@ -201,15 +224,39 @@ export default function ExpenseRegister({ site }: { site: Site }) {
           <option key={m} value={m}>{PAYMENT_MODE_LABELS[m]}</option>
         ))}
       </select>
+      {row.paymentMode === "CASH" && (
+        <select
+          className={inputClass}
+          value={row.companyBankAccountId}
+          onChange={(e) => onRowChange({ companyBankAccountId: e.target.value } as Partial<Row>)}
+        >
+          <option value="">Select Source Account</option>
+          {cashAccounts.map((a) => (
+            <option key={a.id} value={a.id}>{a.nickname || "Cash"}</option>
+          ))}
+        </select>
+      )}
       {row.paymentMode === "COMPANY_BANK" && (
         <select
           className={inputClass}
           value={row.companyBankAccountId}
           onChange={(e) => onRowChange({ companyBankAccountId: e.target.value } as Partial<Row>)}
         >
-          <option value="">Select Bank Account</option>
+          <option value="">Select Source Account</option>
           {bankAccounts.map((a) => (
             <option key={a.id} value={a.id}>{a.nickname || a.bankName} (••••{a.accountNumber.slice(-4)})</option>
+          ))}
+        </select>
+      )}
+      {row.paymentMode === "CREDIT_CARD" && (
+        <select
+          className={inputClass}
+          value={row.liabilityId}
+          onChange={(e) => onRowChange({ liabilityId: e.target.value } as Partial<Row>)}
+        >
+          <option value="">Select Source Account</option>
+          {creditCards.map((c) => (
+            <option key={c.id} value={c.id}>{c.loanName}{c.accountNumber ? ` (••••${c.accountNumber.slice(-4)})` : ""}</option>
           ))}
         </select>
       )}

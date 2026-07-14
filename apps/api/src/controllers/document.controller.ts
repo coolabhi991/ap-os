@@ -9,7 +9,9 @@ import {
   listDocumentsByVendor,
   createDocument,
   deleteDocument,
+  getDocumentFile,
 } from "../services/document.service.js";
+import type { UploadedFileInfo } from "../services/document.service.js";
 
 const notFoundMessage = "Document not found";
 
@@ -54,10 +56,28 @@ export const getDocumentsHandler = async (req: AuthRequest, res: Response) => {
 export const createDocumentHandler = async (req: AuthRequest, res: Response) => {
   try {
     const companyId = req.user!.companyId;
-    const data = await createDocument(companyId, req.body);
+    const uploaded = req.file;
+    const file: UploadedFileInfo | null = uploaded
+      ? { originalName: uploaded.originalname, storedFileName: uploaded.filename, mimeType: uploaded.mimetype, sizeBytes: uploaded.size }
+      : null;
+    const data = await createDocument(companyId, req.body, file);
     res.status(201).json({ success: true, data });
   } catch (error) {
     res.status(400).json({ success: false, message: error instanceof Error ? error.message : "Failed to create document" });
+  }
+};
+
+export const downloadDocumentHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const companyId = req.user!.companyId;
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const { absolutePath, fileName, mimeType } = await getDocumentFile(id, companyId);
+    res.setHeader("Content-Type", mimeType);
+    res.setHeader("Content-Disposition", `inline; filename="${encodeURIComponent(fileName)}"`);
+    res.sendFile(absolutePath);
+  } catch (error) {
+    const is404 = error instanceof Error && (error.message === notFoundMessage || error.message === "This document has no uploaded file" || error.message === "The uploaded file is missing from storage");
+    res.status(is404 ? 404 : 500).json({ success: false, message: error instanceof Error ? error.message : "Failed to load the file" });
   }
 };
 

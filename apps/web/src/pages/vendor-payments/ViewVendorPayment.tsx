@@ -81,6 +81,22 @@ export default function ViewVendorPayment() {
               {payment.attachmentFileName && (
                 <Row label="Attachment" value={payment.attachmentFileUrl || payment.attachmentFileName} />
               )}
+              {payment.sourceBankTransaction && (
+                <div>
+                  <p className="text-sm text-slate-500">Source Bank Transaction</p>
+                  <p className="font-semibold">
+                    {payment.sourceBankTransaction.transactionDate} — {payment.sourceBankTransaction.bankAccountLabel}
+                    {payment.sourceBankTransaction.referenceNumber && ` (Ref: ${payment.sourceBankTransaction.referenceNumber})`}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/banking/accounts/${payment.sourceBankTransaction!.companyBankAccountId}`)}
+                    className="mt-1 text-sm text-blue-600 hover:underline"
+                  >
+                    Open Bank Transaction
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 

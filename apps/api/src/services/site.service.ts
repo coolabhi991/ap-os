@@ -41,7 +41,12 @@ export interface SiteFormInput {
   gstPercent?: number;
 }
 
-export type SiteUpdateInput = Omit<SiteFormInput, "projectId">;
+export type SiteUpdateInput = Omit<SiteFormInput, "projectId"> & {
+  // Required only when tenderAboveBelowPercent is actually being changed to a different value —
+  // Tender Above/Below (%) can only be edited from Work Order Details, and every change is
+  // permanently logged (Form 58 redesign: Freeze Tender Values).
+  tenderChangeReason?: string;
+};
 
 export interface SiteListQuery {
   projectId?: string;
@@ -264,14 +269,39 @@ export async function createSite(companyId: string, input: SiteFormInput) {
   return toSiteDTO(site);
 }
 
-export async function updateSite(id: string, companyId: string, input: SiteUpdateInput) {
+export async function updateSite(id: string, companyId: string, input: SiteUpdateInput, changedById?: string) {
   const existing = await prisma.site.findFirst({ where: { id, companyId } });
   if (!existing) throw new Error("Site not found");
   if (input.name !== undefined && !input.name.trim()) throw new Error("Site name is required");
 
   const effectiveStatus = input.status !== undefined ? parseStatus(input.status) : existing.status;
 
-  const site = await prisma.site.update({
+  // Freeze Tender Values (Form 58 redesign) — this is the only place tenderAboveBelowPercent can
+  // ever be edited, and every actual change (not merely re-submitting the same value) requires a
+  // reason and is permanently logged. RA Bills already created keep whatever percent they froze
+  // in at creation time; only bills created after this change pick up the new value.
+  const newTenderPercent = input.tenderAboveBelowPercent !== undefined ? normalizeOptionalDecimal(input.tenderAboveBelowPercent) : undefined;
+  const tenderPercentChanged =
+    newTenderPercent !== undefined && Number(newTenderPercent ?? 0) !== Number(existing.tenderAboveBelowPercent ?? 0);
+  if (tenderPercentChanged) {
+    if (!input.tenderChangeReason?.trim()) throw new Error("A reason is required when changing Tender Above/Below (%)");
+    if (!changedById) throw new Error("Changed By is required when changing Tender Above/Below (%)");
+  }
+
+  const site = await prisma.$transaction(async (tx) => {
+    if (tenderPercentChanged && changedById) {
+      await tx.siteTenderPercentChangeLog.create({
+        data: {
+          companyId,
+          siteId: id,
+          previousPercent: existing.tenderAboveBelowPercent,
+          newPercent: newTenderPercent,
+          reason: input.tenderChangeReason!.trim(),
+          changedById,
+        },
+      });
+    }
+    return tx.site.update({
     where: { id },
     data: {
       ...(input.name !== undefined && { name: input.name.trim() }),
@@ -306,8 +336,28 @@ export async function updateSite(id: string, companyId: string, input: SiteUpdat
       ...(input.defectLiabilityPeriod !== undefined && { defectLiabilityPeriod: input.defectLiabilityPeriod || null }),
       ...(input.gstPercent !== undefined && { gstPercent: normalizeOptionalDecimal(input.gstPercent) }),
     },
+    });
   });
   return toSiteDTO(site);
+}
+
+/** Tender Above/Below (%) change history for a Site's Work Order — the permanent audit trail Freeze Tender Values requires. */
+export async function getTenderPercentChangeLog(siteId: string, companyId: string) {
+  await getSiteById(siteId, companyId);
+  const rows = await prisma.siteTenderPercentChangeLog.findMany({
+    where: { siteId, companyId },
+    orderBy: { changedAt: "desc" },
+    include: { changedBy: { select: { id: true, name: true } } },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    previousPercent: r.previousPercent ? r.previousPercent.toString() : "",
+    newPercent: r.newPercent ? r.newPercent.toString() : "",
+    reason: r.reason,
+    changedById: r.changedById,
+    changedByName: r.changedBy?.name ?? "",
+    changedAt: r.changedAt.toISOString(),
+  }));
 }
 
 export async function deleteSite(id: string, companyId: string) {

@@ -1,6 +1,7 @@
 import prisma from "../config/prisma.js";
 import { Prisma, LiabilityType } from "@prisma/client";
-import { LIABILITY_TYPES } from "./liability.service.js";
+import { LIABILITY_TYPES, deriveLiabilityStatus } from "./liability.service.js";
+import { sourceBankTransactionSelect, toSourceBankTransactionDTO } from "../utils/bank-traceability.js";
 
 /**
  * Liability Repayment History. Deliberately NO direct "create repayment" entry point exists here
@@ -47,6 +48,7 @@ const include = {
   liability: { select: { id: true, loanName: true, liabilityType: true } },
   companyBankAccount: { select: { id: true, nickname: true, bankName: true, accountNumber: true } },
   createdBy: { select: { id: true, name: true } },
+  allocation: { select: { bankTransaction: { select: sourceBankTransactionSelect } } },
 };
 
 type RepaymentRow = Prisma.LiabilityRepaymentGetPayload<{ include: typeof include }>;
@@ -67,6 +69,7 @@ function toDTO(r: RepaymentRow) {
     remarks: r.remarks ?? "",
     createdById: r.createdById,
     createdBy: r.createdBy,
+    sourceBankTransaction: toSourceBankTransactionDTO(r.allocation),
     createdAt: r.createdAt.toISOString(),
   };
 }
@@ -113,7 +116,12 @@ export async function recordLiabilityRepayment(companyId: string, createdById: s
       },
     });
 
-    await tx.liability.update({ where: { id: input.liabilityId }, data: { outstandingAmount: newOutstanding } });
+    // Outstanding = 0 -> Status automatically becomes Closed (Business Rules) — re-derived here,
+    // never set independently, so it can never drift from the balance that determines it.
+    await tx.liability.update({
+      where: { id: input.liabilityId },
+      data: { outstandingAmount: newOutstanding, status: deriveLiabilityStatus(newOutstanding) },
+    });
 
     return { repayment: created };
   });

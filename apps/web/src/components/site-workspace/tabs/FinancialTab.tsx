@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import {
-  getSiteBudgetVsActualReport,
   getSiteSubWorkFinancialSummary,
   getSiteWallet,
   getSiteBillReceivedReport,
@@ -9,7 +8,6 @@ import {
   getSiteFinancialSummary,
 } from "../../../services/site-control-center";
 import type {
-  SiteBudgetVsActual,
   SubWorkFinancialSummary,
   SiteWallet,
   SiteBillReceivedRow,
@@ -17,8 +15,6 @@ import type {
   SiteMoneyFlowRow,
   SiteFinancialSummary,
 } from "../../../services/site-control-center";
-import { COST_HEAD_LABELS } from "../../../services/project-control-center";
-import type { CostHeadKey } from "../../../services/project-control-center";
 import type { Site } from "../../../services/sites";
 import { RB_STATUS_LABELS } from "../../../services/running-bills";
 import { VENDOR_BILL_STATUS_LABELS } from "../../../services/vendor-bills";
@@ -27,10 +23,7 @@ import LoadingState from "../../ui/LoadingState";
 import { formatCurrency as inr } from "../../../lib/utils";
 import EmptyTableRow from "../../ui/EmptyTableRow";
 
-const HEAD_KEYS: CostHeadKey[] = ["material", "labour", "machinery", "fuel", "vendorBills", "siteExpenses", "other"];
-
 export default function FinancialTab({ site }: { site: Site }) {
-  const [summary, setSummary] = useState<SiteBudgetVsActual | null>(null);
   const [subWorkFinancial, setSubWorkFinancial] = useState<SubWorkFinancialSummary | null>(null);
   const [wallet, setWallet] = useState<SiteWallet | null>(null);
   const [billReceived, setBillReceived] = useState<SiteBillReceivedRow[]>([]);
@@ -43,7 +36,6 @@ export default function FinancialTab({ site }: { site: Site }) {
   useEffect(() => {
     setLoading(true);
     Promise.all([
-      getSiteBudgetVsActualReport(site.id),
       getSiteSubWorkFinancialSummary(site.id),
       getSiteWallet(site.id),
       getSiteBillReceivedReport(site.id),
@@ -51,8 +43,7 @@ export default function FinancialTab({ site }: { site: Site }) {
       getSiteMoneyFlow(site.id),
       getSiteFinancialSummary(site.id),
     ])
-      .then(([s, swf, w, br, vb, mf, fs]) => {
-        setSummary(s);
+      .then(([swf, w, br, vb, mf, fs]) => {
         setSubWorkFinancial(swf);
         setWallet(w);
         setBillReceived(br);
@@ -65,7 +56,7 @@ export default function FinancialTab({ site }: { site: Site }) {
   }, [site.id]);
 
   if (loading) return <LoadingState />;
-  if (error || !summary) return <div className="rounded-xl border border-red-200 bg-red-50 px-6 py-5 text-red-700">{error}</div>;
+  if (error) return <div className="rounded-xl border border-red-200 bg-red-50 px-6 py-5 text-red-700">{error}</div>;
 
   return (
     <div className="space-y-6">
@@ -123,25 +114,6 @@ export default function FinancialTab({ site }: { site: Site }) {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs text-slate-500">Budget</p>
-          <p className="mt-1 text-lg font-bold">{inr(summary.budget)}</p>
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs text-slate-500">Actual</p>
-          <p className="mt-1 text-lg font-bold">{inr(summary.actual)}</p>
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs text-slate-500">Difference</p>
-          <p className={`mt-1 text-lg font-bold ${Number(summary.difference) < 0 ? "text-red-600" : "text-emerald-600"}`}>{inr(summary.difference)}</p>
-        </div>
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs text-slate-500">Variance Status</p>
-          <p className="mt-1 text-lg font-bold capitalize">{summary.varianceStatus}</p>
-        </div>
-      </div>
-
       {wallet && (
         <div className="space-y-3">
           <h2 className="text-lg font-bold text-slate-900">Site Wallet</h2>
@@ -162,30 +134,6 @@ export default function FinancialTab({ site }: { site: Site }) {
           </div>
         </div>
       )}
-
-      <div className="space-y-3">
-        <h2 className="text-lg font-bold text-slate-900">Budget vs Actual by Cost Head</h2>
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-100">
-              <tr>
-                <th className="px-4 py-3 text-left">Cost Head</th>
-                <th className="px-4 py-3 text-right">Budget</th>
-                <th className="px-4 py-3 text-right">Actual</th>
-              </tr>
-            </thead>
-            <tbody>
-              {HEAD_KEYS.map((key) => (
-                <tr key={key} className="border-t">
-                  <td className="px-4 py-3">{COST_HEAD_LABELS[key]}</td>
-                  <td className="px-4 py-3 text-right">{inr(summary.budgetHeads[key])}</td>
-                  <td className="px-4 py-3 text-right">{inr(summary.costHeads[key])}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
 
       <div className="space-y-3">
         <h2 className="text-lg font-bold text-slate-900">Sub Work Financial Summary</h2>

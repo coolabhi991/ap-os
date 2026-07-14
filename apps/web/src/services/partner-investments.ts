@@ -15,7 +15,18 @@ export interface PartnerInvestment {
   remarks: string;
   createdById: string;
   createdBy: { id: string; name: string } | null;
+  sourceBankTransaction: SourceBankTransaction | null;
   createdAt: string;
+}
+
+/** Where this investment's money actually moved, if it was created by allocating a Bank Transaction (Banking Integration traceability) — null when entered directly. */
+export interface SourceBankTransaction {
+  id: string;
+  transactionDate: string;
+  referenceNumber: string;
+  amount: string;
+  companyBankAccountId: string;
+  bankAccountLabel: string;
 }
 
 export interface PartnerInvestmentFormData {

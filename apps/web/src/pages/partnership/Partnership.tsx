@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Plus, Trash2 } from "lucide-react";
 
 import Layout from "../../components/layout/Layout";
@@ -58,7 +59,10 @@ type TabKey = (typeof TABS)[number]["key"];
 const emptyPartnerForm: PartnerFormData = { name: "", partnerType: "PARTNER", phone: "", email: "", address: "", panNumber: "", sharePercent: 0, isActive: true };
 
 export default function Partnership() {
-  const [tab, setTab] = useState<TabKey>("partners");
+  const [searchParams] = useSearchParams();
+  const tabParam = searchParams.get("tab");
+  const initialTab = (TABS.find((t) => t.key === tabParam)?.key ?? "partners") as TabKey;
+  const [tab, setTab] = useState<TabKey>(initialTab);
   const [partners, setPartners] = useState<Partner[]>([]);
   const [bankAccounts, setBankAccounts] = useState<CompanyBankAccount[]>([]);
 
@@ -255,6 +259,7 @@ function PartnersTab({ partners, reload }: { partners: Partner[]; reload: () => 
 }
 
 function InvestmentsTab({ partners, bankAccounts }: { partners: Partner[]; bankAccounts: CompanyBankAccount[] }) {
+  const navigate = useNavigate();
   const [investments, setInvestments] = useState<PartnerInvestment[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -370,12 +375,13 @@ function InvestmentsTab({ partners, bankAccounts }: { partners: Partner[]; bankA
                 <th className="px-4 py-3 text-left">Date</th>
                 <th className="px-4 py-3 text-left">Mode</th>
                 <th className="px-4 py-3 text-right">Amount</th>
+                <th className="px-4 py-3 text-left">Source</th>
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
               {investments.length === 0 ? (
-                <EmptyTableRow colSpan={6}>No investments recorded yet.</EmptyTableRow>
+                <EmptyTableRow colSpan={7}>No investments recorded yet.</EmptyTableRow>
               ) : (
                 investments.map((i) => (
                   <tr key={i.id} className="border-t">
@@ -384,6 +390,19 @@ function InvestmentsTab({ partners, bankAccounts }: { partners: Partner[]; bankA
                     <td className="px-4 py-3">{i.investmentDate}</td>
                     <td className="px-4 py-3">{INVESTMENT_MODE_LABELS[i.mode] ?? i.mode}</td>
                     <td className="px-4 py-3 text-right font-medium">{inr(i.amount)}</td>
+                    <td className="px-4 py-3">
+                      {i.sourceBankTransaction ? (
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/banking/accounts/${i.sourceBankTransaction!.companyBankAccountId}`)}
+                          className="text-blue-600 hover:underline"
+                        >
+                          Open Bank Transaction
+                        </button>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-right">
                       <button onClick={() => handleDelete(i.id)} aria-label="Delete" className="rounded p-1.5 text-red-600 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button>
                     </td>
@@ -399,6 +418,7 @@ function InvestmentsTab({ partners, bankAccounts }: { partners: Partner[]; bankA
 }
 
 function SettlementsTab({ partners, bankAccounts }: { partners: Partner[]; bankAccounts: CompanyBankAccount[] }) {
+  const navigate = useNavigate();
   const [settlements, setSettlements] = useState<PartnerSettlement[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -516,12 +536,13 @@ function SettlementsTab({ partners, bankAccounts }: { partners: Partner[]; bankA
                 <th className="px-4 py-3 text-left">Type</th>
                 <th className="px-4 py-3 text-left">Date</th>
                 <th className="px-4 py-3 text-right">Amount</th>
+                <th className="px-4 py-3 text-left">Source</th>
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
               {settlements.length === 0 ? (
-                <EmptyTableRow colSpan={6}>No settlements recorded yet.</EmptyTableRow>
+                <EmptyTableRow colSpan={7}>No settlements recorded yet.</EmptyTableRow>
               ) : (
                 settlements.map((s) => (
                   <tr key={s.id} className="border-t">
@@ -530,6 +551,19 @@ function SettlementsTab({ partners, bankAccounts }: { partners: Partner[]; bankA
                     <td className="px-4 py-3">{SETTLEMENT_TYPE_LABELS[s.settlementType] ?? s.settlementType}</td>
                     <td className="px-4 py-3">{s.settlementDate}</td>
                     <td className="px-4 py-3 text-right font-medium">{inr(s.amount)}</td>
+                    <td className="px-4 py-3">
+                      {s.sourceBankTransaction ? (
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/banking/accounts/${s.sourceBankTransaction!.companyBankAccountId}`)}
+                          className="text-blue-600 hover:underline"
+                        >
+                          Open Bank Transaction
+                        </button>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-right">
                       <button onClick={() => handleDelete(s.id)} aria-label="Delete" className="rounded p-1.5 text-red-600 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button>
                     </td>

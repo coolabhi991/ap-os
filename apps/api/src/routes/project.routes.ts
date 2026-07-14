@@ -5,12 +5,14 @@ import {
   createProjectHandler,
   updateProjectHandler,
   deleteProjectHandler,
+  getProjectExecutiveDashboardHandler,
 } from "../controllers/project.controller.js";
 import { authMiddleware } from "../middleware/auth.middleware.js";
 
 const router = Router();
 
 router.get("/", authMiddleware, getProjects);
+router.get("/dashboard", authMiddleware, getProjectExecutiveDashboardHandler);
 router.get("/:id", authMiddleware, getProject);
 router.post("/", authMiddleware, createProjectHandler);
 router.put("/:id", authMiddleware, updateProjectHandler);

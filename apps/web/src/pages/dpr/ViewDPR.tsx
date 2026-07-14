@@ -1,15 +1,14 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { Download, FileSpreadsheet, Printer, Mail, Plus, Trash2 } from "lucide-react";
+import { Download, FileSpreadsheet, Printer, Mail } from "lucide-react";
 
 import Layout from "../../components/layout/Layout";
 import EmailDPRModal from "../../components/dpr/EmailDPRModal";
+import DocumentUploadPanel from "../../components/documents/DocumentUploadPanel";
 import { getDPR, exportDPRPdf, exportDPRExcel, SHIFT_LABELS, VISITOR_TYPE_LABELS, SITE_PROBLEM_TYPE_LABELS } from "../../services/dpr";
 import type { DPRDetail } from "../../services/dpr";
-import { getDocumentsByDPR, createDocument, deleteDocument, DPR_ATTACHMENT_TYPE_OPTIONS, DOCUMENT_TYPE_LABELS } from "../../services/documents";
-import type { ProjectDocument } from "../../services/documents";
+import { getDocumentsByDPR, DPR_ATTACHMENT_TYPE_OPTIONS } from "../../services/documents";
 import { formatCurrency as inr } from "../../lib/utils";
-import EmptyTableRow from "../../components/ui/EmptyTableRow";
 
 
 function Field({ label, value }: { label: string; value: string }) {
@@ -31,15 +30,6 @@ export default function ViewDPR() {
   const [exportingExcel, setExportingExcel] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
 
-  const [documents, setDocuments] = useState<ProjectDocument[]>([]);
-  const [showUpload, setShowUpload] = useState(false);
-  const [uploadType, setUploadType] = useState("PROGRESS_PHOTO");
-  const [uploadFileName, setUploadFileName] = useState("");
-  const [uploadFileUrl, setUploadFileUrl] = useState("");
-  const [uploadNotes, setUploadNotes] = useState("");
-  const [uploadError, setUploadError] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
-
   const load = () => {
     if (!id) return;
     setLoading(true);
@@ -47,7 +37,6 @@ export default function ViewDPR() {
       .then(setDpr)
       .catch(() => setError("DPR not found."))
       .finally(() => setLoading(false));
-    getDocumentsByDPR(id).then(setDocuments).catch(() => {});
   };
 
   useEffect(load, [id]);
@@ -84,34 +73,6 @@ export default function ViewDPR() {
     } finally {
       setExportingExcel(false);
     }
-  };
-
-  const handleUpload = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!uploadFileName.trim() && !uploadFileUrl.trim()) {
-      setUploadError("Either a file name or file URL is required.");
-      return;
-    }
-    setUploading(true);
-    setUploadError(null);
-    try {
-      await createDocument({ projectId: dpr.projectId, dprId: dpr.id, documentType: uploadType, fileName: uploadFileName, fileUrl: uploadFileUrl, notes: uploadNotes });
-      setUploadFileName("");
-      setUploadFileUrl("");
-      setUploadNotes("");
-      setShowUpload(false);
-      if (id) getDocumentsByDPR(id).then(setDocuments).catch(() => {});
-    } catch (err) {
-      setUploadError(err instanceof Error ? err.message : "Failed to add attachment.");
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const handleDeleteDocument = async (docId: string) => {
-    if (!window.confirm("Remove this attachment?")) return;
-    await deleteDocument(docId);
-    if (id) getDocumentsByDPR(id).then(setDocuments).catch(() => {});
   };
 
   return (
@@ -269,72 +230,13 @@ export default function ViewDPR() {
           </div>
         </div>
 
-        {/* Photos & Attachments */}
-        <div className="space-y-4 print:hidden">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-bold text-slate-900">Photos & Attachments</h2>
-            <button onClick={() => setShowUpload((v) => !v)} className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700">
-              <Plus className="h-4 w-4" /> Add
-            </button>
-          </div>
-
-          {showUpload && (
-            <form onSubmit={handleUpload} className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-              {uploadError && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{uploadError}</div>}
-              <div className="grid gap-4 md:grid-cols-2">
-                <div>
-                  <label className="mb-1 block text-sm font-medium">Type</label>
-                  <select value={uploadType} onChange={(e) => setUploadType(e.target.value)} className="w-full rounded-lg border p-2.5">
-                    {DPR_ATTACHMENT_TYPE_OPTIONS.map((t) => <option key={t} value={t}>{DOCUMENT_TYPE_LABELS[t]}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="mb-1 block text-sm font-medium">File Name</label>
-                  <input value={uploadFileName} onChange={(e) => setUploadFileName(e.target.value)} placeholder="e.g. site-photo-1.jpg" className="w-full rounded-lg border p-2.5" />
-                </div>
-                <div className="md:col-span-2">
-                  <label className="mb-1 block text-sm font-medium">File URL</label>
-                  <input value={uploadFileUrl} onChange={(e) => setUploadFileUrl(e.target.value)} placeholder="Uploaded file URL (once storage is wired up)" className="w-full rounded-lg border p-2.5" />
-                </div>
-                <div className="md:col-span-2">
-                  <label className="mb-1 block text-sm font-medium">Notes</label>
-                  <textarea rows={2} value={uploadNotes} onChange={(e) => setUploadNotes(e.target.value)} className="w-full rounded-lg border p-2.5" />
-                </div>
-              </div>
-              <div className="flex justify-end gap-3">
-                <button type="button" onClick={() => setShowUpload(false)} className="rounded-lg border px-5 py-2.5">Cancel</button>
-                <button type="submit" disabled={uploading} className="rounded-lg bg-blue-600 px-5 py-2.5 text-white hover:bg-blue-700 disabled:opacity-60">
-                  {uploading ? "Saving..." : "Save"}
-                </button>
-              </div>
-            </form>
-          )}
-
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-            <table className="min-w-full">
-              <thead className="bg-slate-100">
-                <tr><th className="px-4 py-3 text-left">Type</th><th className="px-4 py-3 text-left">File</th><th className="px-4 py-3 text-left">Notes</th><th className="px-4 py-3 text-right">Actions</th></tr>
-              </thead>
-              <tbody>
-                {documents.length === 0 ? (
-                  <EmptyTableRow colSpan={4}>No attachments yet.</EmptyTableRow>
-                ) : (
-                  documents.map((d) => (
-                    <tr key={d.id} className="border-t">
-                      <td className="px-4 py-3">{DOCUMENT_TYPE_LABELS[d.documentType] ?? d.documentType}</td>
-                      <td className="px-4 py-3">
-                        {d.fileUrl ? <a href={d.fileUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">{d.fileName || d.fileUrl}</a> : d.fileName || "—"}
-                      </td>
-                      <td className="px-4 py-3 text-slate-500">{d.notes || "—"}</td>
-                      <td className="px-4 py-3 text-right">
-                        <button onClick={() => handleDeleteDocument(d.id)} className="rounded p-1.5 text-red-600 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+        <div className="print:hidden">
+          <DocumentUploadPanel
+            title="Photos & Attachments"
+            documentTypeOptions={DPR_ATTACHMENT_TYPE_OPTIONS}
+            fetchDocuments={() => getDocumentsByDPR(dpr.id)}
+            createParams={{ projectId: dpr.projectId, dprId: dpr.id }}
+          />
         </div>
       </div>
 

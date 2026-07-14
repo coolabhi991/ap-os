@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { Plus, Trash2, Printer } from "lucide-react";
 
 import Layout from "../../components/layout/Layout";
@@ -55,6 +56,7 @@ import type {
 const TABS = [
   { key: "dashboard", label: "Dashboard" },
   { key: "liabilities", label: "Liabilities" },
+  { key: "credit-cards", label: "Credit Cards" },
   { key: "repayment-history", label: "Repayment History" },
   { key: "interest-history", label: "Interest History" },
   { key: "reports", label: "Reports" },
@@ -86,7 +88,10 @@ const emptyForm: LiabilityFormData = {
 };
 
 export default function Finance() {
-  const [tab, setTab] = useState<TabKey>("dashboard");
+  const [searchParams] = useSearchParams();
+  const tabParam = searchParams.get("tab");
+  const initialTab = (TABS.find((t) => t.key === tabParam)?.key ?? "dashboard") as TabKey;
+  const [tab, setTab] = useState<TabKey>(initialTab);
 
   return (
     <Layout>
@@ -110,6 +115,7 @@ export default function Finance() {
 
         {tab === "dashboard" && <DashboardTab />}
         {tab === "liabilities" && <LiabilitiesTab />}
+        {tab === "credit-cards" && <CreditCardsTab />}
         {tab === "repayment-history" && <RepaymentHistoryTab />}
         {tab === "interest-history" && <InterestHistoryTab />}
         {tab === "reports" && <ReportsTab />}
@@ -344,12 +350,6 @@ function LiabilitiesTab() {
               </select>
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium">Status</label>
-              <select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value })} className="w-full rounded-lg border p-2.5">
-                {LIABILITY_STATUSES.map((s) => <option key={s} value={s}>{LIABILITY_STATUS_LABELS[s]}</option>)}
-              </select>
-            </div>
-            <div>
               <label className="mb-1 block text-sm font-medium">Lender Name</label>
               <input value={form.lenderName} onChange={(e) => setForm({ ...form, lenderName: e.target.value })} className="w-full rounded-lg border p-2.5" />
             </div>
@@ -494,7 +494,219 @@ function LiabilitiesTab() {
   );
 }
 
+const emptyCreditCardForm: LiabilityFormData = {
+  loanName: "",
+  liabilityType: "CREDIT_CARD",
+  bankName: "",
+  accountNumber: "",
+  sanctionAmount: 0,
+  outstandingAmount: 0,
+  emiDate: undefined,
+  statementDate: undefined,
+  minimumDue: 0,
+  startDate: todayISO(),
+  notes: "",
+};
+
+/**
+ * Credit Cards — a dedicated section under Finance, but not a separate data model: every Credit
+ * Card is a Liability with liabilityType = CREDIT_CARD (schema already shapes Liability's
+ * statementDate/minimumDue fields specifically for this — see schema.prisma). This tab is a
+ * purpose-built, compact create/edit form + list (Card Name, Bank, Masked Card Number, Credit
+ * Limit, Billing Date, Due Date, Current Outstanding, Available Limit, Status) instead of the
+ * full generic Liability form, which carries loan-only fields (Interest Rate, EMI, Security) that
+ * don't apply to a card. Paying a Credit Card bill is deliberately NOT done here — exactly like
+ * Liability repayments, it only ever happens through Banking's Transaction Allocation
+ * ("Credit Card Bill Payment" allocation type), so Outstanding is never a second, independently
+ * editable figure.
+ */
+function CreditCardsTab() {
+  const [cards, setCards] = useState<Liability[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState<LiabilityFormData>(emptyCreditCardForm);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = () => {
+    setLoading(true);
+    getLiabilities({ liabilityType: "CREDIT_CARD" })
+      .then((r) => setCards(r.data))
+      .finally(() => setLoading(false));
+  };
+  useEffect(load, []);
+
+  const startAdd = () => { setEditingId(null); setForm(emptyCreditCardForm); setError(null); setShowForm(true); };
+  const startEdit = (c: Liability) => {
+    setEditingId(c.id);
+    setForm({
+      loanName: c.loanName,
+      liabilityType: "CREDIT_CARD",
+      bankName: c.bankName,
+      accountNumber: c.accountNumber,
+      sanctionAmount: Number(c.sanctionAmount),
+      outstandingAmount: Number(c.outstandingAmount),
+      emiDate: c.emiDate ?? undefined,
+      statementDate: c.statementDate ?? undefined,
+      minimumDue: Number(c.minimumDue),
+      startDate: c.startDate,
+      notes: c.notes,
+    });
+    setError(null);
+    setShowForm(true);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.loanName.trim()) return setError("Card name is required.");
+    if (!form.sanctionAmount || form.sanctionAmount <= 0) return setError("Credit Limit must be greater than zero.");
+    setSaving(true);
+    setError(null);
+    try {
+      if (editingId) await updateLiability(editingId, form);
+      else await createLiability(form);
+      setShowForm(false);
+      load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save Credit Card.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (id: string) => {
+    if (!window.confirm("Delete this Credit Card?")) return;
+    try {
+      await deleteLiability(id);
+      load();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete Credit Card.");
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-sm text-slate-500">
+          Credit Card bill payments are recorded from Banking &gt; Transaction Allocation (Credit Card Bill Payment) — never here directly.
+        </p>
+        <button onClick={startAdd} className="flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-3 text-white hover:bg-blue-700">
+          <Plus size={18} />
+          Add Credit Card
+        </button>
+      </div>
+
+      {showForm && (
+        <form onSubmit={handleSubmit} className="space-y-4 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          {error && <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>}
+          <div className="grid gap-4 md:grid-cols-3">
+            <div>
+              <label className="mb-1 block text-sm font-medium">Card Name *</label>
+              <input value={form.loanName} onChange={(e) => setForm({ ...form, loanName: e.target.value })} required className="w-full rounded-lg border p-2.5" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Bank</label>
+              <input value={form.bankName} onChange={(e) => setForm({ ...form, bankName: e.target.value })} className="w-full rounded-lg border p-2.5" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Masked Card Number</label>
+              <input value={form.accountNumber} onChange={(e) => setForm({ ...form, accountNumber: e.target.value })} placeholder="Last 4 digits, e.g. 4321" className="w-full rounded-lg border p-2.5" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Credit Limit *</label>
+              <input type="number" min={0} step="0.01" value={form.sanctionAmount} onChange={(e) => setForm({ ...form, sanctionAmount: Number(e.target.value) || 0 })} required className="w-full rounded-lg border p-2.5" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Current Outstanding</label>
+              <input type="number" min={0} step="0.01" value={form.outstandingAmount} onChange={(e) => setForm({ ...form, outstandingAmount: Number(e.target.value) || 0 })} disabled={!!editingId} className="w-full rounded-lg border p-2.5 disabled:bg-slate-100" />
+              {editingId && <p className="mt-1 text-xs text-slate-400">Only changes via Site Expenses (Credit Card mode) and Credit Card Bill Payment once set.</p>}
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Minimum Due</label>
+              <input type="number" min={0} step="0.01" value={form.minimumDue} onChange={(e) => setForm({ ...form, minimumDue: Number(e.target.value) || 0 })} className="w-full rounded-lg border p-2.5" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Billing Date (day of month)</label>
+              <input type="number" min={1} max={31} value={form.statementDate ?? ""} onChange={(e) => setForm({ ...form, statementDate: e.target.value ? Number(e.target.value) : undefined })} className="w-full rounded-lg border p-2.5" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Due Date (day of month)</label>
+              <input type="number" min={1} max={31} value={form.emiDate ?? ""} onChange={(e) => setForm({ ...form, emiDate: e.target.value ? Number(e.target.value) : undefined })} className="w-full rounded-lg border p-2.5" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Card Since</label>
+              <input type="date" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} required className="w-full rounded-lg border p-2.5" />
+            </div>
+            <div className="md:col-span-3">
+              <label className="mb-1 block text-sm font-medium">Notes</label>
+              <input value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} className="w-full rounded-lg border p-2.5" />
+            </div>
+          </div>
+          <div className="flex justify-end gap-3">
+            <button type="button" onClick={() => setShowForm(false)} className="rounded-lg border px-5 py-2.5">Cancel</button>
+            <button type="submit" disabled={saving} className="rounded-lg bg-blue-600 px-5 py-2.5 text-white hover:bg-blue-700 disabled:opacity-60">
+              {saving ? "Saving..." : "Save"}
+            </button>
+          </div>
+        </form>
+      )}
+
+      {loading ? (
+        <LoadingState />
+      ) : (
+        <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+          <table className="min-w-full text-sm">
+            <thead className="bg-slate-100">
+              <tr>
+                <th className="px-4 py-3 text-left">Card Name</th>
+                <th className="px-4 py-3 text-left">Bank</th>
+                <th className="px-4 py-3 text-left">Masked Number</th>
+                <th className="px-4 py-3 text-right">Credit Limit</th>
+                <th className="px-4 py-3 text-right">Outstanding</th>
+                <th className="px-4 py-3 text-right">Available Limit</th>
+                <th className="px-4 py-3 text-right">Billing Day</th>
+                <th className="px-4 py-3 text-right">Due Day</th>
+                <th className="px-4 py-3 text-left">Status</th>
+                <th className="px-4 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cards.length === 0 ? (
+                <EmptyTableRow colSpan={10}>No Credit Cards recorded yet.</EmptyTableRow>
+              ) : (
+                cards.map((c) => (
+                  <tr key={c.id} className="border-t">
+                    <td className="px-4 py-3 font-medium">{c.loanName}</td>
+                    <td className="px-4 py-3">{c.bankName || "—"}</td>
+                    <td className="px-4 py-3">{c.accountNumber ? `••••${c.accountNumber.slice(-4)}` : "—"}</td>
+                    <td className="px-4 py-3 text-right">{inr(c.sanctionAmount)}</td>
+                    <td className="px-4 py-3 text-right font-medium">{inr(c.outstandingAmount)}</td>
+                    <td className="px-4 py-3 text-right">{inr(c.availableLimit)}</td>
+                    <td className="px-4 py-3 text-right">{c.statementDate ?? "—"}</td>
+                    <td className="px-4 py-3 text-right">{c.emiDate ?? "—"}</td>
+                    <td className="px-4 py-3">
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${LIABILITY_STATUS_COLORS[c.status]}`}>{LIABILITY_STATUS_LABELS[c.status]}</span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-3">
+                        <button onClick={() => startEdit(c)} className="text-sm text-blue-600 hover:underline">Edit</button>
+                        <button onClick={() => handleDelete(c.id)} aria-label="Delete" className="rounded p-1 text-red-600 hover:bg-red-50"><Trash2 className="h-4 w-4" /></button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function RepaymentHistoryTab() {
+  const navigate = useNavigate();
   const [repayments, setRepayments] = useState<LiabilityRepayment[]>([]);
   const [loading, setLoading] = useState(true);
   const [fromDate, setFromDate] = useState("");
@@ -535,11 +747,12 @@ function RepaymentHistoryTab() {
                 <th className="px-4 py-3 text-right">Total Paid</th>
                 <th className="px-4 py-3 text-left">Paid From</th>
                 <th className="px-4 py-3 text-left">Remarks</th>
+                <th className="px-4 py-3 text-left">Source</th>
               </tr>
             </thead>
             <tbody>
               {repayments.length === 0 ? (
-                <EmptyTableRow colSpan={8}>No repayments recorded yet.</EmptyTableRow>
+                <EmptyTableRow colSpan={9}>No repayments recorded yet.</EmptyTableRow>
               ) : (
                 repayments.map((r) => (
                   <tr key={r.id} className="border-t">
@@ -551,6 +764,19 @@ function RepaymentHistoryTab() {
                     <td className="px-4 py-3 text-right font-medium">{inr(r.totalPaid)}</td>
                     <td className="px-4 py-3 text-slate-500">{r.companyBankAccount?.nickname || r.companyBankAccount?.bankName || "—"}</td>
                     <td className="px-4 py-3 text-slate-500">{r.remarks || "—"}</td>
+                    <td className="px-4 py-3">
+                      {r.sourceBankTransaction ? (
+                        <button
+                          type="button"
+                          onClick={() => navigate(`/banking/accounts/${r.sourceBankTransaction!.companyBankAccountId}`)}
+                          className="text-blue-600 hover:underline"
+                        >
+                          Open Bank Transaction
+                        </button>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
                   </tr>
                 ))
               )}

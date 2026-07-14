@@ -122,19 +122,40 @@ function toDTO(t: BankTransactionRow) {
 export async function listBankAccountsWithBalances(companyId: string) {
   const accounts = await prisma.companyBankAccount.findMany({ where: { companyId }, orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }] });
 
-  const sums = await prisma.bankTransaction.groupBy({
-    by: ["companyBankAccountId"],
-    where: { companyId, isActive: true },
-    _sum: { deposit: true, withdrawal: true },
-    _count: { _all: true },
-  });
+  // Expenses already linked to a TransactionAllocation had their money movement counted via the
+  // BankTransaction withdrawal that produced them — excluded here to avoid double-subtracting the
+  // same payment. Queried as a plain expenseId list (not a relational `allocation: null` filter)
+  // because combining that filter with `_sum: { amount }` on Expense.groupBy produces an ambiguous
+  // SQL column: TransactionAllocation also has its own `amount` column.
+  const allocatedExpenseIds = (
+    await prisma.transactionAllocation.findMany({ where: { companyId, expenseId: { not: null } }, select: { expenseId: true } })
+  ).map((a) => a.expenseId as string);
+
+  const [sums, directExpenseSums] = await Promise.all([
+    prisma.bankTransaction.groupBy({
+      by: ["companyBankAccountId"],
+      where: { companyId, isActive: true },
+      _sum: { deposit: true, withdrawal: true },
+      _count: { _all: true },
+    }),
+    // Expense Payment Source Workflow — a directly-entered Cash/Bank Expense (Source Account
+    // Workflow milestone) reduces its Source Account's balance immediately, the same as a real
+    // bank withdrawal.
+    prisma.expense.groupBy({
+      by: ["companyBankAccountId"],
+      where: { companyId, isDeleted: false, companyBankAccountId: { not: null }, id: { notIn: allocatedExpenseIds } },
+      _sum: { amount: true },
+    }),
+  ]);
   const sumsByAccount = new Map(sums.map((s) => [s.companyBankAccountId, s]));
+  const directExpensesByAccount = new Map(directExpenseSums.map((s) => [s.companyBankAccountId as string, Number(s._sum.amount ?? 0)]));
 
   return accounts.map((a) => {
     const s = sumsByAccount.get(a.id);
     const totalDeposits = Number(s?._sum.deposit ?? 0);
     const totalWithdrawals = Number(s?._sum.withdrawal ?? 0);
-    const currentBalance = Number(a.openingBalance) + totalDeposits - totalWithdrawals;
+    const directExpenses = directExpensesByAccount.get(a.id) ?? 0;
+    const currentBalance = Number(a.openingBalance) + totalDeposits - totalWithdrawals - directExpenses;
     return {
       id: a.id,
       nickname: a.nickname ?? "",

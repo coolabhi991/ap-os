@@ -1,5 +1,6 @@
 import prisma from "../config/prisma.js";
 import { Prisma, SettlementType } from "@prisma/client";
+import { sourceBankTransactionSelect, toSourceBankTransactionDTO } from "../utils/bank-traceability.js";
 
 /**
  * Settlement — money paid OUT to a Partner (a profit distribution or a return of capital). The
@@ -59,6 +60,7 @@ const include = {
   partner: { select: { id: true, name: true, partnerType: true } },
   companyBankAccount: { select: { id: true, nickname: true, bankName: true, accountNumber: true } },
   createdBy: { select: { id: true, name: true } },
+  allocation: { select: { bankTransaction: { select: sourceBankTransactionSelect } } },
 };
 
 type SettlementRow = Prisma.PartnerSettlementGetPayload<{ include: typeof include }>;
@@ -80,6 +82,7 @@ function toDTO(s: SettlementRow) {
     remarks: s.remarks ?? "",
     createdById: s.createdById,
     createdBy: s.createdBy,
+    sourceBankTransaction: toSourceBankTransactionDTO(s.allocation),
     createdAt: s.createdAt.toISOString(),
   };
 }

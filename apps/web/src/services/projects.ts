@@ -101,3 +101,40 @@ export async function updateProject(id: string, data: ProjectFormData): Promise<
 export async function deleteProject(id: string): Promise<void> {
   await api.delete(`/projects/${id}`);
 }
+
+export interface ProjectDashboardSite {
+  id: string;
+  projectId: string;
+  name: string;
+  taluka: string;
+  siteType: string;
+  tenderCost: string;
+  workOrderDate: string;
+  completionDate: string;
+  extensionTillDate: string;
+  clientPaymentsReceived: string;
+  outstandingAmount: string;
+  physicalProgress: number;
+  financialProgress: number;
+  status: string;
+}
+
+export interface ProjectDashboardRow {
+  id: string;
+  name: string;
+  code: string;
+  client: { id: string; name: string } | null;
+  status: string;
+  totalSites: number;
+  totalProjectCost: string;
+  totalClientPaymentsReceived: string;
+  totalOutstanding: string;
+  sites: ProjectDashboardSite[];
+}
+
+/** Project Executive Dashboard — every Project's roll-up plus its full Site table, computed
+ * entirely on demand from Site Work Orders / RA Bills / Client Payments (never stored). */
+export async function getProjectExecutiveDashboard(): Promise<ProjectDashboardRow[]> {
+  const response = await api.get<{ success: boolean; data: ProjectDashboardRow[] }>("/projects/dashboard");
+  return response.data.data;
+}

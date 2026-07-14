@@ -4,6 +4,8 @@ export interface RunningBillItem {
   id: string;
   sortOrder: number;
   siteBillItemId: string;
+  subWorkId: string;
+  subWorkName: string;
   boqItemNo: string;
   boqDescription: string;
   unit: string;
@@ -15,6 +17,7 @@ export interface RunningBillItem {
   effectiveRate: string;
   previousAmount: string;
   currentAmount: string;
+  nowToPayAmount: string;
   totalAmount: string;
   remarks: string;
 }
@@ -49,12 +52,23 @@ export interface RunningBill {
   billNumber: string;
   billType: string;
   site: string;
-  billPeriodFrom: string;
-  billPeriodTo: string;
   billDate: string;
+  billSubmittedDate: string;
   previousCertifiedAmount: string;
   currentCertifiedAmount: string;
   totalCertifiedAmount: string;
+  // Form 58 calculation flow — frozen at creation, never recalculated afterward.
+  tenderAboveBelowPercent: string;
+  tenderAdjustmentAmount: string;
+  adjustedTotal: string;
+  gstPercent: string;
+  gstAmount: string;
+  gstDifferencePercent: string;
+  gstDifferenceAmount: string;
+  totalGstAmount: string;
+  grossBillAmount: string;
+  roundOff: string;
+  finalBillAmount: string;
   totalDeductions: string;
   netPayable: string;
   amountReceived: string;
@@ -76,9 +90,8 @@ export interface RunningBillFormData {
   billNumber: string;
   billType?: string;
   site?: string;
-  billPeriodFrom?: string;
-  billPeriodTo?: string;
   billDate?: string;
+  billSubmittedDate?: string;
   remarks?: string;
   deductions?: RunningBillDeductionInput[];
 }
@@ -91,6 +104,7 @@ export interface Form58ItemInput {
   rate?: number;
   subWorkId?: string;
   currentQuantity: number;
+  remarks?: string;
 }
 
 export interface Form58BillFormData {
@@ -98,11 +112,11 @@ export interface Form58BillFormData {
   billNumber?: string;
   billType?: string;
   billDate?: string;
-  billPeriodFrom?: string;
-  billPeriodTo?: string;
+  billSubmittedDate?: string;
   remarks?: string;
   items: Form58ItemInput[];
   deductions?: RunningBillDeductionInput[];
+  gstDifferencePercent?: number;
 }
 
 export interface NextRABillDraftItem {
@@ -111,8 +125,15 @@ export interface NextRABillDraftItem {
   description: string;
   unit: string;
   rate: string;
+  subWorkId: string;
+  subWorkName: string;
   previousQuantity: string;
   currentQuantity: string;
+}
+
+export interface NextRABillDraftSubWork {
+  id: string;
+  name: string;
 }
 
 export interface NextRABillDraft {
@@ -120,7 +141,15 @@ export interface NextRABillDraft {
   nextRaSequence: number;
   suggestedBillNumber: string;
   isFirstBill: boolean;
+  // Final Bill Rules — true once this Site already has a Final Bill; no further bill of any type
+  // may be created until it's cancelled.
+  isBillingCompleted: boolean;
+  // Every Sub Work for this Site (from the Recapitulation Register), including ones with no
+  // billable item yet — each always gets its own "+ Add Item" section, never an Unassigned bucket.
+  subWorks: NextRABillDraftSubWork[];
   items: NextRABillDraftItem[];
+  tenderAboveBelowPercent: string;
+  gstPercent: string;
 }
 
 export interface RunningBillListQuery {
@@ -180,7 +209,18 @@ export interface PaymentRegisterRow {
   mode: string;
   referenceNumber: string;
   remarks: string;
+  sourceBankTransaction: SourceBankTransaction | null;
   createdAt: string;
+}
+
+/** Where this payment's money actually moved, if it was created by allocating a Bank Transaction (Banking Integration traceability) — null when entered directly. */
+export interface SourceBankTransaction {
+  id: string;
+  transactionDate: string;
+  referenceNumber: string;
+  amount: string;
+  companyBankAccountId: string;
+  bankAccountLabel: string;
 }
 
 export interface RecoveryRegisterRow {
@@ -237,31 +277,34 @@ export const BILL_TYPE_LABELS: Record<string, string> = {
   ADVANCE_BILL: "Advance Bill",
 };
 
+// GST is no longer a manual deduction — it's calculated automatically as part of the Form 58 flow
+// (Adjusted Total -> GST -> Gross Bill Amount). GST_STATE/GST_CENTRAL/GST stay in the labels map
+// so historical deduction rows still display correctly, but are not offered for new deductions.
 export const DEDUCTION_TYPE_OPTIONS = [
-  "GST_STATE",
-  "GST_CENTRAL",
-  "INCOME_TAX",
   "SECURITY_DEPOSIT",
-  "ROYALTY",
-  "INSURANCE",
-  "FINE",
-  "LABOUR_CESS",
-  "MOBILIZATION_RECOVERY",
   "TDS",
+  "INCOME_TAX",
+  "ROYALTY",
+  "LABOUR_CESS",
+  "INSURANCE",
+  "MOBILIZATION_RECOVERY",
+  "MSEB",
+  "FINE",
   "OTHER",
 ];
 export const DEDUCTION_TYPE_LABELS: Record<string, string> = {
+  SECURITY_DEPOSIT: "Security Deposit",
+  TDS: "GST TDS",
+  INCOME_TAX: "Income Tax",
+  ROYALTY: "Royalty",
+  LABOUR_CESS: "Labour Cess",
+  INSURANCE: "Insurance",
+  MOBILIZATION_RECOVERY: "Mobilization Recovery",
+  MSEB: "MSEB",
+  FINE: "Fine",
+  OTHER: "Other",
   GST_STATE: "GST State",
   GST_CENTRAL: "GST Central",
-  INCOME_TAX: "Income Tax",
-  SECURITY_DEPOSIT: "Security Deposit",
-  ROYALTY: "Royalty",
-  INSURANCE: "Insurance",
-  FINE: "Fine",
-  LABOUR_CESS: "Labour Cess",
-  MOBILIZATION_RECOVERY: "Mobilization Recovery",
-  TDS: "TDS",
-  OTHER: "Other",
   GST: "GST (legacy)",
 };
 
@@ -287,7 +330,7 @@ export async function getRunningBill(id: string): Promise<RunningBill> {
   return response.data.data;
 }
 
-export async function updateRunningBill(id: string, data: Partial<RunningBillFormData> & { items?: Form58ItemInput[] }): Promise<RunningBill> {
+export async function updateRunningBill(id: string, data: Partial<RunningBillFormData> & { items?: Form58ItemInput[]; gstDifferencePercent?: number }): Promise<RunningBill> {
   const response = await api.put<{ success: boolean; data: RunningBill }>(`/running-bills/${id}`, data);
   return response.data.data;
 }

@@ -68,6 +68,8 @@ export interface Liability {
   loanNumber: string;
   sanctionAmount: string;
   outstandingAmount: string;
+  // Sum of every LiabilityRepayment.totalPaid (principal + interest) — never manually entered.
+  totalRepaid: string;
   interestType: string;
   interestRate: string;
   emiAmount: string;

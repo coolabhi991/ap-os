@@ -6,7 +6,18 @@ import {
   createProject,
   updateProject,
   deleteProject,
+  getProjectExecutiveDashboard,
 } from "../services/project.service.js";
+
+export const getProjectExecutiveDashboardHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const companyId = req.user!.companyId;
+    const data = await getProjectExecutiveDashboard(companyId);
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error instanceof Error ? error.message : "Failed to load the Project Executive Dashboard" });
+  }
+};
 
 export const getProjects = async (req: AuthRequest, res: Response) => {
   try {

@@ -47,8 +47,7 @@ export default function RunningBillForm({ initialData, source, items, onSubmit, 
   const [billNumber, setBillNumber] = useState(initialData?.billNumber ?? "");
   const [billType, setBillType] = useState(initialData?.billType ?? "RA_BILL");
   const [site, setSite] = useState(initialData?.site ?? source.site ?? "");
-  const [billPeriodFrom, setBillPeriodFrom] = useState(initialData?.billPeriodFrom ?? "");
-  const [billPeriodTo, setBillPeriodTo] = useState(initialData?.billPeriodTo ?? "");
+  const [billSubmittedDate, setBillSubmittedDate] = useState(initialData?.billSubmittedDate ?? "");
   const [billDate, setBillDate] = useState(initialData?.billDate ?? todayISO());
   const [remarks, setRemarks] = useState(initialData?.remarks ?? "");
 
@@ -82,8 +81,7 @@ export default function RunningBillForm({ initialData, source, items, onSubmit, 
       billNumber: billNumber.trim(),
       billType,
       site: site || undefined,
-      billPeriodFrom: billPeriodFrom || undefined,
-      billPeriodTo: billPeriodTo || undefined,
+      billSubmittedDate: billSubmittedDate || undefined,
       billDate,
       remarks: remarks || undefined,
       deductions: deductions.map((d) => ({ type: d.type, label: d.label || undefined, amount: Number(d.amount) || 0, remarks: d.remarks || undefined })),
@@ -139,12 +137,8 @@ export default function RunningBillForm({ initialData, source, items, onSubmit, 
             <input type="text" value={site} onChange={(e) => setSite(e.target.value)} disabled={isLocked} className="w-full rounded-lg border p-3 disabled:bg-slate-50" />
           </div>
           <div>
-            <label className="mb-2 block font-medium">Bill Period From</label>
-            <input type="date" value={billPeriodFrom} onChange={(e) => setBillPeriodFrom(e.target.value)} disabled={isLocked} className="w-full rounded-lg border p-3 disabled:bg-slate-50" />
-          </div>
-          <div>
-            <label className="mb-2 block font-medium">Bill Period To</label>
-            <input type="date" value={billPeriodTo} onChange={(e) => setBillPeriodTo(e.target.value)} disabled={isLocked} className="w-full rounded-lg border p-3 disabled:bg-slate-50" />
+            <label className="mb-2 block font-medium">Bill Submitted Date</label>
+            <input type="date" value={billSubmittedDate} onChange={(e) => setBillSubmittedDate(e.target.value)} disabled={isLocked} className="w-full rounded-lg border p-3 disabled:bg-slate-50" />
           </div>
           <div className="md:col-span-2">
             <label className="mb-2 block font-medium">Remarks</label>

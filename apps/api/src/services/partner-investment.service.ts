@@ -1,5 +1,6 @@
 import prisma from "../config/prisma.js";
 import { Prisma } from "@prisma/client";
+import { sourceBankTransactionSelect, toSourceBankTransactionDTO } from "../utils/bank-traceability.js";
 
 /**
  * Investment Ledger — a Partner's capital contribution into the company. Always global, never
@@ -51,6 +52,7 @@ const include = {
   partner: { select: { id: true, name: true, partnerType: true } },
   companyBankAccount: { select: { id: true, nickname: true, bankName: true, accountNumber: true } },
   createdBy: { select: { id: true, name: true } },
+  allocation: { select: { bankTransaction: { select: sourceBankTransactionSelect } } },
 };
 
 type InvestmentRow = Prisma.PartnerInvestmentGetPayload<{ include: typeof include }>;
@@ -71,6 +73,7 @@ function toDTO(i: InvestmentRow) {
     remarks: i.remarks ?? "",
     createdById: i.createdById,
     createdBy: i.createdBy,
+    sourceBankTransaction: toSourceBankTransactionDTO(i.allocation),
     createdAt: i.createdAt.toISOString(),
   };
 }

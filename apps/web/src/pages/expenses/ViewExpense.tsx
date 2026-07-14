@@ -76,13 +76,39 @@ export default function ViewExpense() {
               <Row label="Payment Mode" value={PAYMENT_MODE_LABELS[expense.paymentMode] ?? expense.paymentMode} />
               {expense.companyBankAccount && (
                 <Row
-                  label="Company Bank Account"
-                  value={`${expense.companyBankAccount.nickname || expense.companyBankAccount.bankName} — ${expense.companyBankAccount.bankName} (••••${expense.companyBankAccount.accountNumber.slice(-4)})`}
+                  label="Source Account"
+                  value={
+                    expense.companyBankAccount.accountType === "CASH"
+                      ? expense.companyBankAccount.nickname || "Cash"
+                      : `${expense.companyBankAccount.nickname || expense.companyBankAccount.bankName} — ${expense.companyBankAccount.bankName} (••••${expense.companyBankAccount.accountNumber.slice(-4)})`
+                  }
+                />
+              )}
+              {expense.liability && (
+                <Row
+                  label="Source Account"
+                  value={expense.liability.loanName}
                 />
               )}
               {expense.paymentMode === "VENDOR_CREDIT" && (
                 <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-700">
                   Recorded as outstanding vendor credit — no payment was created automatically.
+                </div>
+              )}
+              {expense.sourceBankTransaction && (
+                <div>
+                  <p className="text-sm text-slate-500">Source Bank Transaction</p>
+                  <p className="font-semibold">
+                    {expense.sourceBankTransaction.transactionDate} — {expense.sourceBankTransaction.bankAccountLabel}
+                    {expense.sourceBankTransaction.referenceNumber && ` (Ref: ${expense.sourceBankTransaction.referenceNumber})`}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/banking/accounts/${expense.sourceBankTransaction!.companyBankAccountId}`)}
+                    className="mt-1 text-sm text-blue-600 hover:underline"
+                  >
+                    Open Bank Transaction
+                  </button>
                 </div>
               )}
               <Row label="Remarks" value={expense.remarks} />

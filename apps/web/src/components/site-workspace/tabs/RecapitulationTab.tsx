@@ -47,6 +47,13 @@ export default function RecapitulationTab({ site }: { site: Site }) {
   const [draftSaving, setDraftSaving] = useState(false);
   const [draftError, setDraftError] = useState<string | null>(null);
   const draftInputRef = useRef<HTMLInputElement>(null);
+  // Bumped only when a brand-new draft row is created (startAddRow, or "Save & continue" opening
+  // the next blank row) — never by editing an existing draft's fields. `draft` itself is a new
+  // object on every keystroke (each onChange spreads {...d, field: value}), so keying the
+  // focus-the-Particular-field effect off `draft` directly stole focus back to Particular on
+  // every keystroke in any draft field, including Rate — this counter is the actual "a new row
+  // just appeared" signal the effect needs.
+  const [draftGeneration, setDraftGeneration] = useState(0);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingData, setEditingData] = useState<{ particular: string; unit: string; qty: string; rate: string } | null>(null);
@@ -66,14 +73,18 @@ export default function RecapitulationTab({ site }: { site: Site }) {
   useEffect(load, [site.id]);
   useEffect(() => {
     if (draft) requestAnimationFrame(() => draftInputRef.current?.focus());
-  }, [draft]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftGeneration]);
 
   if (loading) return <LoadingState />;
   if (error) return <div className="rounded-xl border border-red-200 bg-red-50 px-6 py-5 text-red-700">{error}</div>;
 
   const items = revision?.items ?? [];
 
-  const startAddRow = (afterItemId?: string) => setDraft(emptyDraft(afterItemId));
+  const startAddRow = (afterItemId?: string) => {
+    setDraft(emptyDraft(afterItemId));
+    setDraftGeneration((g) => g + 1);
+  };
 
   const saveDraft = async (continueEntry: boolean) => {
     if (!draft) return;
@@ -92,7 +103,12 @@ export default function RecapitulationTab({ site }: { site: Site }) {
         afterItemId: draft.afterItemId,
       });
       setRevision(updated);
-      setDraft(continueEntry ? emptyDraft() : null);
+      if (continueEntry) {
+        setDraft(emptyDraft());
+        setDraftGeneration((g) => g + 1);
+      } else {
+        setDraft(null);
+      }
     } catch (err) {
       setDraftError(err instanceof Error ? err.message : "Failed to add row.");
     } finally {

@@ -43,7 +43,7 @@ export async function generateRunningBillPdf(bill: RunningBillDetail, companyNam
     kv("Sub Work", bill.subWork?.name ?? "-", doc.x, y, half - 10);
     kv("Measurement Book", bill.measurementBook?.mbNumber ?? "-", doc.x + half, y, half - 10);
     y = doc.y;
-    kv("Bill Period", bill.billPeriodFrom && bill.billPeriodTo ? `${bill.billPeriodFrom} to ${bill.billPeriodTo}` : "-", doc.x, y, half - 10);
+    kv("Bill Submitted Date", bill.billSubmittedDate || "-", doc.x, y, half - 10);
     if (bill.remarks) kv("Remarks", bill.remarks, doc.x + half, y, half - 10);
     doc.moveDown(0.8);
 
@@ -62,44 +62,95 @@ export async function generateRunningBillPdf(bill: RunningBillDetail, companyNam
 
     const startX = doc.x;
     let cy = doc.y;
-    doc.font("Helvetica-Bold").fontSize(7.5);
-    let cx = startX;
-    cols.forEach((c) => {
-      doc.rect(cx, cy, c.w, 18).stroke();
-      doc.text(c.label, cx + 2, cy + 5, { width: c.w - 4 });
-      cx += c.w;
-    });
-    cy += 18;
 
-    doc.font("Helvetica").fontSize(7.5);
-    bill.items.forEach((item) => {
+    const drawHeaderRow = () => {
       cx = startX;
-      const values = [
-        item.boqItemNo,
-        item.boqDescription,
-        item.unit,
-        item.previousQuantity,
-        item.currentQuantity,
-        item.totalQuantity,
-        inr(item.effectiveRate),
-        inr(item.previousAmount),
-        inr(item.currentAmount),
-        inr(item.totalAmount),
-      ];
-      values.forEach((v, i) => {
-        doc.rect(cx, cy, cols[i].w, 16).stroke();
-        doc.text(String(v), cx + 2, cy + 4, { width: cols[i].w - 4 });
-        cx += cols[i].w;
+      doc.font("Helvetica-Bold").fontSize(7.5);
+      cols.forEach((c) => {
+        doc.rect(cx, cy, c.w, 18).stroke();
+        doc.text(c.label, cx + 2, cy + 5, { width: c.w - 4 });
+        cx += c.w;
       });
-      cy += 16;
+      cy += 18;
+    };
+
+    // Display Sub Works exactly like Form 58 — Sub Work No. 1 : <name>, its items, its own
+    // totals, then the next Sub Work, per the UI & Workflow Refinement milestone. bill.items
+    // already arrives in Sub Work order (sortOrder), so grouping by first appearance is correct.
+    const groups: { subWorkName: string; items: typeof bill.items }[] = [];
+    const groupByKey = new Map<string, { subWorkName: string; items: typeof bill.items }>();
+    for (const item of bill.items) {
+      const key = item.subWorkId || item.subWorkName || item.id;
+      let group = groupByKey.get(key);
+      if (!group) {
+        group = { subWorkName: item.subWorkName, items: [] };
+        groupByKey.set(key, group);
+        groups.push(group);
+      }
+      group.items.push(item);
+    }
+
+    let cx = startX;
+    groups.forEach((group, groupIndex) => {
+      doc.font("Helvetica-Bold").fontSize(8.5).text(`Sub Work No. ${groupIndex + 1} : ${group.subWorkName}`, startX, cy);
+      cy = doc.y + 3;
+
+      drawHeaderRow();
+
+      doc.font("Helvetica").fontSize(7.5);
+      group.items.forEach((item) => {
+        cx = startX;
+        const values = [
+          item.boqItemNo,
+          item.boqDescription,
+          item.unit,
+          item.previousQuantity,
+          item.currentQuantity,
+          item.totalQuantity,
+          inr(item.effectiveRate),
+          inr(item.previousAmount),
+          inr(item.currentAmount),
+          inr(item.totalAmount),
+        ];
+        values.forEach((v, i) => {
+          doc.rect(cx, cy, cols[i].w, 16).stroke();
+          doc.text(String(v), cx + 2, cy + 4, { width: cols[i].w - 4 });
+          cx += cols[i].w;
+        });
+        cy += 16;
+      });
+
+      // Sub Work Totals — Current Bill Total, Previous Certified, Up To Date Certified.
+      const groupPrevious = group.items.reduce((s, i) => s + Number(i.previousAmount), 0);
+      const groupCurrent = group.items.reduce((s, i) => s + Number(i.currentAmount), 0);
+      const groupTotal = group.items.reduce((s, i) => s + Number(i.totalAmount), 0);
+
+      doc.font("Helvetica-Bold");
+      cx = startX;
+      const totalsLabelWidth = cols.slice(0, 6).reduce((s, c) => s + c.w, 0);
+      doc.rect(cx, cy, totalsLabelWidth, 18).stroke();
+      doc.text("Sub Work Total", cx + 2, cy + 5);
+      cx += totalsLabelWidth;
+      doc.rect(cx, cy, cols[6].w, 18).stroke();
+      cx += cols[6].w;
+      doc.rect(cx, cy, cols[7].w, 18).stroke();
+      doc.text(inr(groupPrevious), cx + 2, cy + 5, { width: cols[7].w - 4 });
+      cx += cols[7].w;
+      doc.rect(cx, cy, cols[8].w, 18).stroke();
+      doc.text(inr(groupCurrent), cx + 2, cy + 5, { width: cols[8].w - 4 });
+      cx += cols[8].w;
+      doc.rect(cx, cy, cols[9].w, 18).stroke();
+      doc.text(inr(groupTotal), cx + 2, cy + 5, { width: cols[9].w - 4 });
+
+      cy += 26;
     });
 
-    // Totals row
-    doc.font("Helvetica-Bold");
+    // Grand Total of all Sub Works
+    doc.font("Helvetica-Bold").fontSize(8.5);
     cx = startX;
     const totalsLabelWidth = cols.slice(0, 6).reduce((s, c) => s + c.w, 0);
     doc.rect(cx, cy, totalsLabelWidth, 18).stroke();
-    doc.text("TOTAL", cx + 2, cy + 5);
+    doc.text("GRAND TOTAL OF ALL SUB WORKS", cx + 2, cy + 5);
     cx += totalsLabelWidth;
     doc.rect(cx, cy, cols[6].w, 18).stroke();
     cx += cols[6].w;
@@ -127,8 +178,13 @@ export async function generateRunningBillPdf(bill: RunningBillDetail, companyNam
     }
 
     doc.font("Helvetica-Bold").fontSize(9);
+    const gstDifferencePercent = Number(bill.gstDifferencePercent ?? 0);
     const summaryLines: [string, string][] = [
       ["Current Certified Amount", inr(bill.currentCertifiedAmount)],
+      ["GST", inr(bill.gstAmount)],
+      ...(gstDifferencePercent !== 0
+        ? ([[`GST Difference (${gstDifferencePercent}%)`, inr(bill.gstDifferenceAmount)], ["Total GST", inr(bill.totalGstAmount)]] as [string, string][])
+        : []),
       ["Total Deductions", inr(bill.totalDeductions)],
       ["Net Payable", inr(bill.netPayable)],
       ["Amount Received", inr(bill.amountReceived)],
@@ -172,23 +228,46 @@ export async function generateRunningBillExcel(bill: RunningBillDetail): Promise
   sheet.addRow(["Bill Type", BILL_TYPE_LABELS[bill.billType] ?? bill.billType, "Remarks", bill.remarks || "-"]);
   sheet.addRow([]);
 
-  boldRow(["Item No.", "Description", "Unit", "Prev Qty", "Curr Qty", "Total Qty", "Eff. Rate", "Prev Amount", "Curr Amount", "Total Amount"]);
-  bill.items.forEach((item) =>
-    sheet.addRow([
-      item.boqItemNo,
-      item.boqDescription,
-      item.unit,
-      item.previousQuantity,
-      item.currentQuantity,
-      item.totalQuantity,
-      item.effectiveRate,
-      item.previousAmount,
-      item.currentAmount,
-      item.totalAmount,
-    ])
-  );
-  sheet.addRow([]);
-  boldRow(["", "", "", "", "", "TOTAL", "", bill.previousCertifiedAmount, bill.currentCertifiedAmount, bill.totalCertifiedAmount]);
+  // Display Sub Works exactly like Form 58 — Sub Work No. 1 : <name>, its items, its own totals,
+  // then the next Sub Work. bill.items already arrives in Sub Work order (sortOrder).
+  const groups: { subWorkName: string; items: typeof bill.items }[] = [];
+  const groupByKey = new Map<string, { subWorkName: string; items: typeof bill.items }>();
+  for (const item of bill.items) {
+    const key = item.subWorkId || item.subWorkName || item.id;
+    let group = groupByKey.get(key);
+    if (!group) {
+      group = { subWorkName: item.subWorkName, items: [] };
+      groupByKey.set(key, group);
+      groups.push(group);
+    }
+    group.items.push(item);
+  }
+
+  groups.forEach((group, groupIndex) => {
+    boldRow([`Sub Work No. ${groupIndex + 1} : ${group.subWorkName}`]);
+    boldRow(["Item No.", "Description", "Unit", "Prev Qty", "Curr Qty", "Total Qty", "Eff. Rate", "Prev Amount", "Curr Amount", "Total Amount"]);
+    group.items.forEach((item) =>
+      sheet.addRow([
+        item.boqItemNo,
+        item.boqDescription,
+        item.unit,
+        item.previousQuantity,
+        item.currentQuantity,
+        item.totalQuantity,
+        item.effectiveRate,
+        item.previousAmount,
+        item.currentAmount,
+        item.totalAmount,
+      ])
+    );
+    const groupPrevious = group.items.reduce((s, i) => s + Number(i.previousAmount), 0);
+    const groupCurrent = group.items.reduce((s, i) => s + Number(i.currentAmount), 0);
+    const groupTotal = group.items.reduce((s, i) => s + Number(i.totalAmount), 0);
+    boldRow(["", "", "", "", "", "Sub Work Total", "", groupPrevious, groupCurrent, groupTotal]);
+    sheet.addRow([]);
+  });
+
+  boldRow(["", "", "", "", "", "GRAND TOTAL", "", bill.previousCertifiedAmount, bill.currentCertifiedAmount, bill.totalCertifiedAmount]);
   sheet.addRow([]);
 
   if (bill.deductions.length) {
@@ -200,6 +279,11 @@ export async function generateRunningBillExcel(bill: RunningBillDetail): Promise
 
   boldRow(["Summary"]);
   sheet.addRow(["Current Certified Amount", bill.currentCertifiedAmount]);
+  sheet.addRow(["GST", bill.gstAmount]);
+  if (Number(bill.gstDifferencePercent ?? 0) !== 0) {
+    sheet.addRow([`GST Difference (${bill.gstDifferencePercent}%)`, bill.gstDifferenceAmount]);
+    sheet.addRow(["Total GST", bill.totalGstAmount]);
+  }
   sheet.addRow(["Total Deductions", bill.totalDeductions]);
   sheet.addRow(["Net Payable", bill.netPayable]);
   sheet.addRow(["Amount Received", bill.amountReceived]);

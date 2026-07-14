@@ -66,6 +66,18 @@ export const LIABILITY_SECURITY_LABELS: Record<string, string> = {
 export const LIABILITY_STATUSES = ["ACTIVE", "CLOSED"];
 export const LIABILITY_STATUS_LABELS: Record<string, string> = { ACTIVE: "Active", CLOSED: "Closed" };
 
+/**
+ * Status is never manually entered (Liability Management milestone, Business Rules) — it is
+ * always derived from outstandingAmount: Outstanding <= 0 => Closed, otherwise Active. Called
+ * from createLiability/updateLiability (so the stored column always agrees with this function)
+ * and from recordLiabilityRepayment/expense.service.ts's Credit Card wiring whenever
+ * outstandingAmount changes, so the column is never a second, independently-editable source of
+ * truth — it's just a cached copy of what this function would return.
+ */
+export function deriveLiabilityStatus(outstandingAmount: number): LiabilityStatus {
+  return outstandingAmount <= 0 ? ("CLOSED" as LiabilityStatus) : ("ACTIVE" as LiabilityStatus);
+}
+
 export interface LiabilityFormInput {
   loanName: string;
   liabilityType: string;
@@ -129,7 +141,7 @@ type LiabilityRow = {
   updatedAt: Date;
 };
 
-function toDTO(l: LiabilityRow) {
+function toDTO(l: LiabilityRow, totalRepaid = 0) {
   return {
     id: l.id,
     companyId: l.companyId,
@@ -144,6 +156,10 @@ function toDTO(l: LiabilityRow) {
     loanNumber: l.loanNumber ?? "",
     sanctionAmount: l.sanctionAmount.toString(),
     outstandingAmount: l.outstandingAmount.toString(),
+    // Total Repaid = sum of every LiabilityRepayment.totalPaid (principal + interest) against
+    // this Liability — never sanctionAmount - outstandingAmount, since that would only capture
+    // principal repaid and silently drop interest paid.
+    totalRepaid: totalRepaid.toFixed(2),
     interestType: l.interestType,
     interestRate: l.interestRate.toString(),
     emiAmount: l.emiAmount.toString(),
@@ -154,7 +170,8 @@ function toDTO(l: LiabilityRow) {
     startDate: l.startDate.toISOString().slice(0, 10),
     endDate: l.endDate ? l.endDate.toISOString().slice(0, 10) : "",
     security: l.security,
-    status: l.status,
+    // Never manually entered — always derived from outstandingAmount (Business Rules).
+    status: deriveLiabilityStatus(Number(l.outstandingAmount)),
     notes: l.notes ?? "",
     createdAt: l.createdAt.toISOString(),
     updatedAt: l.updatedAt.toISOString(),
@@ -192,13 +209,21 @@ export async function listLiabilities(companyId: string, query: LiabilityListQue
     prisma.liability.findMany({ where, orderBy: { [orderField]: sortOrder }, skip: (page - 1) * take, take }),
   ]);
 
-  return { total, page, limit: take, data: liabilities.map(toDTO) };
+  const repaidByLiability = await prisma.liabilityRepayment.groupBy({
+    by: ["liabilityId"],
+    where: { companyId, liabilityId: { in: liabilities.map((l) => l.id) } },
+    _sum: { totalPaid: true },
+  });
+  const repaidMap = new Map(repaidByLiability.map((r) => [r.liabilityId, Number(r._sum.totalPaid ?? 0)]));
+
+  return { total, page, limit: take, data: liabilities.map((l) => toDTO(l, repaidMap.get(l.id) ?? 0)) };
 }
 
 export async function getLiabilityById(id: string, companyId: string) {
   const liability = await prisma.liability.findFirst({ where: { id, companyId } });
   if (!liability) throw new Error("Liability not found");
-  return toDTO(liability);
+  const repaidAgg = await prisma.liabilityRepayment.aggregate({ where: { liabilityId: id }, _sum: { totalPaid: true } });
+  return toDTO(liability, Number(repaidAgg._sum.totalPaid ?? 0));
 }
 
 function validateInput(input: Partial<LiabilityFormInput>, isCreate: boolean) {
@@ -250,7 +275,8 @@ export async function createLiability(companyId: string, input: LiabilityFormInp
       startDate: new Date(input.startDate),
       endDate: input.endDate ? new Date(input.endDate) : null,
       security: parseEnum(input.security as LiabilitySecurity, LIABILITY_SECURITY_TYPES, "NONE" as LiabilitySecurity),
-      status: parseEnum(input.status as LiabilityStatus, LIABILITY_STATUSES, "ACTIVE" as LiabilityStatus),
+      // Status is never accepted from input — always derived from outstandingAmount (Business Rules).
+      status: deriveLiabilityStatus(outstandingAmount),
       notes: input.notes || null,
     },
   });
@@ -263,12 +289,16 @@ export async function updateLiability(id: string, companyId: string, input: Part
   if (input.sanctionAmount !== undefined && input.sanctionAmount <= 0) throw new Error("Sanction amount must be greater than zero");
   if (input.outstandingAmount !== undefined && input.outstandingAmount < 0) throw new Error("Outstanding amount cannot be negative");
 
-  // Once a repayment exists, Outstanding is driven exclusively by the repayment ledger
-  // (liability-repayment.service.ts) — allowing a direct edit here would silently desync the two.
+  // Once a repayment OR a Credit Card expense charge exists, Outstanding is driven exclusively
+  // by that ledger (liability-repayment.service.ts / expense.service.ts's Credit Card wiring) —
+  // allowing a direct edit here would silently desync the two.
   if (input.outstandingAmount !== undefined && input.outstandingAmount !== Number(existing.outstandingAmount)) {
-    const repaymentCount = await prisma.liabilityRepayment.count({ where: { liabilityId: id } });
-    if (repaymentCount > 0) {
-      throw new Error("Outstanding amount cannot be edited directly once repayments exist — record a repayment instead");
+    const [repaymentCount, expenseCount] = await Promise.all([
+      prisma.liabilityRepayment.count({ where: { liabilityId: id } }),
+      prisma.expense.count({ where: { liabilityId: id, isDeleted: false } }),
+    ]);
+    if (repaymentCount > 0 || expenseCount > 0) {
+      throw new Error("Outstanding amount cannot be edited directly once repayments or Credit Card charges exist — it is calculated automatically");
     }
   }
 
@@ -294,7 +324,9 @@ export async function updateLiability(id: string, companyId: string, input: Part
       ...(input.startDate !== undefined && { startDate: new Date(input.startDate) }),
       ...(input.endDate !== undefined && { endDate: input.endDate ? new Date(input.endDate) : null }),
       ...(input.security !== undefined && { security: parseEnum(input.security as LiabilitySecurity, LIABILITY_SECURITY_TYPES, "NONE" as LiabilitySecurity) }),
-      ...(input.status !== undefined && { status: parseEnum(input.status as LiabilityStatus, LIABILITY_STATUSES, "ACTIVE" as LiabilityStatus) }),
+      // Status is never accepted from input (input.status is ignored) — always re-derived from
+      // whichever outstandingAmount applies after this update (Business Rules).
+      status: deriveLiabilityStatus(input.outstandingAmount !== undefined ? input.outstandingAmount : Number(existing.outstandingAmount)),
       ...(input.notes !== undefined && { notes: input.notes || null }),
     },
   });
@@ -304,7 +336,7 @@ export async function updateLiability(id: string, companyId: string, input: Part
 export async function deleteLiability(id: string, companyId: string) {
   const existing = await prisma.liability.findFirst({
     where: { id, companyId },
-    include: { repayments: { take: 1 }, allocations: { take: 1 } },
+    include: { repayments: { take: 1 }, allocations: { take: 1 }, creditCardExpenses: { where: { isDeleted: false }, take: 1 } },
   });
   if (!existing) throw new Error("Liability not found");
   if (existing.repayments.length > 0) {
@@ -312,6 +344,9 @@ export async function deleteLiability(id: string, companyId: string) {
   }
   if (existing.allocations.length > 0) {
     throw new Error("This liability has a linked bank transaction allocation and cannot be deleted");
+  }
+  if (existing.creditCardExpenses.length > 0) {
+    throw new Error("This Credit Card has linked expense charges and cannot be deleted");
   }
   await prisma.liability.delete({ where: { id } });
 }

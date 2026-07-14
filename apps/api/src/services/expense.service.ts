@@ -1,5 +1,7 @@
 import prisma from "../config/prisma.js";
 import { Prisma } from "@prisma/client";
+import { deriveLiabilityStatus } from "./liability.service.js";
+import { sourceBankTransactionSelect, toSourceBankTransactionDTO } from "../utils/bank-traceability.js";
 
 export const PAYMENT_MODES = ["CASH", "COMPANY_BANK", "CREDIT_CARD", "VENDOR_CREDIT"];
 
@@ -31,6 +33,9 @@ export interface ExpenseFormInput {
   amount: number;
   paymentMode: string;
   companyBankAccountId?: string;
+  // Only used when paymentMode = "CREDIT_CARD" — the Credit Card (a Liability with
+  // liabilityType = CREDIT_CARD) this expense was charged to.
+  liabilityId?: string;
   attachmentFileName?: string;
   attachmentFileUrl?: string;
   remarks?: string;
@@ -94,11 +99,14 @@ async function generateExpenseNumber(companyId: string, siteId: string): Promise
 
 const include = {
   project: { select: { id: true, name: true } },
+  site: { select: { id: true, name: true } },
   category: { select: { id: true, name: true } },
   vendor: { select: { id: true, name: true } },
   subWork: { select: { id: true, name: true } },
-  companyBankAccount: { select: { id: true, nickname: true, bankName: true, accountNumber: true } },
+  companyBankAccount: { select: { id: true, nickname: true, bankName: true, accountNumber: true, accountType: true } },
+  liability: { select: { id: true, loanName: true, liabilityType: true } },
   createdBy: { select: { id: true, name: true } },
+  allocation: { select: { bankTransaction: { select: sourceBankTransactionSelect } } },
 };
 
 type ExpenseRow = Prisma.ExpenseGetPayload<{ include: typeof include }>;
@@ -110,6 +118,7 @@ function toDTO(e: ExpenseRow) {
     projectId: e.projectId,
     project: e.project,
     siteId: e.siteId,
+    site: e.site,
     categoryId: e.categoryId,
     category: e.category,
     vendorId: e.vendorId ?? "",
@@ -123,6 +132,8 @@ function toDTO(e: ExpenseRow) {
     paymentMode: e.paymentMode,
     companyBankAccountId: e.companyBankAccountId ?? "",
     companyBankAccount: e.companyBankAccount,
+    liabilityId: e.liabilityId ?? "",
+    liability: e.liability,
     attachmentFileName: e.attachmentFileName ?? "",
     attachmentFileUrl: e.attachmentFileUrl ?? "",
     remarks: e.remarks ?? "",
@@ -132,6 +143,7 @@ function toDTO(e: ExpenseRow) {
     createdById: e.createdById,
     createdBy: e.createdBy,
     isDeleted: e.isDeleted,
+    sourceBankTransaction: toSourceBankTransactionDTO(e.allocation),
     createdAt: e.createdAt.toISOString(),
     updatedAt: e.updatedAt.toISOString(),
   };
@@ -165,12 +177,34 @@ async function validateAndNormalize(companyId: string, input: ExpenseFormInput) 
     vendorId = vendor.id;
   }
 
+  // Source Account Workflow — Payment Mode identifies HOW the payment was made; Source Account
+  // identifies WHERE the money came from. CASH and COMPANY_BANK both resolve to a
+  // CompanyBankAccount row (the existing "Company Bank Accounts Master" already supports named
+  // CASH-type rows — e.g. "Company Cash", "Site Petty Cash - Malunje" — so this doubles as the
+  // Cash Account Master without a second, parallel model). The accountType is re-verified here,
+  // not just filtered client-side, so a mismatched account can never be saved even via a raw API
+  // call — Source Account must always be picked from the Master, never free text.
   let companyBankAccountId: string | null = null;
-  if (paymentMode === "COMPANY_BANK") {
-    if (!input.companyBankAccountId?.trim()) throw new Error("Company bank account is required for Company Bank payments");
+  if (paymentMode === "CASH" || paymentMode === "COMPANY_BANK") {
+    if (!input.companyBankAccountId?.trim()) throw new Error("Source Account is required");
+    const expectedType = paymentMode === "CASH" ? "CASH" : "BANK";
     const account = await prisma.companyBankAccount.findFirst({ where: { id: input.companyBankAccountId, companyId } });
-    if (!account) throw new Error("Company bank account not found");
+    if (!account) throw new Error("Source Account not found");
+    if (account.accountType !== expectedType) {
+      throw new Error(`Selected Source Account is not a ${expectedType === "CASH" ? "Cash" : "Bank"} account`);
+    }
     companyBankAccountId = account.id;
+  }
+
+  // Credit Card Expense Workflow — the Site Expense is recorded on the actual transaction date,
+  // and the linked Credit Card's outstandingAmount is increased automatically by createExpense/
+  // updateExpense (never entered as a second figure on the card itself).
+  let liabilityId: string | null = null;
+  if (paymentMode === "CREDIT_CARD") {
+    if (!input.liabilityId?.trim()) throw new Error("Source Account is required");
+    const liability = await prisma.liability.findFirst({ where: { id: input.liabilityId, companyId, liabilityType: "CREDIT_CARD" } });
+    if (!liability) throw new Error("Source Account not found");
+    liabilityId = liability.id;
   }
 
   let subWorkId: string | null = null;
@@ -203,7 +237,7 @@ async function validateAndNormalize(companyId: string, input: ExpenseFormInput) 
     throw new Error("Amount must be greater than zero");
   }
 
-  return { paymentMode, vendorId, companyBankAccountId, subWorkId, machineType, machineHours, machineRatePerHour, amount };
+  return { paymentMode, vendorId, companyBankAccountId, liabilityId, subWorkId, machineType, machineHours, machineRatePerHour, amount };
 }
 
 export async function listExpenses(companyId: string, query: ExpenseListQuery) {
@@ -270,32 +304,46 @@ export async function getExpenseById(id: string, companyId: string) {
 }
 
 export async function createExpense(companyId: string, createdById: string, input: ExpenseFormInput) {
-  const { paymentMode, vendorId, companyBankAccountId, subWorkId, machineType, machineHours, machineRatePerHour, amount } =
+  const { paymentMode, vendorId, companyBankAccountId, liabilityId, subWorkId, machineType, machineHours, machineRatePerHour, amount } =
     await validateAndNormalize(companyId, input);
+  const expenseNumber = await generateExpenseNumber(companyId, input.siteId);
 
-  const expense = await prisma.expense.create({
-    data: {
-      companyId,
-      projectId: input.projectId,
-      siteId: input.siteId,
-      categoryId: input.categoryId,
-      vendorId,
-      subWorkId,
-      expenseNumber: await generateExpenseNumber(companyId, input.siteId),
-      expenseDate: input.expenseDate ? new Date(input.expenseDate) : new Date(),
-      description: input.description || null,
-      amount,
-      paymentMode,
-      companyBankAccountId,
-      attachmentFileName: input.attachmentFileName || null,
-      attachmentFileUrl: input.attachmentFileUrl || null,
-      remarks: input.remarks || null,
-      machineType,
-      machineHours,
-      machineRatePerHour,
-      createdById,
-    },
-    include,
+  const expense = await prisma.$transaction(async (tx) => {
+    const created = await tx.expense.create({
+      data: {
+        companyId,
+        projectId: input.projectId,
+        siteId: input.siteId,
+        categoryId: input.categoryId,
+        vendorId,
+        subWorkId,
+        expenseNumber,
+        expenseDate: input.expenseDate ? new Date(input.expenseDate) : new Date(),
+        description: input.description || null,
+        amount,
+        paymentMode,
+        companyBankAccountId,
+        liabilityId,
+        attachmentFileName: input.attachmentFileName || null,
+        attachmentFileUrl: input.attachmentFileUrl || null,
+        remarks: input.remarks || null,
+        machineType,
+        machineHours,
+        machineRatePerHour,
+        createdById,
+      },
+      include,
+    });
+
+    // Credit Card Expense Workflow — the card's Outstanding increases automatically the moment
+    // the expense is recorded, atomically with the expense row itself.
+    if (liabilityId) {
+      const card = await tx.liability.findUniqueOrThrow({ where: { id: liabilityId } });
+      const newOutstanding = Math.round((Number(card.outstandingAmount) + amount) * 100) / 100;
+      await tx.liability.update({ where: { id: liabilityId }, data: { outstandingAmount: newOutstanding, status: deriveLiabilityStatus(newOutstanding) } });
+    }
+
+    return created;
   });
 
   return toDTO(expense);
@@ -305,42 +353,83 @@ export async function updateExpense(id: string, companyId: string, input: Expens
   const existing = await prisma.expense.findFirst({ where: { id, companyId, isDeleted: false } });
   if (!existing) throw new Error("Expense not found");
 
-  const { paymentMode, vendorId, companyBankAccountId, subWorkId, machineType, machineHours, machineRatePerHour, amount } =
+  const { paymentMode, vendorId, companyBankAccountId, liabilityId, subWorkId, machineType, machineHours, machineRatePerHour, amount } =
     await validateAndNormalize(companyId, input);
 
-  const expense = await prisma.expense.update({
-    where: { id },
-    data: {
-      projectId: input.projectId,
-      siteId: input.siteId,
-      categoryId: input.categoryId,
-      vendorId,
-      subWorkId,
-      expenseDate: input.expenseDate ? new Date(input.expenseDate) : existing.expenseDate,
-      description: input.description || null,
-      amount,
-      paymentMode,
-      companyBankAccountId,
-      attachmentFileName: input.attachmentFileName || null,
-      attachmentFileUrl: input.attachmentFileUrl || null,
-      remarks: input.remarks || null,
-      machineType,
-      machineHours,
-      machineRatePerHour,
-    },
-    include,
+  // Credit Card Expense Workflow — reconcile whichever card(s) this expense affected before and
+  // after the edit, so an edited amount, a switched card, or a payment-mode change away from/to
+  // Credit Card never leaves stale money sitting on a card's Outstanding.
+  const oldLiabilityId = existing.paymentMode === "CREDIT_CARD" ? existing.liabilityId : null;
+  const oldAmount = oldLiabilityId ? Number(existing.amount) : 0;
+  const newLiabilityId = liabilityId;
+  const newAmount = newLiabilityId ? amount : 0;
+
+  const expense = await prisma.$transaction(async (tx) => {
+    const updated = await tx.expense.update({
+      where: { id },
+      data: {
+        projectId: input.projectId,
+        siteId: input.siteId,
+        categoryId: input.categoryId,
+        vendorId,
+        subWorkId,
+        expenseDate: input.expenseDate ? new Date(input.expenseDate) : existing.expenseDate,
+        description: input.description || null,
+        amount,
+        paymentMode,
+        companyBankAccountId,
+        liabilityId: newLiabilityId,
+        attachmentFileName: input.attachmentFileName || null,
+        attachmentFileUrl: input.attachmentFileUrl || null,
+        remarks: input.remarks || null,
+        machineType,
+        machineHours,
+        machineRatePerHour,
+      },
+      include,
+    });
+
+    const adjustLiability = async (liabId: string, delta: number) => {
+      const card = await tx.liability.findUniqueOrThrow({ where: { id: liabId } });
+      const newOutstanding = Math.round((Number(card.outstandingAmount) + delta) * 100) / 100;
+      await tx.liability.update({ where: { id: liabId }, data: { outstandingAmount: newOutstanding, status: deriveLiabilityStatus(newOutstanding) } });
+    };
+
+    if (oldLiabilityId && newLiabilityId && oldLiabilityId === newLiabilityId) {
+      if (newAmount !== oldAmount) await adjustLiability(oldLiabilityId, newAmount - oldAmount);
+    } else {
+      if (oldLiabilityId) await adjustLiability(oldLiabilityId, -oldAmount);
+      if (newLiabilityId) await adjustLiability(newLiabilityId, newAmount);
+    }
+
+    return updated;
   });
 
   return toDTO(expense);
 }
 
-/** Soft delete only — expenses are a financial record and are never hard-deleted. */
+/**
+ * Soft delete only — expenses are a financial record and are never hard-deleted. If the deleted
+ * expense was charged to a Credit Card, its amount is reversed off that card's Outstanding in
+ * the same transaction as the soft delete, so a deleted Credit Card expense never leaves a
+ * balance behind. Negative Outstanding is deliberately allowed here (a real "credit balance"
+ * state) rather than clamped to zero — clamping would silently lose money from the ledger if a
+ * separate Credit Card Bill Payment already reduced the balance in between.
+ */
 export async function deleteExpense(id: string, companyId: string) {
   const existing = await prisma.expense.findFirst({ where: { id, companyId } });
   if (!existing) throw new Error("Expense not found");
   if (existing.isDeleted) throw new Error("Expense already deleted");
 
-  await prisma.expense.update({ where: { id }, data: { isDeleted: true, deletedAt: new Date() } });
+  await prisma.$transaction(async (tx) => {
+    await tx.expense.update({ where: { id }, data: { isDeleted: true, deletedAt: new Date() } });
+
+    if (existing.paymentMode === "CREDIT_CARD" && existing.liabilityId) {
+      const card = await tx.liability.findUniqueOrThrow({ where: { id: existing.liabilityId } });
+      const newOutstanding = Math.round((Number(card.outstandingAmount) - Number(existing.amount)) * 100) / 100;
+      await tx.liability.update({ where: { id: existing.liabilityId }, data: { outstandingAmount: newOutstanding, status: deriveLiabilityStatus(newOutstanding) } });
+    }
+  });
 }
 
 export async function getExpenseDashboard(companyId: string) {

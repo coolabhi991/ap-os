@@ -19,7 +19,18 @@ export interface LiabilityRepayment {
   remarks: string;
   createdById: string;
   createdBy: { id: string; name: string } | null;
+  sourceBankTransaction: SourceBankTransaction | null;
   createdAt: string;
+}
+
+/** Where this repayment's money actually moved — always set, since repayments are only ever created via Banking's Allocate Transaction modal (Banking Integration traceability). */
+export interface SourceBankTransaction {
+  id: string;
+  transactionDate: string;
+  referenceNumber: string;
+  amount: string;
+  companyBankAccountId: string;
+  bankAccountLabel: string;
 }
 
 export interface LiabilityRepaymentListResponse {

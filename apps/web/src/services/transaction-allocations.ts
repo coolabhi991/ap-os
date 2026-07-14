@@ -27,6 +27,8 @@ export const ALLOCATION_TYPES = [
   "EMERGENCY_LOAN",
   "OTHER_LOAN",
   "SECURITY_DEPOSIT_RELEASE",
+  "CLIENT_REFUND",
+  "CREDIT_CARD_BILL_PAYMENT",
 ];
 
 export const ALLOCATION_TYPE_LABELS: Record<string, string> = {
@@ -56,13 +58,15 @@ export const ALLOCATION_TYPE_LABELS: Record<string, string> = {
   EMERGENCY_LOAN: "Emergency Loan",
   OTHER_LOAN: "Other Loan",
   SECURITY_DEPOSIT_RELEASE: "Security Deposit Release",
+  CLIENT_REFUND: "Client Refund",
+  CREDIT_CARD_BILL_PAYMENT: "Credit Card Bill Payment",
 };
 
 // Types that require a Site to be selected.
-export const SITE_SCOPED_TYPES = ["SITE_EXPENSE", "LABOUR", "SECURITY_DEPOSIT_RELEASE"];
+export const SITE_SCOPED_TYPES = ["SITE_EXPENSE", "LABOUR", "SECURITY_DEPOSIT_RELEASE", "CLIENT_REFUND"];
 
 // Of the SITE_SCOPED_TYPES, the ones where Site is mandatory (not just optionally shown).
-export const SITE_REQUIRED_TYPES = ["SITE_EXPENSE", "SECURITY_DEPOSIT_RELEASE"];
+export const SITE_REQUIRED_TYPES = ["SITE_EXPENSE", "SECURITY_DEPOSIT_RELEASE", "CLIENT_REFUND"];
 
 // Types that require a Partner to be selected.
 export const PARTNER_SCOPED_TYPES = ["OWNER_INVESTMENT", "PARTNER_INVESTMENT", "PARTNER_SETTLEMENT"];
@@ -70,8 +74,8 @@ export const PARTNER_SCOPED_TYPES = ["OWNER_INVESTMENT", "PARTNER_INVESTMENT", "
 // Types that require an Employee to be selected — tag-only, mirrors LIABILITY_DISBURSEMENT.
 export const EMPLOYEE_SCOPED_TYPES = ["EMPLOYEE_SALARY", "SITE_ADVANCE", "PERSONAL_ADVANCE"];
 
-// Loan types that behave exactly like LIABILITY_REPAYMENT — same Liability + Principal/Interest split fields.
-export const LOAN_REPAYMENT_TYPES = ["LIABILITY_REPAYMENT", "CAR_LOAN_EMI", "HOME_LOAN_EMI", "GOLD_LOAN", "EMERGENCY_LOAN", "OTHER_LOAN"];
+// Loan types (+ Credit Card Bill Payment, + OD/CC Interest) that behave exactly like LIABILITY_REPAYMENT — same Liability + Principal/Interest split fields. OD_CC_INTEREST is pure interest against a CASH_CREDIT/OVERDRAFT Liability (principalPaid=0).
+export const LOAN_REPAYMENT_TYPES = ["LIABILITY_REPAYMENT", "CAR_LOAN_EMI", "HOME_LOAN_EMI", "GOLD_LOAN", "EMERGENCY_LOAN", "OTHER_LOAN", "CREDIT_CARD_BILL_PAYMENT", "OD_CC_INTEREST"];
 
 // Types that create a real ledger record (Vendor Payment, Running Bill Payment, Liability Repayment, etc.) — these can never be deleted here, only from their own module.
 export const LEDGER_BACKED_TYPES = [
@@ -90,6 +94,7 @@ export const LOAN_TYPE_TO_LIABILITY_TYPE: Record<string, string> = {
   CAR_LOAN_EMI: "CAR_LOAN",
   HOME_LOAN_EMI: "HOME_LOAN",
   GOLD_LOAN: "GOLD_LOAN",
+  CREDIT_CARD_BILL_PAYMENT: "CREDIT_CARD",
 };
 
 export interface TransactionAllocation {
@@ -105,7 +110,7 @@ export interface TransactionAllocation {
   partyName: string;
   notes: string;
   runningBillPaymentId: string;
-  runningBillPayment: { id: string; paymentNumber: string; billNumber: string } | null;
+  runningBillPayment: { id: string; paymentNumber: string; runningBillId: string; billNumber: string } | null;
   vendorPaymentId: string;
   vendorPayment: { id: string; paymentNumber: string; vendor: string; billNumber: string } | null;
   labourPaymentId: string;

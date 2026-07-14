@@ -38,6 +38,7 @@ function emptyByType(): Record<DeductionType, number> {
     INCOME_TAX: 0,
     MOBILIZATION_RECOVERY: 0,
     INSURANCE: 0,
+    MSEB: 0,
     FINE: 0,
     OTHER: 0,
   };

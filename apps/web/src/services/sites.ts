@@ -63,6 +63,19 @@ export interface SiteFormData {
   clientEngineer: string;
   defectLiabilityPeriod: string;
   gstPercent: number | "";
+  // Required only when actually changing tenderAboveBelowPercent to a different value — Tender
+  // Above/Below (%) can only be edited here, and every change is permanently logged.
+  tenderChangeReason?: string;
+}
+
+export interface TenderPercentChangeLogEntry {
+  id: string;
+  previousPercent: string;
+  newPercent: string;
+  reason: string;
+  changedById: string;
+  changedByName: string;
+  changedAt: string;
 }
 
 export const SITE_TYPE_OPTIONS = ["OWN_SITE", "PARTNERSHIP_SITE", "AGENCY_SITE"];
@@ -127,4 +140,9 @@ export async function updateSite(id: string, data: Partial<SiteFormData>): Promi
 
 export async function deleteSite(id: string): Promise<void> {
   await api.delete(`/sites/${id}`);
+}
+
+export async function getTenderPercentChangeLog(siteId: string): Promise<TenderPercentChangeLogEntry[]> {
+  const response = await api.get<{ success: boolean; data: TenderPercentChangeLogEntry[] }>(`/sites/${siteId}/tender-percent-log`);
+  return response.data.data;
 }

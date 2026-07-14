@@ -10,6 +10,8 @@ import { getProjects } from "../../services/projects";
 import { getVendors } from "../../services/vendors";
 import { getCompanyBankAccounts } from "../../services/company-bank-accounts";
 import type { CompanyBankAccount } from "../../services/company-bank-accounts";
+import { getLiabilities } from "../../services/liabilities";
+import type { Liability } from "../../services/liabilities";
 
 export default function AddExpense() {
   const navigate = useNavigate();
@@ -24,12 +26,14 @@ export default function AddExpense() {
   const [vendors, setVendors] = useState<{ id: string; name: string }[]>([]);
   const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
   const [companyBankAccounts, setCompanyBankAccounts] = useState<CompanyBankAccount[]>([]);
+  const [creditCards, setCreditCards] = useState<Liability[]>([]);
 
   useEffect(() => {
     getProjects({ limit: 100 }).then((r) => setProjects(r.data)).catch(() => {});
     getVendors({ limit: 100 }).then((r) => setVendors(r.data)).catch(() => {});
     getExpenseCategories(false).then(setCategories).catch(() => {});
     getCompanyBankAccounts().then((accounts) => setCompanyBankAccounts(accounts.filter((a) => a.isActive))).catch(() => {});
+    getLiabilities({ liabilityType: "CREDIT_CARD" }).then((r) => setCreditCards(r.data)).catch(() => {});
   }, []);
 
   const lockedProjectName = projects.find((p) => p.id === lockedProjectId)?.name;
@@ -62,6 +66,7 @@ export default function AddExpense() {
           vendors={vendors}
           categories={categories}
           companyBankAccounts={companyBankAccounts}
+          creditCards={creditCards}
           lockedProjectId={lockedProjectId}
           lockedProjectName={lockedProjectName}
           lockedSiteId={lockedSiteId}

@@ -44,6 +44,8 @@ export const ALLOCATION_TYPES = [
   "EMERGENCY_LOAN",
   "OTHER_LOAN",
   "SECURITY_DEPOSIT_RELEASE",
+  "CLIENT_REFUND",
+  "CREDIT_CARD_BILL_PAYMENT",
 ];
 
 export const ALLOCATION_TYPE_LABELS: Record<string, string> = {
@@ -73,12 +75,20 @@ export const ALLOCATION_TYPE_LABELS: Record<string, string> = {
   EMERGENCY_LOAN: "Emergency Loan",
   OTHER_LOAN: "Other Loan",
   SECURITY_DEPOSIT_RELEASE: "Security Deposit Release",
+  CLIENT_REFUND: "Client Refund",
+  CREDIT_CARD_BILL_PAYMENT: "Credit Card Bill Payment",
 };
 
 /** Employee Salary / Site Advance / Personal Advance — tag-only, mirrors LIABILITY_DISBURSEMENT. */
 export const EMPLOYEE_TAG_TYPES: AllocationType[] = ["EMPLOYEE_SALARY", "SITE_ADVANCE", "PERSONAL_ADVANCE"];
 
-/** Car/Home/Gold/Emergency/Other Loan behave exactly like LIABILITY_REPAYMENT — same ledger row, just a more specific "why" label, filtered to the matching Liability.liabilityType in the UI. */
+/**
+ * Car/Home/Gold/Emergency/Other Loan/Credit Card Bill Payment/OD-CC Interest behave exactly like
+ * LIABILITY_REPAYMENT — same ledger row, just a more specific "why" label, filtered to the
+ * matching Liability.liabilityType in the UI. OD_CC_INTEREST is interest paid against a
+ * CASH_CREDIT/OVERDRAFT Liability with no principal component — recorded as principalPaid=0,
+ * interestPaid=amount, same as any other pure-interest repayment row.
+ */
 export const LOAN_REPAYMENT_TYPES: AllocationType[] = [
   "LIABILITY_REPAYMENT",
   "CAR_LOAN_EMI",
@@ -86,6 +96,8 @@ export const LOAN_REPAYMENT_TYPES: AllocationType[] = [
   "GOLD_LOAN",
   "EMERGENCY_LOAN",
   "OTHER_LOAN",
+  "CREDIT_CARD_BILL_PAYMENT",
+  "OD_CC_INTEREST",
 ];
 
 // The types that auto-create a real ledger row rather than existing only as an allocation.
@@ -123,7 +135,7 @@ export interface AllocationRowInput {
 const include = {
   site: { select: { id: true, name: true } },
   employee: { select: { id: true, name: true } },
-  runningBillPayment: { select: { id: true, paymentNumber: true, runningBill: { select: { id: true, billNumber: true } } } },
+  runningBillPayment: { select: { id: true, paymentNumber: true, runningBillId: true, runningBill: { select: { id: true, billNumber: true } } } },
   vendorPayment: { select: { id: true, paymentNumber: true, vendor: { select: { id: true, name: true } }, vendorBill: { select: { id: true, billNumber: true } } } },
   labourPayment: { select: { id: true, labour: { select: { id: true, name: true } } } },
   expense: { select: { id: true, expenseNumber: true, category: { select: { id: true, name: true } } } },
@@ -151,7 +163,12 @@ function toDTO(a: AllocationRow) {
     notes: a.notes ?? "",
     runningBillPaymentId: a.runningBillPaymentId ?? "",
     runningBillPayment: a.runningBillPayment
-      ? { id: a.runningBillPayment.id, paymentNumber: a.runningBillPayment.paymentNumber, billNumber: a.runningBillPayment.runningBill.billNumber }
+      ? {
+          id: a.runningBillPayment.id,
+          paymentNumber: a.runningBillPayment.paymentNumber,
+          runningBillId: a.runningBillPayment.runningBillId,
+          billNumber: a.runningBillPayment.runningBill.billNumber,
+        }
       : null,
     vendorPaymentId: a.vendorPaymentId ?? "",
     vendorPayment: a.vendorPayment
@@ -428,6 +445,10 @@ export async function createAllocations(companyId: string, createdById: string, 
 
       if (allocationType === "SECURITY_DEPOSIT_RELEASE" && !row.siteId?.trim()) {
         throw new Error("Site is required for a Security Deposit Release allocation");
+      }
+
+      if (allocationType === "CLIENT_REFUND" && !row.siteId?.trim()) {
+        throw new Error("Site is required for a Client Refund allocation");
       }
 
       if (allocationType === "LIABILITY_DISBURSEMENT") {

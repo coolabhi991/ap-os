@@ -174,6 +174,7 @@ enum DeductionType {
   INCOME_TAX
   MOBILIZATION_RECOVERY
   INSURANCE
+  MSEB
   FINE
   OTHER
 }
@@ -275,6 +276,12 @@ enum AllocationType {
   // sum of these allocations; SD Pending is always Deducted minus Released, computed on demand
   // in deduction-ledger.service.ts — never stored.
   SECURITY_DEPOSIT_RELEASE
+  // Payment Purpose Allocation (Executive Dashboard milestone). CLIENT_REFUND is tag-only
+  // (requires siteId, same shape as SECURITY_DEPOSIT_RELEASE) — money paid back to a client,
+  // no dedicated ledger table. CREDIT_CARD_BILL_PAYMENT behaves exactly like LIABILITY_REPAYMENT
+  // (added to LOAN_REPAYMENT_TYPES), filtered to Liability.liabilityType = CREDIT_CARD.
+  CLIENT_REFUND
+  CREDIT_CARD_BILL_PAYMENT
 }
 
 enum LiabilityType {
@@ -388,6 +395,8 @@ model Company {
   partnerSettlements    PartnerSettlement[]
   sites                 Site[]
   siteRecapRevisions    SiteRecapRevision[]
+  siteTenderPercentChangeLogs SiteTenderPercentChangeLog[]
+  workOrderExtensions   WorkOrderExtension[]
   siteVisits            SiteVisit[]
   liabilities           Liability[]
   employees             Employee[]
@@ -475,6 +484,8 @@ model User {
   mbsCreated                 MeasurementBook[]     @relation("MBCreatedBy")
   mbEmailsSent               MBEmailLog[]          @relation("MBEmailSentBy")
   runningBillsCreated        RunningBill[]         @relation("RunningBillCreatedBy")
+  tenderPercentChangesLogged SiteTenderPercentChangeLog[]
+  workOrderExtensionsCreated WorkOrderExtension[]
   runningBillPaymentsCreated RunningBillPayment[]  @relation("RunningBillPaymentCreatedBy")
   runningBillEmailsSent      RunningBillEmailLog[] @relation("RunningBillEmailSentBy")
   bankTransactionsCreated    BankTransaction[]     @relation("BankTransactionCreatedBy")
@@ -644,11 +655,69 @@ model Site {
   transactionAllocations TransactionAllocation[]
   vendorBills          VendorBill[]
   billItems            SiteBillItem[]
+  tenderPercentChangeLogs SiteTenderPercentChangeLog[]
+  workOrderExtensions  WorkOrderExtension[]
 
   @@unique([companyId, siteCode])
   @@index([companyId])
   @@index([projectId])
   @@index([status])
+}
+
+/**
+ * Audit trail for Site.tenderAboveBelowPercent changes (Form 58 redesign) — every edit from the
+ * Work Order Details tab is logged here, never overwritten. RA Bills freeze their own copy of the
+ * percent at creation time (RunningBill.tenderAboveBelowPercent), so this log exists purely for
+ * traceability of *why* the master value changed, not to recompute anything retroactively.
+ */
+model SiteTenderPercentChangeLog {
+  id              String   @id @default(cuid())
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id])
+  siteId          String
+  site            Site     @relation(fields: [siteId], references: [id])
+  previousPercent Decimal? @db.Decimal(5, 2)
+  newPercent      Decimal? @db.Decimal(5, 2)
+  reason          String
+  changedById     String
+  changedBy       User     @relation(fields: [changedById], references: [id])
+  changedAt       DateTime @default(now())
+
+  @@index([companyId])
+  @@index([siteId])
+}
+
+/**
+ * Work Order Extension History (Project Executive Dashboard milestone) — a Site's original
+ * Work Order End Date (Site.completionDate) is never overwritten by an extension; each extension
+ * is its own permanent row here. The Projects Executive Dashboard shows only the latest (by
+ * createdAt desc) newCompletionDate as "Extension Till Date" — full history stays available via
+ * the list endpoint, mirroring SiteTenderPercentChangeLog's audit-log shape above. The letter
+ * file reuses the same authenticated-download disk-upload pattern as Document
+ * (filePath/mimeType/fileSizeBytes, served only through GET /work-order-extensions/:id/file).
+ */
+model WorkOrderExtension {
+  id                     String   @id @default(cuid())
+  companyId              String
+  company                Company  @relation(fields: [companyId], references: [id])
+  siteId                 String
+  site                   Site     @relation(fields: [siteId], references: [id])
+  extensionOrderNumber   String
+  extensionOrderDate     DateTime
+  previousCompletionDate DateTime
+  newCompletionDate      DateTime
+  reason                 String
+  remarks                String?
+  letterFileName         String?
+  letterFilePath         String?
+  letterMimeType         String?
+  letterFileSizeBytes    Int?
+  createdById            String
+  createdBy              User     @relation(fields: [createdById], references: [id])
+  createdAt              DateTime @default(now())
+
+  @@index([companyId])
+  @@index([siteId])
 }
 
 enum GstType {
@@ -1673,15 +1742,41 @@ model RunningBill {
   billNumber              String
   billType                BillType        @default(RA_BILL)
   site                    String?
+  // Retired from the Form 58 create/edit UI (Client Payment Workflow milestone) — replaced by
+  // billSubmittedDate below. Columns kept (nullable, unused by new bills) so historical rows
+  // that already have a period recorded are never destructively dropped.
   billPeriodFrom          DateTime?
   billPeriodTo            DateTime?
   billDate                DateTime        @default(now())
+  // The date the physical/government bill was submitted — distinct from `submittedAt` (the
+  // workflow status-transition timestamp set by submitRunningBill).
+  billSubmittedDate       DateTime?
   // Cumulative-to-date certified value of the work, before deductions. current = total - previous
   // (this bill's own net-new certified value); total/previous are the running cumulative figures
   // across every Running Bill raised so far for this project (see computeItemCalc in the service).
   previousCertifiedAmount Decimal         @default(0) @db.Decimal(14, 2)
   currentCertifiedAmount  Decimal         @default(0) @db.Decimal(14, 2)
   totalCertifiedAmount    Decimal         @default(0) @db.Decimal(14, 2)
+  // Form 58 calculation flow (Site Management & Financial Workflow Refinement, Form 58 redesign)
+  // — frozen into the bill at creation time from the Site's Work Order values, and NEVER
+  // recalculated afterward even if the Site's tenderAboveBelowPercent/gstPercent later change.
+  // Grand Total of Items = currentCertifiedAmount above. Flow: currentCertifiedAmount ->
+  // + tenderAdjustmentAmount = adjustedTotal -> + gstAmount = grossBillAmount -> + roundOff =
+  // finalBillAmount -> - totalDeductions = netPayable.
+  tenderAboveBelowPercent Decimal?        @db.Decimal(5, 2)
+  tenderAdjustmentAmount  Decimal?        @db.Decimal(14, 2)
+  adjustedTotal           Decimal?        @db.Decimal(14, 2)
+  gstPercent              Decimal?        @db.Decimal(5, 2)
+  gstAmount               Decimal?        @db.Decimal(14, 2)
+  // Form 58 UI & Workflow Refinement — an optional additional percentage the user enters when
+  // Government billing GST differs from the Work Order's own gstPercent above. Frozen into the
+  // bill at creation exactly like every other calc-flow field; Total GST (never stored — always
+  // gstAmount + gstDifferenceAmount) feeds into grossBillAmount below.
+  gstDifferencePercent    Decimal?        @db.Decimal(5, 2)
+  gstDifferenceAmount     Decimal?        @db.Decimal(14, 2)
+  grossBillAmount         Decimal?        @db.Decimal(14, 2)
+  roundOff                Decimal?        @db.Decimal(14, 2)
+  finalBillAmount         Decimal?        @db.Decimal(14, 2)
   totalDeductions         Decimal         @default(0) @db.Decimal(14, 2)
   netPayable              Decimal         @default(0) @db.Decimal(14, 2)
   amountReceived          Decimal         @default(0) @db.Decimal(14, 2)
@@ -1897,6 +1992,13 @@ model Expense {
   paymentMode          String
   companyBankAccountId String?
   companyBankAccount   CompanyBankAccount? @relation(fields: [companyBankAccountId], references: [id])
+  // Credit Card Expense Workflow (Executive Dashboard milestone) — only populated when
+  // paymentMode = "CREDIT_CARD"; points at a Liability with liabilityType = CREDIT_CARD.
+  // Creating/editing/deleting an expense in this mode atomically adjusts that Liability's
+  // outstandingAmount (see expense.service.ts) — the expense amount is never a second copy of
+  // the card's balance, only the transaction that moved it.
+  liabilityId          String?
+  liability            Liability?          @relation(fields: [liabilityId], references: [id])
   attachmentFileName   String?
   attachmentFileUrl    String?
   remarks              String?
@@ -1924,6 +2026,7 @@ model Expense {
   @@index([vendorId])
   @@index([subWorkId])
   @@index([companyBankAccountId])
+  @@index([liabilityId])
   @@index([paymentMode])
   @@index([expenseDate])
   @@index([isDeleted])
@@ -2498,6 +2601,7 @@ model Liability {
 
   repayments  LiabilityRepayment[]
   allocations TransactionAllocation[]
+  creditCardExpenses Expense[]
 
   @@unique([companyId, code])
   @@index([companyId])
@@ -2566,7 +2670,13 @@ model Document {
   documentType          DocumentType         @default(OTHER)
   documentNumber        String               @unique
   fileName              String?
+  // Legacy manually-typed URL — retired from the upload UI (Form 58 redesign: Documents module)
+  // but the column stays so documents created before this milestone still resolve. New uploads
+  // use filePath/mimeType/fileSizeBytes instead, served through an authenticated download route.
   fileUrl               String?
+  filePath              String?
+  mimeType              String?
+  fileSizeBytes         Int?
   notes                 String?
   uploadedAt            DateTime             @default(now())
   createdAt             DateTime             @default(now())

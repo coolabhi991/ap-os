@@ -6,6 +6,7 @@ export interface Expense {
   projectId: string;
   project: { id: string; name: string } | null;
   siteId: string;
+  site: { id: string; name: string } | null;
   categoryId: string;
   category: { id: string; name: string } | null;
   vendorId: string;
@@ -18,7 +19,9 @@ export interface Expense {
   amount: string;
   paymentMode: string;
   companyBankAccountId: string;
-  companyBankAccount: { id: string; nickname: string | null; bankName: string; accountNumber: string } | null;
+  companyBankAccount: { id: string; nickname: string | null; bankName: string; accountNumber: string; accountType: string } | null;
+  liabilityId: string;
+  liability: { id: string; loanName: string; liabilityType: string } | null;
   attachmentFileName: string;
   attachmentFileUrl: string;
   remarks: string;
@@ -28,8 +31,19 @@ export interface Expense {
   createdById: string;
   createdBy: { id: string; name: string } | null;
   isDeleted: boolean;
+  sourceBankTransaction: SourceBankTransaction | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Where this record's money actually moved, if it was created by allocating a Bank Transaction (Banking Integration traceability) — null when entered directly. */
+export interface SourceBankTransaction {
+  id: string;
+  transactionDate: string;
+  referenceNumber: string;
+  amount: string;
+  companyBankAccountId: string;
+  bankAccountLabel: string;
 }
 
 export interface ExpenseFormData {
@@ -43,6 +57,7 @@ export interface ExpenseFormData {
   amount: number;
   paymentMode: string;
   companyBankAccountId: string;
+  liabilityId: string;
   attachmentFileName: string;
   attachmentFileUrl: string;
   remarks: string;
@@ -161,7 +176,7 @@ export const PAYMENT_MODE_OPTIONS = ["CASH", "COMPANY_BANK", "CREDIT_CARD", "VEN
 
 export const PAYMENT_MODE_LABELS: Record<string, string> = {
   CASH: "Cash",
-  COMPANY_BANK: "Company Bank",
+  COMPANY_BANK: "Bank",
   CREDIT_CARD: "Credit Card",
   VENDOR_CREDIT: "Vendor Credit",
 };

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Plus } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
@@ -6,14 +6,14 @@ import Layout from "../../components/layout/Layout";
 import ProjectFilters from "../../components/projects/ProjectFilters";
 import ProjectTable from "../../components/projects/ProjectTable";
 
-import { getProjects, deleteProject } from "../../services/projects";
-import type { Project } from "../../services/projects";
+import { getProjectExecutiveDashboard, deleteProject } from "../../services/projects";
+import type { ProjectDashboardRow } from "../../services/projects";
 import LoadingState from "../../components/ui/LoadingState";
 
 export default function Projects() {
   const navigate = useNavigate();
 
-  const [projects, setProjects] = useState<Project[]>([]);
+  const [projects, setProjects] = useState<ProjectDashboardRow[]>([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
   const [loading, setLoading] = useState(true);
@@ -23,13 +23,10 @@ export default function Projects() {
     try {
       setLoading(true);
       setError(null);
-      const result = await getProjects({
-        search: search || undefined,
-        status: statusFilter || undefined,
-      });
-      setProjects(result.data);
+      const result = await getProjectExecutiveDashboard();
+      setProjects(result);
     } catch {
-      setError("Failed to load projects. Please try again.");
+      setError("Failed to load the Project Executive Dashboard. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -37,7 +34,18 @@ export default function Projects() {
 
   useEffect(() => {
     load();
-  }, [search, statusFilter]);
+  }, []);
+
+  // The dashboard endpoint returns every Project with its full Site table in one call — search
+  // and status filtering happen client-side rather than adding a second round trip.
+  const filteredProjects = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    return projects.filter((p) => {
+      if (statusFilter && p.status !== statusFilter) return false;
+      if (!term) return true;
+      return p.name.toLowerCase().includes(term) || p.code.toLowerCase().includes(term) || (p.client?.name.toLowerCase().includes(term) ?? false);
+    });
+  }, [projects, search, statusFilter]);
 
   const handleDelete = async (id: string) => {
     const confirmed = window.confirm("Are you sure you want to delete this project?");
@@ -57,7 +65,7 @@ export default function Projects() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-3xl font-bold text-slate-900">Projects</h1>
-            <p className="mt-2 text-slate-500">Manage all construction projects.</p>
+            <p className="mt-2 text-slate-500">Executive portfolio view — every Project and Site's cost, payments, and progress at a glance.</p>
           </div>
           <button
             onClick={() => navigate("/projects/new")}
@@ -76,7 +84,7 @@ export default function Projects() {
         />
 
         {loading && (
-          <LoadingState label="Loading projects..." />
+          <LoadingState label="Loading Project Executive Dashboard..." />
         )}
 
         {error && !loading && (
@@ -87,13 +95,14 @@ export default function Projects() {
 
         {!loading && !error && (
           <ProjectTable
-            projects={projects}
+            projects={filteredProjects}
             onView={(id) => navigate(`/projects/${id}`)}
             onEdit={(id) => navigate(`/projects/${id}/edit`)}
             onDelete={handleDelete}
             onViewSite={(id) => navigate(`/sites/${id}`)}
             onEditSite={(id) => navigate(`/sites/${id}/edit`)}
             onAddSite={(projectId) => navigate(`/projects/${projectId}/sites/new`)}
+            onSiteDeleted={load}
           />
         )}
       </div>

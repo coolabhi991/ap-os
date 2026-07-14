@@ -8,6 +8,7 @@ import {
   isMachineryCategory,
 } from "../../services/expenses";
 import type { CompanyBankAccount } from "../../services/company-bank-accounts";
+import type { Liability } from "../../services/liabilities";
 import { getSubWorks } from "../../services/sub-works";
 import type { SubWork } from "../../services/sub-works";
 import { getSites } from "../../services/sites";
@@ -27,6 +28,7 @@ interface Props {
   categories: Option[];
   vendors: Option[];
   companyBankAccounts: CompanyBankAccount[];
+  creditCards: Liability[];
   // When set, the Project/Site are already known (e.g. adding an expense from inside a Site
   // Workspace) — the selectors are hidden and the expense is associated automatically.
   lockedProjectId?: string;
@@ -43,6 +45,7 @@ export default function ExpenseForm({
   categories,
   vendors,
   companyBankAccounts,
+  creditCards,
   lockedProjectId,
   lockedProjectName,
   lockedSiteId,
@@ -61,6 +64,7 @@ export default function ExpenseForm({
     amount: initialData?.amount ?? 0,
     paymentMode: initialData?.paymentMode ?? "",
     companyBankAccountId: initialData?.companyBankAccountId ?? "",
+    liabilityId: initialData?.liabilityId ?? "",
     attachmentFileName: initialData?.attachmentFileName ?? "",
     attachmentFileUrl: initialData?.attachmentFileUrl ?? "",
     remarks: initialData?.remarks ?? "",
@@ -73,8 +77,15 @@ export default function ExpenseForm({
   const set = <K extends keyof ExpenseFormData>(key: K, value: ExpenseFormData[K]) =>
     setForm((f) => ({ ...f, [key]: value }));
 
+  const isCash = form.paymentMode === "CASH";
   const isCompanyBank = form.paymentMode === "COMPANY_BANK";
   const isVendorCredit = form.paymentMode === "VENDOR_CREDIT";
+  const isCreditCard = form.paymentMode === "CREDIT_CARD";
+  // Source Account Workflow — the same Company Bank Accounts Master doubles as the Cash Account
+  // Master (it already supports named Cash-type rows, e.g. "Company Cash", "Site Petty Cash").
+  // The dropdown is always filtered to match the selected Payment Mode; nothing is ever free text.
+  const bankAccounts = useMemo(() => companyBankAccounts.filter((a) => a.accountType === "BANK"), [companyBankAccounts]);
+  const cashAccounts = useMemo(() => companyBankAccounts.filter((a) => a.accountType === "CASH"), [companyBankAccounts]);
   const selectedCategoryName = useMemo(() => categories.find((c) => c.id === form.categoryId)?.name, [categories, form.categoryId]);
   const isMachinery = isMachineryCategory(selectedCategoryName);
 
@@ -120,8 +131,10 @@ export default function ExpenseForm({
     if (!form.siteId) return setError("Select a site.");
     if (!form.categoryId) return setError("Select a category.");
     if (!form.paymentMode) return setError("Select a payment mode.");
-    if (isCompanyBank && !form.companyBankAccountId) return setError("Select the company bank account this expense was paid from.");
+    if (isCash && !form.companyBankAccountId) return setError("Select the Source Account this expense was paid from.");
+    if (isCompanyBank && !form.companyBankAccountId) return setError("Select the Source Account this expense was paid from.");
     if (isVendorCredit && !form.vendorId) return setError("Vendor is required for Vendor Credit expenses.");
+    if (isCreditCard && !form.liabilityId) return setError("Select the Source Account this expense was charged to.");
     if (isMachinery) {
       if (!form.machineType) return setError("Select a machine type.");
       if (!form.machineHours || form.machineHours <= 0) return setError("Enter hours greater than zero.");
@@ -282,17 +295,47 @@ export default function ExpenseForm({
             </select>
           </div>
 
+          {isCash && (
+            <div>
+              <label className="mb-2 block font-medium">Source Account *</label>
+              <select value={form.companyBankAccountId} onChange={(e) => set("companyBankAccountId", e.target.value)} required className="w-full rounded-lg border p-3">
+                <option value="">Select Source Account</option>
+                {cashAccounts.map((a) => (
+                  <option key={a.id} value={a.id}>{a.nickname || "Cash"}</option>
+                ))}
+              </select>
+              {cashAccounts.length === 0 && (
+                <p className="mt-1 text-sm text-amber-600">No Cash Accounts on file — add one under Banking.</p>
+              )}
+            </div>
+          )}
+
           {isCompanyBank && (
             <div>
-              <label className="mb-2 block font-medium">Company Bank Account *</label>
+              <label className="mb-2 block font-medium">Source Account *</label>
               <select value={form.companyBankAccountId} onChange={(e) => set("companyBankAccountId", e.target.value)} required className="w-full rounded-lg border p-3">
-                <option value="">Select Account</option>
-                {companyBankAccounts.map((a) => (
+                <option value="">Select Source Account</option>
+                {bankAccounts.map((a) => (
                   <option key={a.id} value={a.id}>{a.nickname || a.bankName} — {a.bankName} (••••{a.accountNumber.slice(-4)})</option>
                 ))}
               </select>
-              {companyBankAccounts.length === 0 && (
-                <p className="mt-1 text-sm text-amber-600">No company bank accounts on file.</p>
+              {bankAccounts.length === 0 && (
+                <p className="mt-1 text-sm text-amber-600">No Bank Accounts on file — add one under Banking.</p>
+              )}
+            </div>
+          )}
+
+          {isCreditCard && (
+            <div>
+              <label className="mb-2 block font-medium">Source Account *</label>
+              <select value={form.liabilityId} onChange={(e) => set("liabilityId", e.target.value)} required className="w-full rounded-lg border p-3">
+                <option value="">Select Source Account</option>
+                {creditCards.map((c) => (
+                  <option key={c.id} value={c.id}>{c.loanName} — {c.accountNumber ? `••••${c.accountNumber.slice(-4)}` : c.bankName}</option>
+                ))}
+              </select>
+              {creditCards.length === 0 && (
+                <p className="mt-1 text-sm text-amber-600">No Credit Cards on file — add one under Finance &gt; Credit Cards.</p>
               )}
             </div>
           )}

@@ -2,6 +2,7 @@ import prisma from "../config/prisma.js";
 import { Prisma, BillStatus, BillType, DeductionType } from "@prisma/client";
 import { PAYMENT_MODES } from "./vendor-bill.service.js";
 import { createSiteBillItem } from "./site-bill-item.service.js";
+import { sourceBankTransactionSelect, toSourceBankTransactionDTO } from "../utils/bank-traceability.js";
 
 /**
  * Running Bill — the client-billing module, and the direct system representation of one
@@ -41,32 +42,34 @@ export const BILL_TYPE_LABELS: Record<string, string> = {
 // GST_STATE/GST_CENTRAL instead (see DEDUCTION_TYPES below, which intentionally omits it from
 // the active/default set exposed to new bills).
 export const DEDUCTION_TYPES = [
+  "SECURITY_DEPOSIT",
+  "TDS",
+  "INCOME_TAX",
+  "ROYALTY",
+  "LABOUR_CESS",
+  "INSURANCE",
+  "MOBILIZATION_RECOVERY",
+  "MSEB",
+  "FINE",
+  "OTHER",
   "GST_STATE",
   "GST_CENTRAL",
-  "INCOME_TAX",
-  "SECURITY_DEPOSIT",
-  "ROYALTY",
-  "INSURANCE",
-  "FINE",
-  "LABOUR_CESS",
-  "MOBILIZATION_RECOVERY",
-  "TDS",
-  "OTHER",
   "GST",
 ];
 
 export const DEDUCTION_TYPE_LABELS: Record<string, string> = {
+  SECURITY_DEPOSIT: "Security Deposit",
+  TDS: "GST TDS",
+  INCOME_TAX: "Income Tax",
+  ROYALTY: "Royalty",
+  LABOUR_CESS: "Labour Cess",
+  INSURANCE: "Insurance",
+  MOBILIZATION_RECOVERY: "Mobilization Recovery",
+  MSEB: "MSEB",
+  FINE: "Fine",
+  OTHER: "Other",
   GST_STATE: "GST State",
   GST_CENTRAL: "GST Central",
-  INCOME_TAX: "Income Tax",
-  SECURITY_DEPOSIT: "Security Deposit",
-  ROYALTY: "Royalty",
-  INSURANCE: "Insurance",
-  FINE: "Fine",
-  LABOUR_CESS: "Labour Cess",
-  MOBILIZATION_RECOVERY: "Mobilization Recovery",
-  TDS: "TDS",
-  OTHER: "Other",
   GST: "GST (legacy)",
 };
 
@@ -84,9 +87,8 @@ export interface RunningBillFormInput {
   billNumber: string;
   billType?: string;
   site?: string;
-  billPeriodFrom?: string;
-  billPeriodTo?: string;
   billDate?: string;
+  billSubmittedDate?: string;
   remarks?: string;
   deductions?: RunningBillDeductionInput[];
 }
@@ -102,6 +104,7 @@ export interface Form58ItemInput {
   rate?: number;
   subWorkId?: string;
   currentQuantity: number;
+  remarks?: string;
 }
 
 export interface Form58BillFormInput {
@@ -109,11 +112,13 @@ export interface Form58BillFormInput {
   billNumber?: string;
   billType?: string;
   billDate?: string;
-  billPeriodFrom?: string;
-  billPeriodTo?: string;
+  billSubmittedDate?: string;
   remarks?: string;
   items: Form58ItemInput[];
   deductions?: RunningBillDeductionInput[];
+  // Optional additional GST % when Government billing GST differs from the Work Order's own
+  // gstPercent. Defaults to 0 — frozen into the bill at creation, exactly like tenderAboveBelowPercent/gstPercent.
+  gstDifferencePercent?: number;
 }
 
 export interface RunningBillListQuery {
@@ -207,7 +212,10 @@ const include = {
   subWork: { select: { id: true, name: true } },
   measurementBook: { select: { id: true, mbNumber: true, mbDate: true } },
   createdBy: { select: { id: true, name: true } },
-  items: { orderBy: { sortOrder: "asc" as const } },
+  items: {
+    orderBy: { sortOrder: "asc" as const },
+    include: { siteBillItem: { select: { subWorkId: true, subWork: { select: { id: true, name: true } } } } },
+  },
   deductions: true,
 };
 
@@ -220,6 +228,8 @@ function itemToDTO(item: RBItemRow) {
     id: item.id,
     sortOrder: item.sortOrder,
     siteBillItemId: item.siteBillItemId ?? "",
+    subWorkId: item.siteBillItem?.subWorkId ?? "",
+    subWorkName: item.siteBillItem?.subWork?.name ?? "",
     boqItemNo: item.boqItemNo,
     boqDescription: item.boqDescription,
     unit: item.unit,
@@ -229,8 +239,10 @@ function itemToDTO(item: RBItemRow) {
     boqRate: item.boqRate.toString(),
     paymentPercent: item.paymentPercent.toString(),
     effectiveRate: item.effectiveRate.toString(),
+    // Now To Pay Amount mirrors Current Amount on Form 58 unless a payment percent < 100% applies.
     previousAmount: item.previousAmount.toString(),
     currentAmount: item.currentAmount.toString(),
+    nowToPayAmount: item.currentAmount.toString(),
     totalAmount: item.totalAmount.toString(),
     remarks: item.remarks ?? "",
   };
@@ -262,12 +274,24 @@ function toDTO(bill: RBRow) {
     billNumber: bill.billNumber,
     billType: bill.billType,
     site: bill.site ?? bill.project.location ?? "",
-    billPeriodFrom: bill.billPeriodFrom ? bill.billPeriodFrom.toISOString().slice(0, 10) : "",
-    billPeriodTo: bill.billPeriodTo ? bill.billPeriodTo.toISOString().slice(0, 10) : "",
     billDate: bill.billDate.toISOString().slice(0, 10),
+    billSubmittedDate: bill.billSubmittedDate ? bill.billSubmittedDate.toISOString().slice(0, 10) : "",
     previousCertifiedAmount: bill.previousCertifiedAmount.toString(),
     currentCertifiedAmount: bill.currentCertifiedAmount.toString(),
     totalCertifiedAmount: bill.totalCertifiedAmount.toString(),
+    // Form 58 calculation flow — frozen at bill creation, never recalculated afterward.
+    tenderAboveBelowPercent: bill.tenderAboveBelowPercent ? bill.tenderAboveBelowPercent.toString() : "",
+    tenderAdjustmentAmount: bill.tenderAdjustmentAmount ? bill.tenderAdjustmentAmount.toString() : "0",
+    adjustedTotal: bill.adjustedTotal ? bill.adjustedTotal.toString() : bill.currentCertifiedAmount.toString(),
+    gstPercent: bill.gstPercent ? bill.gstPercent.toString() : "",
+    gstAmount: bill.gstAmount ? bill.gstAmount.toString() : "0",
+    gstDifferencePercent: bill.gstDifferencePercent ? bill.gstDifferencePercent.toString() : "0",
+    gstDifferenceAmount: bill.gstDifferenceAmount ? bill.gstDifferenceAmount.toString() : "0",
+    // Total GST is never stored — always gstAmount + gstDifferenceAmount, both already frozen above.
+    totalGstAmount: (Number(bill.gstAmount ?? 0) + Number(bill.gstDifferenceAmount ?? 0)).toFixed(2),
+    grossBillAmount: bill.grossBillAmount ? bill.grossBillAmount.toString() : bill.currentCertifiedAmount.toString(),
+    roundOff: bill.roundOff ? bill.roundOff.toString() : "0",
+    finalBillAmount: bill.finalBillAmount ? bill.finalBillAmount.toString() : bill.currentCertifiedAmount.toString(),
     totalDeductions: bill.totalDeductions.toString(),
     netPayable: bill.netPayable.toString(),
     amountReceived: bill.amountReceived.toString(),
@@ -316,6 +340,11 @@ interface MBItemSource {
 
 interface ResolvedRBItem {
   siteBillItemId?: string;
+  // Internal only — never persisted on RunningBillItem (stripped before createMany). Used to sort
+  // items into Sub Work order and to filter out Sub Works with no work executed this period
+  // (Form 58 UI & Workflow Refinement). Absent for legacy MB-sourced items (buildItemsFromMB),
+  // which have no Sub Work concept and are left completely unchanged by this milestone.
+  subWorkId?: string;
   sortOrder: number;
   boqItemNo: string;
   boqDescription: string;
@@ -392,7 +421,17 @@ async function computePreviousQuantityForSiteBillItem(companyId: string, siteBil
  * can never override those for an existing item, only Current Quantity. A row with no
  * siteBillItemId is a brand-new item: it's added to the master here (via
  * site-bill-item.service.ts, so every later bill for this Site auto-includes it too), starting
- * at Previous Quantity 0.
+ * at Previous Quantity 0 — and must always name the Sub Work it belongs to (createSiteBillItem
+ * now rejects a missing one), so an "Unassigned" bucket can never be created again.
+ *
+ * Two Form 58 UI & Workflow Refinement rules are applied here, centrally, so both
+ * createRunningBillFromForm58 and updateRunningBill get them for free:
+ *  - Show Only Work Executed: a Sub Work only survives into the resolved/saved bill if at least
+ *    one of its items has Current Qty > 0 this period. Sub Works with zero activity are dropped
+ *    entirely (their previously-certified items simply carry forward untouched to next time).
+ *  - Items are laid out in Recapitulation Register order (Sub Work sortOrder, then each item's
+ *    original position within it) so every downstream view/PDF groups and orders correctly just
+ *    by respecting sortOrder ascending.
  */
 async function resolveForm58Items(
   companyId: string,
@@ -401,8 +440,32 @@ async function resolveForm58Items(
   rows: Form58ItemInput[],
   excludeRunningBillId?: string
 ): Promise<ResolvedRBItem[]> {
-  const resolved: ResolvedRBItem[] = [];
-  let sortOrder = 0;
+  const masterCache = new Map<string, { subWorkId: string | null; itemNo: string; description: string; unit: string; rate: number }>();
+  const existingIds = Array.from(new Set(rows.filter((r) => r.siteBillItemId?.trim()).map((r) => r.siteBillItemId!.trim())));
+  if (existingIds.length) {
+    const masters = await prisma.siteBillItem.findMany({ where: { id: { in: existingIds }, companyId, siteId } });
+    for (const m of masters) masterCache.set(m.id, { subWorkId: m.subWorkId, itemNo: m.itemNo, description: m.description, unit: m.unit, rate: Number(m.rate) });
+  }
+
+  const referencedSubWorkIds = new Set<string>();
+  for (const row of rows) {
+    if (row.siteBillItemId?.trim()) {
+      const m = masterCache.get(row.siteBillItemId.trim());
+      if (m?.subWorkId) referencedSubWorkIds.add(m.subWorkId);
+    } else if (row.subWorkId?.trim()) {
+      referencedSubWorkIds.add(row.subWorkId.trim());
+    }
+  }
+  const subWorkSortOrders = new Map<string, number>();
+  if (referencedSubWorkIds.size) {
+    const subWorks = await prisma.subWork.findMany({
+      where: { id: { in: Array.from(referencedSubWorkIds) }, companyId, siteId },
+      select: { id: true, sortOrder: true },
+    });
+    for (const sw of subWorks) subWorkSortOrders.set(sw.id, sw.sortOrder);
+  }
+
+  const working: Array<ResolvedRBItem & { subWorkId: string }> = [];
 
   for (const row of rows) {
     const currentQuantity = round4(Number(row.currentQuantity) || 0);
@@ -413,23 +476,26 @@ async function resolveForm58Items(
     let description: string;
     let unit: string;
     let rate: number;
+    let subWorkId: string;
 
     if (row.siteBillItemId?.trim()) {
-      const master = await prisma.siteBillItem.findFirst({ where: { id: row.siteBillItemId, companyId, siteId } });
+      const master = masterCache.get(row.siteBillItemId.trim());
       if (!master) throw new Error("Bill Item not found on this Site");
-      siteBillItemId = master.id;
+      siteBillItemId = row.siteBillItemId.trim();
       itemNo = master.itemNo;
       description = master.description;
       unit = master.unit;
-      rate = Number(master.rate);
+      rate = master.rate;
+      subWorkId = master.subWorkId ?? "";
     } else {
+      if (!row.subWorkId?.trim()) throw new Error("Sub Work is required for a new item");
       if (!row.description?.trim() || !row.unit?.trim()) throw new Error("Description and Unit are required for a new item");
       const rateInput = Number(row.rate);
       if (!Number.isFinite(rateInput) || rateInput < 0) throw new Error("Rate must be a number greater than or equal to zero for a new item");
       const created = await createSiteBillItem(companyId, createdById, {
         siteId,
         subWorkId: row.subWorkId,
-        itemNo: row.itemNo?.trim() || String(sortOrder + 1),
+        itemNo: row.itemNo?.trim() || String(working.length + 1),
         description: row.description.trim(),
         unit: row.unit.trim(),
         rate: rateInput,
@@ -439,6 +505,7 @@ async function resolveForm58Items(
       description = created.description;
       unit = created.unit;
       rate = Number(created.rate);
+      subWorkId = row.subWorkId.trim();
     }
 
     const previousQuantity = await computePreviousQuantityForSiteBillItem(companyId, siteBillItemId, excludeRunningBillId);
@@ -447,9 +514,10 @@ async function resolveForm58Items(
     const currentAmount = round2(currentQuantity * rate);
     const totalAmount = round2(totalQuantity * rate);
 
-    resolved.push({
+    working.push({
       siteBillItemId,
-      sortOrder: sortOrder++,
+      subWorkId,
+      sortOrder: 0,
       boqItemNo: itemNo,
       boqDescription: description,
       unit,
@@ -462,11 +530,21 @@ async function resolveForm58Items(
       previousAmount,
       currentAmount,
       totalAmount,
-      remarks: null,
+      remarks: row.remarks?.trim() || null,
     });
   }
 
-  return resolved;
+  const activeSubWorkIds = new Set(working.filter((w) => w.currentQuantity > 0).map((w) => w.subWorkId));
+  const active = working.filter((w) => activeSubWorkIds.has(w.subWorkId));
+
+  active.sort((a, b) => {
+    const soA = subWorkSortOrders.get(a.subWorkId) ?? Number.MAX_SAFE_INTEGER;
+    const soB = subWorkSortOrders.get(b.subWorkId) ?? Number.MAX_SAFE_INTEGER;
+    if (soA !== soB) return soA - soB;
+    return a.subWorkId.localeCompare(b.subWorkId);
+  });
+
+  return active.map((item, index) => ({ ...item, sortOrder: index }));
 }
 
 export async function listRunningBills(companyId: string, query: RunningBillListQuery) {
@@ -551,9 +629,24 @@ export async function getNextRABillDraft(siteId: string, companyId: string) {
   });
   const nextRaSequence = (latest?.raSequence ?? 0) + 1;
 
+  // Final Bill Rules — once a Final Bill exists for this Site, billing is Completed and no
+  // further bill (RA/Advance/Final) may be created until that Final Bill is cancelled (deleted
+  // while still Draft, the only reversal path any bill supports).
+  const finalBill = await prisma.runningBill.findFirst({ where: { companyId, siteId, billType: "FINAL_BILL" } });
+
+  // Every Sub Work for this Site (from the Recapitulation Register) is always shown — including
+  // ones with no billable item yet — so a brand-new Sub Work still gets its own "+ Add Item"
+  // section instead of forcing items into an "Unassigned" bucket.
+  const subWorks = await prisma.subWork.findMany({
+    where: { companyId, siteId },
+    orderBy: { sortOrder: "asc" },
+    select: { id: true, name: true, sortOrder: true },
+  });
+
   const masterItems = await prisma.siteBillItem.findMany({
     where: { companyId, siteId, isActive: true },
-    orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    orderBy: [{ subWork: { sortOrder: "asc" } }, { sortOrder: "asc" }, { createdAt: "asc" }],
+    include: { subWork: { select: { id: true, name: true } } },
   });
 
   const items = await Promise.all(
@@ -563,6 +656,8 @@ export async function getNextRABillDraft(siteId: string, companyId: string) {
       description: m.description,
       unit: m.unit,
       rate: m.rate.toString(),
+      subWorkId: m.subWorkId ?? "",
+      subWorkName: m.subWork?.name ?? "",
       previousQuantity: (await computePreviousQuantityForSiteBillItem(companyId, m.id)).toString(),
       currentQuantity: "0",
     }))
@@ -573,7 +668,12 @@ export async function getNextRABillDraft(siteId: string, companyId: string) {
     nextRaSequence,
     suggestedBillNumber: `RA-${nextRaSequence}`,
     isFirstBill: masterItems.length === 0,
+    isBillingCompleted: !!finalBill,
+    subWorks: subWorks.map((sw) => ({ id: sw.id, name: sw.name })),
     items,
+    // Read-only preview of the Work Order values every new bill will freeze in at Save time.
+    tenderAboveBelowPercent: site.tenderAboveBelowPercent ? site.tenderAboveBelowPercent.toString() : "0",
+    gstPercent: site.gstPercent ? site.gstPercent.toString() : "0",
   };
 }
 
@@ -583,11 +683,28 @@ export async function getNextRABillDraft(siteId: string, companyId: string) {
  * the caller's payload doesn't mention is still included, at Current Quantity 0, so an item that
  * simply wasn't worked on this period never drops off the bill or the register.
  */
+/** Bill Types — Advance Bill/RA Bill/Final Bill each get their own numbering prefix (ADV/RA/FINAL), sharing the same per-Site raSequence counter. */
+function billTypePrefix(billType: BillType): string {
+  if (billType === "ADVANCE_BILL") return "ADV";
+  if (billType === "FINAL_BILL") return "FINAL";
+  return "RA";
+}
+
 export async function createRunningBillFromForm58(companyId: string, createdById: string, input: Form58BillFormInput) {
   if (!input.siteId?.trim()) throw new Error("Site is required");
   const site = await prisma.site.findFirst({ where: { id: input.siteId, companyId } });
   if (!site) throw new Error("Site not found");
   if (!input.items?.length) throw new Error("At least one item is required");
+
+  const billType = parseBillType(input.billType);
+
+  // Final Bill Rules — only one Final Bill is ever allowed per Site, and once it exists no
+  // further bill of any type may be created until it's cancelled (deleted while still Draft —
+  // the only reversal any bill supports).
+  const existingFinalBill = await prisma.runningBill.findFirst({ where: { companyId, siteId: input.siteId, billType: "FINAL_BILL" } });
+  if (existingFinalBill) {
+    throw new Error("This Site's billing is Completed — a Final Bill has already been raised. Cancel it first to create another bill.");
+  }
 
   const latest = await prisma.runningBill.findFirst({
     where: { companyId, siteId: input.siteId, raSequence: { not: null } },
@@ -597,7 +714,9 @@ export async function createRunningBillFromForm58(companyId: string, createdById
 
   // Child document numbering (Document Numbering Standard) — RA Bill inherits the Site code.
   // Sites created before that milestone have no siteCode yet, so fall back to the old label.
-  const billNumber = input.billNumber?.trim() || (site.siteCode ? `${site.siteCode}/RA-${raSequence}` : `RA-${raSequence}`);
+  // The prefix reflects the Bill Type (ADV/RA/FINAL) — user may always override with their own number.
+  const prefix = billTypePrefix(billType);
+  const billNumber = input.billNumber?.trim() || (site.siteCode ? `${site.siteCode}/${prefix}-${raSequence}` : `${prefix}-${raSequence}`);
   const existingNumber = await prisma.runningBill.findFirst({ where: { companyId, siteId: input.siteId, billNumber } });
   if (existingNumber) throw new Error(`Running Bill No. "${billNumber}" already exists for this Site`);
 
@@ -611,8 +730,29 @@ export async function createRunningBillFromForm58(companyId: string, createdById
   const previousCertifiedAmount = round2(resolvedItems.reduce((s, i) => s + i.previousAmount, 0));
   const currentCertifiedAmount = round2(resolvedItems.reduce((s, i) => s + i.currentAmount, 0));
   const totalCertifiedAmount = round2(resolvedItems.reduce((s, i) => s + i.totalAmount, 0));
+
+  // Form 58 calculation flow — read once from the Site's Work Order and frozen into this bill
+  // forever. If the Site's percentages change later, only bills created afterward pick it up;
+  // this bill's own stored figures never move (Freeze Tender Values requirement).
+  const tenderAboveBelowPercent = site.tenderAboveBelowPercent ? Number(site.tenderAboveBelowPercent) : 0;
+  const gstPercent = site.gstPercent ? Number(site.gstPercent) : 0;
+
+  // Grand Total of Items -> Tender Above/Below Adjustment -> Adjusted Total
+  const grandTotalOfItems = currentCertifiedAmount;
+  const tenderAdjustmentAmount = round2(grandTotalOfItems * (tenderAboveBelowPercent / 100));
+  const adjustedTotal = round2(grandTotalOfItems + tenderAdjustmentAmount);
+  // Adjusted Total -> GST (+ optional GST Difference, when Government billing GST differs from
+  // the Work Order's own gstPercent) -> Gross Bill Amount
+  const gstDifferencePercent = round2(Number(input.gstDifferencePercent) || 0);
+  const gstAmount = round2(adjustedTotal * (gstPercent / 100));
+  const gstDifferenceAmount = round2(adjustedTotal * (gstDifferencePercent / 100));
+  const grossBillAmount = round2(adjustedTotal + gstAmount + gstDifferenceAmount);
+  // Gross Bill Amount -> Round Off -> Final Bill Amount
+  const finalBillAmount = Math.round(grossBillAmount);
+  const roundOff = round2(finalBillAmount - grossBillAmount);
+  // Final Bill Amount -> Deductions -> Net Payable
   const totalDeductions = round2(deductions.reduce((s, d) => s + d.amount, 0));
-  const netPayable = round2(currentCertifiedAmount - totalDeductions);
+  const netPayable = round2(finalBillAmount - totalDeductions);
 
   const bill = await prisma.$transaction(async (tx) => {
     const created = await tx.runningBill.create({
@@ -624,13 +764,22 @@ export async function createRunningBillFromForm58(companyId: string, createdById
         measurementBookId: null,
         raSequence,
         billNumber,
-        billType: parseBillType(input.billType),
-        billPeriodFrom: input.billPeriodFrom ? new Date(input.billPeriodFrom) : null,
-        billPeriodTo: input.billPeriodTo ? new Date(input.billPeriodTo) : null,
+        billType,
         billDate: input.billDate ? new Date(input.billDate) : new Date(),
+        billSubmittedDate: input.billSubmittedDate ? new Date(input.billSubmittedDate) : null,
         previousCertifiedAmount,
         currentCertifiedAmount,
         totalCertifiedAmount,
+        tenderAboveBelowPercent,
+        tenderAdjustmentAmount,
+        adjustedTotal,
+        gstPercent,
+        gstAmount,
+        gstDifferencePercent,
+        gstDifferenceAmount,
+        grossBillAmount,
+        roundOff,
+        finalBillAmount,
         totalDeductions,
         netPayable,
         amountReceived: 0,
@@ -641,7 +790,7 @@ export async function createRunningBillFromForm58(companyId: string, createdById
       },
     });
 
-    await tx.runningBillItem.createMany({ data: resolvedItems.map((i) => ({ ...i, companyId, runningBillId: created.id })) });
+    await tx.runningBillItem.createMany({ data: resolvedItems.map(({ subWorkId: _subWorkId, ...i }) => ({ ...i, companyId, runningBillId: created.id })) });
     if (deductions.length) {
       await tx.runningBillDeduction.createMany({ data: deductions.map((d) => ({ ...d, companyId, runningBillId: created.id })) });
     }
@@ -690,9 +839,8 @@ export async function createRunningBill(companyId: string, createdById: string, 
         billNumber: input.billNumber.trim(),
         billType: parseBillType(input.billType),
         site: input.site || mb.site,
-        billPeriodFrom: input.billPeriodFrom ? new Date(input.billPeriodFrom) : null,
-        billPeriodTo: input.billPeriodTo ? new Date(input.billPeriodTo) : null,
         billDate: input.billDate ? new Date(input.billDate) : new Date(),
+        billSubmittedDate: input.billSubmittedDate ? new Date(input.billSubmittedDate) : null,
         previousCertifiedAmount,
         currentCertifiedAmount,
         totalCertifiedAmount,
@@ -735,7 +883,7 @@ export async function createRunningBillFromApprovedMB(companyId: string, created
   return createRunningBill(companyId, createdById, { measurementBookId, billNumber, billDate });
 }
 
-export async function updateRunningBill(id: string, companyId: string, input: Partial<RunningBillFormInput> & { items?: Form58ItemInput[] }) {
+export async function updateRunningBill(id: string, companyId: string, input: Partial<RunningBillFormInput> & { items?: Form58ItemInput[]; gstDifferencePercent?: number }) {
   const existing = await prisma.runningBill.findFirst({
     where: { id, companyId },
     include: { measurementBook: { include: { items: { orderBy: { sortOrder: "asc" } } } } },
@@ -746,6 +894,12 @@ export async function updateRunningBill(id: string, companyId: string, input: Pa
   if (input.billNumber && input.billNumber.trim() !== existing.billNumber) {
     const clash = await prisma.runningBill.findFirst({ where: { companyId, siteId: existing.siteId, billNumber: input.billNumber.trim(), id: { not: id } } });
     if (clash) throw new Error(`Running Bill No. "${input.billNumber}" already exists for this Site`);
+  }
+
+  // Final Bill Rules — switching this Draft bill's type to Final Bill must not create a second one.
+  if (input.billType !== undefined && parseBillType(input.billType) === "FINAL_BILL" && existing.billType !== "FINAL_BILL") {
+    const existingFinalBill = await prisma.runningBill.findFirst({ where: { companyId, siteId: existing.siteId, billType: "FINAL_BILL", id: { not: id } } });
+    if (existingFinalBill) throw new Error("This Site already has a Final Bill — only one is allowed");
   }
 
   // Legacy MB-sourced bills always re-import from the MB, unchanged from before. Form 58 bills
@@ -763,10 +917,30 @@ export async function updateRunningBill(id: string, companyId: string, input: Pa
   const totalCertifiedAmount = resolvedItems ? round2(resolvedItems.reduce((s, i) => s + i.totalAmount, 0)) : Number(existing.totalCertifiedAmount);
   const deductions = input.deductions !== undefined ? buildDeductions(input.deductions) : null;
 
+  // Re-run the Form 58 calculation flow using the percentages already frozen on this bill at
+  // creation — never re-read from the Site, even while the bill is still a Draft being edited.
+  const tenderAboveBelowPercent = existing.tenderAboveBelowPercent ? Number(existing.tenderAboveBelowPercent) : 0;
+  const gstPercent = existing.gstPercent ? Number(existing.gstPercent) : 0;
+  // GST Difference % is only re-derived when the caller explicitly sends a new value — otherwise
+  // whatever is already frozen on this Draft bill is kept, exactly like tenderAboveBelowPercent/gstPercent above.
+  const gstDifferencePercent =
+    input.gstDifferencePercent !== undefined
+      ? round2(Number(input.gstDifferencePercent) || 0)
+      : existing.gstDifferencePercent
+        ? Number(existing.gstDifferencePercent)
+        : 0;
+  const tenderAdjustmentAmount = round2(currentCertifiedAmount * (tenderAboveBelowPercent / 100));
+  const adjustedTotal = round2(currentCertifiedAmount + tenderAdjustmentAmount);
+  const gstAmount = round2(adjustedTotal * (gstPercent / 100));
+  const gstDifferenceAmount = round2(adjustedTotal * (gstDifferencePercent / 100));
+  const grossBillAmount = round2(adjustedTotal + gstAmount + gstDifferenceAmount);
+  const finalBillAmount = Math.round(grossBillAmount);
+  const roundOff = round2(finalBillAmount - grossBillAmount);
+
   const bill = await prisma.$transaction(async (tx) => {
     if (resolvedItems) {
       await tx.runningBillItem.deleteMany({ where: { runningBillId: id } });
-      await tx.runningBillItem.createMany({ data: resolvedItems.map((i) => ({ ...i, companyId, runningBillId: id })) });
+      await tx.runningBillItem.createMany({ data: resolvedItems.map(({ subWorkId: _subWorkId, ...i }) => ({ ...i, companyId, runningBillId: id })) });
     }
 
     if (deductions !== null) {
@@ -779,7 +953,7 @@ export async function updateRunningBill(id: string, companyId: string, input: Pa
     const effectiveDeductions =
       deductions !== null ? deductions.map((d) => d.amount) : (await tx.runningBillDeduction.findMany({ where: { runningBillId: id }, select: { amount: true } })).map((d) => Number(d.amount));
     const totalDeductions = round2(effectiveDeductions.reduce((s, a) => s + a, 0));
-    const netPayable = round2(currentCertifiedAmount - totalDeductions);
+    const netPayable = round2(finalBillAmount - totalDeductions);
 
     const updated = await tx.runningBill.update({
       where: { id },
@@ -787,13 +961,20 @@ export async function updateRunningBill(id: string, companyId: string, input: Pa
         billNumber: input.billNumber?.trim() || existing.billNumber,
         billType: input.billType !== undefined ? parseBillType(input.billType) : existing.billType,
         site: input.site !== undefined ? input.site || null : existing.site,
-        billPeriodFrom: input.billPeriodFrom !== undefined ? (input.billPeriodFrom ? new Date(input.billPeriodFrom) : null) : existing.billPeriodFrom,
-        billPeriodTo: input.billPeriodTo !== undefined ? (input.billPeriodTo ? new Date(input.billPeriodTo) : null) : existing.billPeriodTo,
         billDate: input.billDate ? new Date(input.billDate) : existing.billDate,
+        billSubmittedDate: input.billSubmittedDate !== undefined ? (input.billSubmittedDate ? new Date(input.billSubmittedDate) : null) : existing.billSubmittedDate,
         remarks: input.remarks !== undefined ? input.remarks || null : existing.remarks,
         previousCertifiedAmount,
         currentCertifiedAmount,
         totalCertifiedAmount,
+        tenderAdjustmentAmount,
+        adjustedTotal,
+        gstAmount,
+        gstDifferencePercent,
+        gstDifferenceAmount,
+        grossBillAmount,
+        roundOff,
+        finalBillAmount,
         totalDeductions,
         netPayable,
         outstandingAmount: netPayable,
@@ -849,6 +1030,7 @@ const paymentInclude = {
   companyBankAccount: { select: { id: true, nickname: true, bankName: true, accountNumber: true, ifscCode: true } },
   runningBill: { select: { id: true, billNumber: true } },
   project: { select: { id: true, name: true } },
+  allocation: { select: { bankTransaction: { select: sourceBankTransactionSelect } } },
 };
 
 type RBPaymentRow = Prisma.RunningBillPaymentGetPayload<{ include: typeof paymentInclude }>;
@@ -868,6 +1050,7 @@ function paymentToDTO(p: RBPaymentRow) {
     mode: p.mode ?? "",
     referenceNumber: p.referenceNumber ?? "",
     remarks: p.remarks ?? "",
+    sourceBankTransaction: toSourceBankTransactionDTO(p.allocation),
     createdAt: p.createdAt.toISOString(),
   };
 }

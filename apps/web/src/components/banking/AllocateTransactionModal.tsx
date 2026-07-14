@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
-import { X, Plus, Trash2, AlertTriangle } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import axios from "axios";
+import { X, Plus, Trash2, AlertTriangle, ExternalLink } from "lucide-react";
 import {
   createAllocations,
   getAllocationsForTransaction,
@@ -49,8 +51,49 @@ interface Row extends AllocationRowInput {
 let rowKeySeq = 0;
 const emptyRow = (amount: number): Row => ({ key: ++rowKeySeq, allocationType: "OTHER", amount });
 
+/**
+ * The backend rejects a bad allocation with a specific, actionable message (e.g. "Allocations
+ * (...) exceed the remaining unallocated balance (...) on this transaction") in the JSON error
+ * body — but Axios's own `error.message` for a failed request is just the generic
+ * "Request failed with status code 400", since there's no global response interceptor unwrapping
+ * this. Prefer the real backend message; only fall back to the generic text if the response
+ * genuinely carries no message (e.g. a network error).
+ */
+function extractErrorMessage(err: unknown, fallback: string): string {
+  if (axios.isAxiosError(err)) {
+    const backendMessage = (err.response?.data as { message?: string } | undefined)?.message;
+    if (backendMessage) return backendMessage;
+  }
+  return err instanceof Error ? err.message : fallback;
+}
+
+/**
+ * Banking Integration two-way traceability — every allocation that created a real business record
+ * must be able to open it (Bank Transaction -> Open Expense/Vendor Payment/etc.). Vendor Payment
+ * and Expense have their own per-record view route; the rest (Labour, Partner Investment/
+ * Settlement, Liability, Liability Repayment/Credit Card Bill Payment) only have list/tab-based
+ * pages today, so those link to the owning list/tab rather than a non-existent per-record route.
+ */
+function linkedRecordRoute(a: TransactionAllocation): { label: string; to: string } | null {
+  if (a.expense) return { label: "Open Expense", to: `/expenses/${a.expense.id}` };
+  if (a.vendorPayment) return { label: "Open Vendor Payment", to: `/vendor-payments/${a.vendorPayment.id}` };
+  if (a.runningBillPayment) return { label: "Open Running Bill", to: `/running-bills/${a.runningBillPayment.runningBillId}` };
+  if (a.labourPayment) return { label: "Open Labour Payment", to: "/labour/payments" };
+  if (a.partnerInvestment) return { label: "Open Partner Investment", to: "/partnership?tab=investments" };
+  if (a.partnerSettlement) return { label: "Open Partner Settlement", to: "/partnership?tab=settlements" };
+  if (a.liabilityRepayment) {
+    return {
+      label: a.allocationType === "CREDIT_CARD_BILL_PAYMENT" ? "Open Credit Card Payment" : "Open Liability Repayment",
+      to: "/finance?tab=repayment-history",
+    };
+  }
+  if (a.liability) return { label: "Open Liability", to: "/finance?tab=liabilities" };
+  return null;
+}
+
 
 export default function AllocateTransactionModal({ transaction, onClose, onSaved }: Props) {
+  const navigate = useNavigate();
   const isDeposit = Number(transaction.deposit) > 0;
   const total = Number(isDeposit ? transaction.deposit : transaction.withdrawal);
 
@@ -99,7 +142,7 @@ export default function AllocateTransactionModal({ transaction, onClose, onSaved
       setConfirmingDeleteId(null);
       loadExisting();
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Failed to remove allocation.");
+      alert(extractErrorMessage(err, "Failed to remove allocation."));
     }
   };
 
@@ -159,7 +202,7 @@ export default function AllocateTransactionModal({ transaction, onClose, onSaved
         onSaved();
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save allocations.");
+      setError(extractErrorMessage(err, "Failed to save allocations."));
     } finally {
       setSaving(false);
     }
@@ -186,11 +229,21 @@ export default function AllocateTransactionModal({ transaction, onClose, onSaved
             <p className="text-sm font-medium text-slate-700">Existing Allocations</p>
             {existingAllocations.map((a) => {
               const ledgerBacked = LEDGER_BACKED_TYPES.includes(a.allocationType);
+              const linked = linkedRecordRoute(a);
               return (
                 <div key={a.id} className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
                   <span>
                     {ALLOCATION_TYPE_LABELS[a.allocationType] ?? a.allocationType} — {inr(Number(a.amount))}
                     {a.partyName && <span className="text-slate-400"> ({a.partyName})</span>}
+                    {linked && (
+                      <button
+                        type="button"
+                        onClick={() => { onClose(); navigate(linked.to); }}
+                        className="ml-2 inline-flex items-center gap-1 text-xs text-blue-600 hover:underline"
+                      >
+                        {linked.label} <ExternalLink className="h-3 w-3" />
+                      </button>
+                    )}
                   </span>
                   {confirmingDeleteId === a.id ? (
                     <div className="flex items-center gap-2">

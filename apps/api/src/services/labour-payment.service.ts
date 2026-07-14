@@ -1,6 +1,7 @@
 import prisma from "../config/prisma.js";
 import { Prisma } from "@prisma/client";
 import { createExpense } from "./expense.service.js";
+import { sourceBankTransactionSelect, toSourceBankTransactionDTO } from "../utils/bank-traceability.js";
 
 export const PAYMENT_MODES = ["CASH", "COMPANY_BANK"];
 
@@ -43,6 +44,7 @@ const include = {
   companyBankAccount: { select: { id: true, nickname: true, bankName: true, accountNumber: true } },
   expense: { select: { id: true, expenseNumber: true } },
   createdBy: { select: { id: true, name: true } },
+  allocation: { select: { bankTransaction: { select: sourceBankTransactionSelect } } },
 };
 
 type PaymentRow = Prisma.LabourPaymentGetPayload<{ include: typeof include }>;
@@ -68,6 +70,7 @@ function toDTO(p: PaymentRow) {
     createdById: p.createdById,
     createdBy: p.createdBy,
     isDeleted: p.isDeleted,
+    sourceBankTransaction: toSourceBankTransactionDTO(p.allocation),
     createdAt: p.createdAt.toISOString(),
     updatedAt: p.updatedAt.toISOString(),
   };

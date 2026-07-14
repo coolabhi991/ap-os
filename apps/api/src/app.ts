@@ -38,6 +38,7 @@ import projectControlCenterRoutes from "./routes/project-control-center.routes.j
 import siteRoutes from "./routes/site.routes.js";
 import siteControlCenterRoutes from "./routes/site-control-center.routes.js";
 import siteVisitRoutes from "./routes/site-visit.routes.js";
+import workOrderExtensionRoutes from "./routes/work-order-extension.routes.js";
 import documentRoutes from "./routes/document.routes.js";
 import dprRoutes from "./routes/dpr.routes.js";
 import mbRoutes from "./routes/mb.routes.js";
@@ -111,6 +112,7 @@ app.use("/api/v1/project-control-center", projectControlCenterRoutes);
 app.use("/api/v1/sites", siteRoutes);
 app.use("/api/v1/site-control-center", siteControlCenterRoutes);
 app.use("/api/v1/site-visits", siteVisitRoutes);
+app.use("/api/v1/work-order-extensions", workOrderExtensionRoutes);
 app.use("/api/v1/documents", documentRoutes);
 app.use("/api/v1/dpr", dprRoutes);
 app.use("/api/v1/measurement-books", mbRoutes);

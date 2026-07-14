@@ -1,10 +1,11 @@
 import { Router } from "express";
-import { getSites, getSite, createSiteHandler, updateSiteHandler, deleteSiteHandler } from "../controllers/site.controller.js";
+import { getSites, getSite, createSiteHandler, updateSiteHandler, deleteSiteHandler, getTenderPercentChangeLogHandler } from "../controllers/site.controller.js";
 import { authMiddleware } from "../middleware/auth.middleware.js";
 
 const router = Router();
 
 router.get("/", authMiddleware, getSites);
+router.get("/:id/tender-percent-log", authMiddleware, getTenderPercentChangeLogHandler);
 router.get("/:id", authMiddleware, getSite);
 router.post("/", authMiddleware, createSiteHandler);
 router.put("/:id", authMiddleware, updateSiteHandler);
