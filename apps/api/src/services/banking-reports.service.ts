@@ -255,9 +255,16 @@ export async function getOutstandingSummaryReport(companyId: string) {
  * Generated entirely from TransactionAllocation rows tagged BANK_CHARGES, mirroring the exact
  * pattern already used by employee-report.service.ts for EMPLOYEE_SALARY/SITE_ADVANCE/
  * PERSONAL_ADVANCE — no second total, no new table, the allocation itself is the one entry point.
+ *
+ * Bank Charges Business Rule Simplification: every bank-generated fee (Penal Charges, SMS
+ * Charges, Commitment Charges, GST, RTGS/NEFT/IMPS Charges, Cheque Book Charges, Account
+ * Maintenance, Processing Charges, ATM Charges, etc.) is allocated as this one type — no separate
+ * Charge Type master, no re-classification. The report reuses the ORIGINAL Bank Statement
+ * narration (BankTransaction.description) exactly as imported, per "Enter Once, Use Everywhere" —
+ * it is never re-typed or re-categorized here.
  */
-export async function getBankChargesReport(companyId: string, query: { fromDate?: string; toDate?: string; companyBankAccountId?: string }) {
-  const { fromDate, toDate, companyBankAccountId } = query;
+export async function getBankChargesReport(companyId: string, query: { fromDate?: string; toDate?: string; companyBankAccountId?: string; search?: string }) {
+  const { fromDate, toDate, companyBankAccountId, search } = query;
 
   const rows = await prisma.transactionAllocation.findMany({
     where: {
@@ -265,6 +272,7 @@ export async function getBankChargesReport(companyId: string, query: { fromDate?
       allocationType: "BANK_CHARGES",
       bankTransaction: {
         ...(companyBankAccountId && { companyBankAccountId }),
+        ...(search?.trim() && { description: { contains: search.trim(), mode: "insensitive" } }),
         ...((fromDate || toDate) && {
           transactionDate: {
             ...(fromDate ? { gte: new Date(fromDate) } : {}),
@@ -275,7 +283,13 @@ export async function getBankChargesReport(companyId: string, query: { fromDate?
     },
     include: {
       bankTransaction: {
-        select: { transactionDate: true, referenceNumber: true, companyBankAccount: { select: { id: true, nickname: true, bankName: true } } },
+        select: {
+          id: true,
+          transactionDate: true,
+          description: true,
+          referenceNumber: true,
+          companyBankAccount: { select: { id: true, nickname: true, bankName: true } },
+        },
       },
     },
     orderBy: { bankTransaction: { transactionDate: "desc" } },
@@ -283,17 +297,30 @@ export async function getBankChargesReport(companyId: string, query: { fromDate?
 
   const total = rows.reduce((s, r) => s + Number(r.amount), 0);
 
+  const byAccount = new Map<string, { bankAccountId: string; bankAccount: string; total: number }>();
+  for (const r of rows) {
+    const bankAccountId = r.bankTransaction.companyBankAccount?.id ?? "";
+    const bankAccount = r.bankTransaction.companyBankAccount?.nickname || r.bankTransaction.companyBankAccount?.bankName || "Unknown Account";
+    const entry = byAccount.get(bankAccountId) ?? { bankAccountId, bankAccount, total: 0 };
+    entry.total += Number(r.amount);
+    byAccount.set(bankAccountId, entry);
+  }
+
   return {
     total: total.toFixed(2),
     count: rows.length,
+    byBankAccount: Array.from(byAccount.values())
+      .sort((a, b) => b.total - a.total)
+      .map((a) => ({ bankAccountId: a.bankAccountId, bankAccount: a.bankAccount, total: a.total.toFixed(2) })),
     transactions: rows.map((r) => ({
       id: r.id,
+      bankTransactionId: r.bankTransaction.id,
       date: r.bankTransaction.transactionDate.toISOString().slice(0, 10),
       bankAccountId: r.bankTransaction.companyBankAccount?.id ?? "",
       bankAccount: r.bankTransaction.companyBankAccount?.nickname || r.bankTransaction.companyBankAccount?.bankName || "",
+      description: r.bankTransaction.description ?? "",
       amount: r.amount.toString(),
       referenceNumber: r.bankTransaction.referenceNumber ?? "",
-      notes: r.notes ?? "",
     })),
   };
 }

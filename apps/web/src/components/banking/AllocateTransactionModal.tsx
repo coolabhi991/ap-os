@@ -317,6 +317,11 @@ export default function AllocateTransactionModal({ transaction, onClose, onSaved
                       >
                         {ALLOCATION_TYPES.map((t) => <option key={t} value={t}>{ALLOCATION_TYPE_LABELS[t]}</option>)}
                       </select>
+                      {row.allocationType === "BANK_CHARGES" && /interest/i.test(transaction.description ?? "") && (
+                        <p className="mt-1 text-xs text-amber-600">
+                          This description looks like Debit Interest — that belongs to Liability &amp; Interest History, not Bank Charges. Consider "OD / CC Interest" instead.
+                        </p>
+                      )}
                     </div>
                     <div>
                       <label className="mb-1 block text-xs font-medium">Amount *</label>

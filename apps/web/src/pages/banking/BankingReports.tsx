@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Download, FileSpreadsheet, Printer, Mail } from "lucide-react";
 
 import Layout from "../../components/layout/Layout";
@@ -57,6 +58,7 @@ const TABS: { key: ReportTab; label: string }[] = [
 
 
 export default function BankingReports() {
+  const navigate = useNavigate();
   const [tab, setTab] = useState<ReportTab>("bank-book");
   const [accounts, setAccounts] = useState<BankAccountBalance[]>([]);
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
@@ -76,6 +78,8 @@ export default function BankingReports() {
   const [payables, setPayables] = useState<PayableRow[]>([]);
   const [outstandingSummary, setOutstandingSummary] = useState<OutstandingSummary | null>(null);
   const [bankCharges, setBankCharges] = useState<BankChargesReport | null>(null);
+  const [bankChargeAccountId, setBankChargeAccountId] = useState("");
+  const [bankChargeSearch, setBankChargeSearch] = useState("");
   const [internalTransfers, setInternalTransfers] = useState<InternalTransferReport | null>(null);
 
   useEffect(() => {
@@ -91,7 +95,7 @@ export default function BankingReports() {
     try {
       setLoading(true);
       setError(null);
-      const [bb, cb, recon, cf, recv, pay, summary, charges, transfers] = await Promise.all([
+      const [bb, cb, recon, cf, recv, pay, summary, transfers] = await Promise.all([
         accountId ? getBankBookReport({ companyBankAccountId: accountId, fromDate: fromDate || undefined, toDate: toDate || undefined }) : Promise.resolve(null),
         getCashBookReport({ fromDate: fromDate || undefined, toDate: toDate || undefined }),
         getBankReconciliationReport({ companyBankAccountId: accountId || undefined, fromDate: fromDate || undefined, toDate: toDate || undefined }),
@@ -99,7 +103,6 @@ export default function BankingReports() {
         getReceivablesReport({ projectId: projectId || undefined }),
         getPayablesReport({ projectId: projectId || undefined }),
         getOutstandingSummary(),
-        getBankChargesReport({ fromDate: fromDate || undefined, toDate: toDate || undefined }),
         getInternalTransferReport({ fromDate: fromDate || undefined, toDate: toDate || undefined }),
       ]);
       setBankBook(bb);
@@ -109,7 +112,6 @@ export default function BankingReports() {
       setReceivables(recv);
       setPayables(pay);
       setOutstandingSummary(summary);
-      setBankCharges(charges);
       setInternalTransfers(transfers);
     } catch {
       setError("Failed to load banking reports.");
@@ -122,6 +124,17 @@ export default function BankingReports() {
     if (accounts.length) load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [accountId, projectId, fromDate, toDate, accounts.length]);
+
+  useEffect(() => {
+    getBankChargesReport({
+      fromDate: fromDate || undefined,
+      toDate: toDate || undefined,
+      companyBankAccountId: bankChargeAccountId || undefined,
+      search: bankChargeSearch || undefined,
+    })
+      .then(setBankCharges)
+      .catch(() => {});
+  }, [fromDate, toDate, bankChargeAccountId, bankChargeSearch]);
 
   return (
     <Layout>
@@ -479,32 +492,74 @@ export default function BankingReports() {
 
             {tab === "bank-charges" && bankCharges && (
               <div className="space-y-4">
-                <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-                  <p className="text-sm text-slate-500">Total Bank Charges ({bankCharges.count})</p>
-                  <p className="mt-1 text-2xl font-bold">{inr(bankCharges.total)}</p>
+                <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <select value={bankChargeAccountId} onChange={(e) => setBankChargeAccountId(e.target.value)} className="rounded-lg border p-2.5 text-sm">
+                    <option value="">All Bank Accounts</option>
+                    {accounts.map((a) => <option key={a.id} value={a.id}>{a.nickname || a.bankName}</option>)}
+                  </select>
+                  <input
+                    type="text"
+                    placeholder="Search by description..."
+                    value={bankChargeSearch}
+                    onChange={(e) => setBankChargeSearch(e.target.value)}
+                    className="min-w-[220px] flex-1 rounded-lg border p-2.5 text-sm"
+                  />
                 </div>
+
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm md:col-span-1">
+                    <p className="text-sm text-slate-500">Grand Total ({bankCharges.count})</p>
+                    <p className="mt-1 text-2xl font-bold">{inr(bankCharges.total)}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm md:col-span-2">
+                    <p className="mb-2 text-sm text-slate-500">Bank-wise Total</p>
+                    {bankCharges.byBankAccount.length === 0 ? (
+                      <p className="text-sm text-slate-400">No bank charges recorded in this period.</p>
+                    ) : (
+                      <div className="space-y-1">
+                        {bankCharges.byBankAccount.map((a) => (
+                          <div key={a.bankAccountId} className="flex items-center justify-between text-sm">
+                            <span className="text-slate-600">{a.bankAccount}</span>
+                            <span className="font-medium">{inr(a.total)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
                 <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
                   <table className="min-w-full text-sm">
                     <thead className="bg-slate-100">
                       <tr>
                         <th className="px-4 py-2 text-left">Date</th>
                         <th className="px-4 py-2 text-left">Bank Account</th>
+                        <th className="px-4 py-2 text-left">Original Bank Description</th>
                         <th className="px-4 py-2 text-left">Reference</th>
-                        <th className="px-4 py-2 text-left">Notes</th>
                         <th className="px-4 py-2 text-right">Amount</th>
+                        <th className="px-4 py-2 text-left">Source</th>
                       </tr>
                     </thead>
                     <tbody>
                       {bankCharges.transactions.length === 0 ? (
-                        <EmptyTableRow colSpan={5}>No bank charges recorded in this period.</EmptyTableRow>
+                        <EmptyTableRow colSpan={6}>No bank charges recorded in this period.</EmptyTableRow>
                       ) : (
                         bankCharges.transactions.map((t) => (
                           <tr key={t.id} className="border-t">
                             <td className="px-4 py-2">{t.date}</td>
                             <td className="px-4 py-2">{t.bankAccount || "—"}</td>
+                            <td className="px-4 py-2">{t.description || "—"}</td>
                             <td className="px-4 py-2 text-slate-500">{t.referenceNumber || "—"}</td>
-                            <td className="px-4 py-2 text-slate-500">{t.notes || "—"}</td>
                             <td className="px-4 py-2 text-right font-medium">{inr(t.amount)}</td>
+                            <td className="px-4 py-2">
+                              <button
+                                type="button"
+                                onClick={() => navigate(`/banking/accounts/${t.bankAccountId}`)}
+                                className="text-blue-600 hover:underline"
+                              >
+                                Open Bank Transaction
+                              </button>
+                            </td>
                           </tr>
                         ))
                       )}

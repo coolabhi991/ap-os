@@ -104,6 +104,7 @@ export const getBankChargesReportHandler = async (req: AuthRequest, res: Respons
       fromDate: req.query.fromDate as string,
       toDate: req.query.toDate as string,
       companyBankAccountId: req.query.companyBankAccountId as string,
+      search: req.query.search as string,
     });
     res.status(200).json({ success: true, data });
   } catch (error) {

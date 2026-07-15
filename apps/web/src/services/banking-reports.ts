@@ -94,17 +94,25 @@ export interface OutstandingSummary {
 
 export interface BankChargeRow {
   id: string;
+  bankTransactionId: string;
   date: string;
   bankAccountId: string;
   bankAccount: string;
+  description: string;
   amount: string;
   referenceNumber: string;
-  notes: string;
+}
+
+export interface BankChargeAccountTotal {
+  bankAccountId: string;
+  bankAccount: string;
+  total: string;
 }
 
 export interface BankChargesReport {
   total: string;
   count: number;
+  byBankAccount: BankChargeAccountTotal[];
   transactions: BankChargeRow[];
 }
 
@@ -172,7 +180,7 @@ export async function getOutstandingSummary(): Promise<OutstandingSummary> {
   return response.data.data;
 }
 
-export async function getBankChargesReport(query?: { fromDate?: string; toDate?: string; companyBankAccountId?: string }): Promise<BankChargesReport> {
+export async function getBankChargesReport(query?: { fromDate?: string; toDate?: string; companyBankAccountId?: string; search?: string }): Promise<BankChargesReport> {
   const response = await api.get<{ success: boolean; data: BankChargesReport }>("/banking-reports/bank-charges", { params: query });
   return response.data.data;
 }
