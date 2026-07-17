@@ -25,6 +25,9 @@ interface Props {
   fetchDocuments: () => Promise<ProjectDocument[]>;
   // The polymorphic FK fields fixed for this call site (siteId, runningBillId, dprId, ...).
   createParams: Omit<DocumentUploadParams, "documentType" | "notes">;
+  // When provided, documents are sectioned into named groups (e.g. Work Order/Drawings/...)
+  // instead of one flat table — every documentTypeOptions value must appear in exactly one group.
+  groups?: { label: string; types: string[] }[];
 }
 
 /**
@@ -32,7 +35,75 @@ interface Props {
  * One reusable panel for every document-attachment surface in the app (Site Workspace, Vendor
  * Ledger, DPR, Running Bill) — "Enter Once, Use Everywhere" applied to the upload UI itself.
  */
-export default function DocumentUploadPanel({ title = "Documents", documentTypeOptions, fetchDocuments, createParams }: Props) {
+function DocumentTable({
+  documents,
+  busyId,
+  onPreview,
+  onDownload,
+  onDelete,
+  emptyMessage = "No documents uploaded yet.",
+}: {
+  documents: ProjectDocument[];
+  busyId: string | null;
+  onPreview: (id: string) => void;
+  onDownload: (doc: ProjectDocument) => void;
+  onDelete: (id: string) => void;
+  emptyMessage?: string;
+}) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+      <table className="min-w-full">
+        <thead className="bg-slate-100">
+          <tr>
+            <th className="px-4 py-3 text-left">Document #</th>
+            <th className="px-4 py-3 text-left">Type</th>
+            <th className="px-4 py-3 text-left">File</th>
+            <th className="px-4 py-3 text-left">Remarks</th>
+            <th className="px-4 py-3 text-left">Upload Date</th>
+            <th className="px-4 py-3 text-right">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {documents.length === 0 ? (
+            <EmptyTableRow colSpan={6}>{emptyMessage}</EmptyTableRow>
+          ) : (
+            documents.map((d) => (
+              <tr key={d.id} className="border-t">
+                <td className="px-4 py-3">{d.documentNumber}</td>
+                <td className="px-4 py-3">{DOCUMENT_TYPE_LABELS[d.documentType] ?? d.documentType}</td>
+                <td className="px-4 py-3">
+                  {d.fileName || "—"}
+                  {d.fileSizeBytes > 0 && <span className="ml-2 text-xs text-slate-400">{formatFileSize(d.fileSizeBytes)}</span>}
+                </td>
+                <td className="px-4 py-3 text-slate-500">{d.notes || "—"}</td>
+                <td className="px-4 py-3">{new Date(d.uploadedAt).toLocaleDateString()}</td>
+                <td className="px-4 py-3 text-right">
+                  <div className="flex justify-end gap-1.5">
+                    {d.hasFile && (
+                      <>
+                        <button onClick={() => onPreview(d.id)} disabled={busyId === d.id} title="Preview" className="rounded p-1.5 text-blue-600 hover:bg-blue-50 disabled:opacity-50">
+                          <Eye className="h-4 w-4" />
+                        </button>
+                        <button onClick={() => onDownload(d)} disabled={busyId === d.id} title="Download" className="rounded p-1.5 text-slate-600 hover:bg-slate-100 disabled:opacity-50">
+                          <Download className="h-4 w-4" />
+                        </button>
+                      </>
+                    )}
+                    <button onClick={() => onDelete(d.id)} title="Delete" className="rounded p-1.5 text-red-600 hover:bg-red-50">
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+export default function DocumentUploadPanel({ title = "Documents", documentTypeOptions, fetchDocuments, createParams, groups }: Props) {
   const [documents, setDocuments] = useState<ProjectDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -157,55 +228,27 @@ export default function DocumentUploadPanel({ title = "Documents", documentTypeO
       {error && !loading && <div className="rounded-xl border border-red-200 bg-red-50 px-6 py-5 text-red-700">{error}</div>}
 
       {!loading && !error && (
-        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-          <table className="min-w-full">
-            <thead className="bg-slate-100">
-              <tr>
-                <th className="px-4 py-3 text-left">Document #</th>
-                <th className="px-4 py-3 text-left">Type</th>
-                <th className="px-4 py-3 text-left">File</th>
-                <th className="px-4 py-3 text-left">Remarks</th>
-                <th className="px-4 py-3 text-left">Upload Date</th>
-                <th className="px-4 py-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {documents.length === 0 ? (
-                <EmptyTableRow colSpan={6}>No documents uploaded yet.</EmptyTableRow>
-              ) : (
-                documents.map((d) => (
-                  <tr key={d.id} className="border-t">
-                    <td className="px-4 py-3">{d.documentNumber}</td>
-                    <td className="px-4 py-3">{DOCUMENT_TYPE_LABELS[d.documentType] ?? d.documentType}</td>
-                    <td className="px-4 py-3">
-                      {d.fileName || "—"}
-                      {d.fileSizeBytes > 0 && <span className="ml-2 text-xs text-slate-400">{formatFileSize(d.fileSizeBytes)}</span>}
-                    </td>
-                    <td className="px-4 py-3 text-slate-500">{d.notes || "—"}</td>
-                    <td className="px-4 py-3">{new Date(d.uploadedAt).toLocaleDateString()}</td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex justify-end gap-1.5">
-                        {d.hasFile && (
-                          <>
-                            <button onClick={() => handlePreview(d.id)} disabled={busyId === d.id} title="Preview" className="rounded p-1.5 text-blue-600 hover:bg-blue-50 disabled:opacity-50">
-                              <Eye className="h-4 w-4" />
-                            </button>
-                            <button onClick={() => handleDownload(d)} disabled={busyId === d.id} title="Download" className="rounded p-1.5 text-slate-600 hover:bg-slate-100 disabled:opacity-50">
-                              <Download className="h-4 w-4" />
-                            </button>
-                          </>
-                        )}
-                        <button onClick={() => handleDelete(d.id)} title="Delete" className="rounded p-1.5 text-red-600 hover:bg-red-50">
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+        <>
+          {groups ? (
+            <div className="space-y-5">
+              {groups.map((g) => (
+                <div key={g.label}>
+                  <h3 className="mb-2 text-sm font-semibold text-slate-700">{g.label}</h3>
+                  <DocumentTable
+                    documents={documents.filter((d) => g.types.includes(d.documentType))}
+                    busyId={busyId}
+                    onPreview={handlePreview}
+                    onDownload={handleDownload}
+                    onDelete={handleDelete}
+                    emptyMessage={`No ${g.label.toLowerCase()} uploaded yet.`}
+                  />
+                </div>
+              ))}
+            </div>
+          ) : (
+            <DocumentTable documents={documents} busyId={busyId} onPreview={handlePreview} onDownload={handleDownload} onDelete={handleDelete} />
+          )}
+        </>
       )}
     </div>
   );

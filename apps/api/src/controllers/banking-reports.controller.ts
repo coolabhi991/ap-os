@@ -9,6 +9,7 @@ import {
   getPayablesReport,
   getOutstandingSummaryReport,
   getBankChargesReport,
+  getTdsPaymentsReport,
   getInternalTransferReport,
   exportReceivablesToCSV,
   exportPayablesToCSV,
@@ -109,6 +110,21 @@ export const getBankChargesReportHandler = async (req: AuthRequest, res: Respons
     res.status(200).json({ success: true, data });
   } catch (error) {
     res.status(500).json({ success: false, message: error instanceof Error ? error.message : "Failed to load Bank Charges Report" });
+  }
+};
+
+export const getTdsPaymentsReportHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const companyId = req.user!.companyId;
+    const data = await getTdsPaymentsReport(companyId, {
+      fromDate: req.query.fromDate as string,
+      toDate: req.query.toDate as string,
+      companyBankAccountId: req.query.companyBankAccountId as string,
+      search: req.query.search as string,
+    });
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error instanceof Error ? error.message : "Failed to load TDS Payments Report" });
   }
 };
 

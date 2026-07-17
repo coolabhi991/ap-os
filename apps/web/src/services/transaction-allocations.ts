@@ -10,6 +10,7 @@ export const ALLOCATION_TYPES = [
   "PARTNER_INVESTMENT",
   "PARTNER_SETTLEMENT",
   "GST",
+  "TDS_PAYMENT",
   "LOAN",
   "OFFICE_EXPENSE",
   "OTHER",
@@ -41,6 +42,7 @@ export const ALLOCATION_TYPE_LABELS: Record<string, string> = {
   PARTNER_INVESTMENT: "Partner Investment",
   PARTNER_SETTLEMENT: "Partner Settlement",
   GST: "GST",
+  TDS_PAYMENT: "TDS Payment",
   LOAN: "Loan",
   OFFICE_EXPENSE: "Office Expense",
   OTHER: "Other",
@@ -89,6 +91,10 @@ export const LEDGER_BACKED_TYPES = [
   ...LOAN_REPAYMENT_TYPES,
 ];
 
+// Tag-only types with no other field to hang a classification off get an OPTIONAL Category
+// (Business Review Note) — SITE_EXPENSE is excluded, it already has its own required Category.
+export const CATEGORIZABLE_TAG_TYPES = ["GST", "TDS_PAYMENT", "BANK_CHARGES", "OTHER", "OFFICE_EXPENSE", "LOAN", "INTEREST_INCOME"];
+
 // Maps a loan-specific allocation type to the matching Liability.liabilityType, to filter the picker to relevant liabilities only.
 export const LOAN_TYPE_TO_LIABILITY_TYPE: Record<string, string> = {
   CAR_LOAN_EMI: "CAR_LOAN",
@@ -111,6 +117,8 @@ export interface TransactionAllocation {
   notes: string;
   transferToAccountId: string;
   transferToAccount: { id: string; nickname: string | null; bankName: string } | null;
+  categoryId: string;
+  category: { id: string; name: string; allocationType: string } | null;
   runningBillPaymentId: string;
   runningBillPayment: { id: string; paymentNumber: string; runningBillId: string; billNumber: string } | null;
   vendorPaymentId: string;

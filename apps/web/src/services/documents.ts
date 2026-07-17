@@ -65,7 +65,15 @@ export const DPR_ATTACHMENT_TYPE_OPTIONS = ["PROGRESS_PHOTO", "SITE_PHOTO", "DRA
 export const MB_ATTACHMENT_TYPE_OPTIONS = ["SCANNED_MB", "ABSTRACT_SHEET", "DRAWING", "TEST_REPORT", "OTHER"];
 
 /** Running Bill Photos & Attachments — government letters plus the usual generic types. */
-export const RUNNING_BILL_ATTACHMENT_TYPE_OPTIONS = ["GOVERNMENT_LETTER", "CONTRACT", "INVOICE", "REPORT", "OTHER"];
+export const RUNNING_BILL_ATTACHMENT_TYPE_OPTIONS = ["ABSTRACT_SHEET", "REPORT", "GOVERNMENT_LETTER", "CONTRACT", "INVOICE", "TEST_REPORT", "PHOTO", "OTHER"];
+
+/** Running Bill Object Page's Documents tab — every RUNNING_BILL_ATTACHMENT_TYPE_OPTIONS value grouped into exactly one of these 4 categories. */
+export const RUNNING_BILL_DOCUMENT_GROUPS: { label: string; types: string[] }[] = [
+  { label: "Approved Form 58", types: ["ABSTRACT_SHEET"] },
+  { label: "RA Bill PDF", types: ["REPORT"] },
+  { label: "Approval Letter", types: ["GOVERNMENT_LETTER"] },
+  { label: "Supporting Documents", types: ["CONTRACT", "INVOICE", "TEST_REPORT", "PHOTO", "OTHER"] },
+];
 
 /** Project Contract Information's master-record uploads. */
 export const CONTRACT_INFO_ATTACHMENT_TYPE_OPTIONS = ["WORK_ORDER", "AGREEMENT", "BOQ", "DRAWING", "TECHNICAL_SANCTION", "ADMINISTRATIVE_APPROVAL", "OTHER"];

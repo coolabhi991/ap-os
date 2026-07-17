@@ -31,7 +31,7 @@ export default function AddExpense() {
   useEffect(() => {
     getProjects({ limit: 100 }).then((r) => setProjects(r.data)).catch(() => {});
     getVendors({ limit: 100 }).then((r) => setVendors(r.data)).catch(() => {});
-    getExpenseCategories(false).then(setCategories).catch(() => {});
+    getExpenseCategories(false, "SITE_EXPENSE").then(setCategories).catch(() => {});
     getCompanyBankAccounts().then((accounts) => setCompanyBankAccounts(accounts.filter((a) => a.isActive))).catch(() => {});
     getLiabilities({ liabilityType: "CREDIT_CARD" }).then((r) => setCreditCards(r.data)).catch(() => {});
   }, []);

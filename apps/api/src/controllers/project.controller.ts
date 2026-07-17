@@ -8,6 +8,12 @@ import {
   deleteProject,
   getProjectExecutiveDashboard,
 } from "../services/project.service.js";
+import {
+  getProjectOverviewSummary,
+  getProjectSitesOverview,
+  getProjectFinanceSummary,
+  getProjectTimeline,
+} from "../services/project-control-center.service.js";
 
 export const getProjectExecutiveDashboardHandler = async (req: AuthRequest, res: Response) => {
   try {
@@ -50,6 +56,54 @@ export const getProject = async (req: AuthRequest, res: Response) => {
   } catch (error) {
     const is404 = error instanceof Error && error.message === "Project not found";
     res.status(is404 ? 404 : 500).json({ success: false, message: error instanceof Error ? error.message : "Failed to load project" });
+  }
+};
+
+export const getProjectOverviewHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const companyId = req.user!.companyId;
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const data = await getProjectOverviewSummary(id, companyId);
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    const is404 = error instanceof Error && error.message === "Project not found";
+    res.status(is404 ? 404 : 500).json({ success: false, message: error instanceof Error ? error.message : "Failed to load project overview" });
+  }
+};
+
+export const getProjectSitesOverviewHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const companyId = req.user!.companyId;
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const data = await getProjectSitesOverview(id, companyId);
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    const is404 = error instanceof Error && error.message === "Project not found";
+    res.status(is404 ? 404 : 500).json({ success: false, message: error instanceof Error ? error.message : "Failed to load project sites" });
+  }
+};
+
+export const getProjectFinanceHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const companyId = req.user!.companyId;
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const data = await getProjectFinanceSummary(id, companyId);
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    const is404 = error instanceof Error && error.message === "Project not found";
+    res.status(is404 ? 404 : 500).json({ success: false, message: error instanceof Error ? error.message : "Failed to load project finance" });
+  }
+};
+
+export const getProjectTimelineHandler = async (req: AuthRequest, res: Response) => {
+  try {
+    const companyId = req.user!.companyId;
+    const id = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+    const data = await getProjectTimeline(id, companyId);
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    const is404 = error instanceof Error && error.message === "Project not found";
+    res.status(is404 ? 404 : 500).json({ success: false, message: error instanceof Error ? error.message : "Failed to load project timeline" });
   }
 };
 

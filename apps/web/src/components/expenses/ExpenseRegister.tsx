@@ -101,7 +101,7 @@ export default function ExpenseRegister({ site }: { site: Site }) {
     Promise.all([
       loadRows(),
       loadSummary(),
-      getExpenseCategories(false).then(setCategories),
+      getExpenseCategories(false, "SITE_EXPENSE").then(setCategories),
       getVendors({ limit: 100 }).then((r) => setVendors(r.data)),
       getCompanyBankAccounts().then((accounts) => setCompanyAccounts(accounts.filter((a) => a.isActive))),
       getLiabilities({ liabilityType: "CREDIT_CARD" }).then((r) => setCreditCards(r.data)),

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, ListChecks } from "lucide-react";
 
 import Layout from "../../components/layout/Layout";
 import { getSite } from "../../services/sites";
@@ -14,6 +14,8 @@ import {
   DEDUCTION_TYPE_LABELS,
 } from "../../services/running-bills";
 import type { NextRABillDraft, Form58ItemInput, RunningBillDeductionInput } from "../../services/running-bills";
+import { getSiteBoqItems } from "../../services/site-boq-items";
+import type { SiteBoqItem } from "../../services/site-boq-items";
 import { todayISO, formatCurrency as inr } from "../../lib/utils";
 
 interface Row {
@@ -28,10 +30,31 @@ interface Row {
   currentQuantity: number;
   remarks: string;
   isNew: boolean;
+  // Set only for rows populated via "Import From BOQ" — description/unit/rate came from a BOQ
+  // item and stay read-only, exactly like an existing Bill Item Master row. Purely a client-side
+  // data-entry shortcut: submitted through the identical "new item" payload shape as a manual
+  // row, so Form 58 calculations/backend are untouched either way.
+  locked?: boolean;
 }
 
 function emptyNewRow(subWorkId: string, subWorkName: string): Row {
   return { itemNo: "", description: "", unit: "", rate: 0, subWorkId, subWorkName, previousQuantity: 0, currentQuantity: 0, remarks: "", isNew: true };
+}
+
+function rowFromBoqItem(boqItem: SiteBoqItem, subWorkId: string, subWorkName: string): Row {
+  return {
+    itemNo: "",
+    description: boqItem.description,
+    unit: boqItem.unit,
+    rate: Number(boqItem.rate),
+    subWorkId,
+    subWorkName,
+    previousQuantity: 0,
+    currentQuantity: 0,
+    remarks: "",
+    isNew: true,
+    locked: true,
+  };
 }
 
 /** Bill Types share the auto-numbering prefix pattern (ADV/RA/FINAL-<seq>) — mirrors billTypePrefix in running-bill.service.ts, kept in sync by hand since bill number generation is intentionally client-previewed before Save. */
@@ -62,6 +85,12 @@ export default function AddRunningBillForm58() {
   const [deductions, setDeductions] = useState<RunningBillDeductionInput[]>([]);
   const [gstDifferencePercent, setGstDifferencePercent] = useState(0);
 
+  // BOQ is optional — an empty array here (no BOQ for this Site) simply means every Sub Work's
+  // "Import From BOQ" button stays disabled and the page behaves exactly as it always has.
+  const [boqItems, setBoqItems] = useState<SiteBoqItem[]>([]);
+  const [boqPickerSubWorkId, setBoqPickerSubWorkId] = useState<string | null>(null);
+  const [boqPickerSelected, setBoqPickerSelected] = useState<Set<string>>(new Set());
+
   useEffect(() => {
     if (!siteId) {
       setError("No Site selected. Open this page from a Site's Running Bills tab.");
@@ -69,10 +98,11 @@ export default function AddRunningBillForm58() {
       return;
     }
     setLoading(true);
-    Promise.all([getSite(siteId), getNextRABillDraft(siteId)])
-      .then(([siteData, draftData]) => {
+    Promise.all([getSite(siteId), getNextRABillDraft(siteId), getSiteBoqItems(siteId)])
+      .then(([siteData, draftData, boqData]) => {
         setSite(siteData);
         setDraft(draftData);
+        setBoqItems(boqData);
         setBillNumber(draftData.suggestedBillNumber);
         setRows(
           draftData.items.map((i) => ({
@@ -105,6 +135,36 @@ export default function AddRunningBillForm58() {
   const updateRow = (i: number, patch: Partial<Row>) => setRows((r) => r.map((row, idx) => (idx === i ? { ...row, ...patch } : row)));
   const addNewRow = (subWorkId: string, subWorkName: string) => setRows((r) => [...r, emptyNewRow(subWorkId, subWorkName)]);
   const removeNewRow = (i: number) => setRows((r) => r.filter((_, idx) => idx !== i));
+
+  const boqItemsBySubWork = useMemo(() => {
+    const map = new Map<string, SiteBoqItem[]>();
+    for (const item of boqItems) {
+      if (!map.has(item.subWorkId)) map.set(item.subWorkId, []);
+      map.get(item.subWorkId)!.push(item);
+    }
+    return map;
+  }, [boqItems]);
+
+  const openBoqPicker = (subWorkId: string) => {
+    setBoqPickerSubWorkId(subWorkId);
+    setBoqPickerSelected(new Set());
+  };
+  const closeBoqPicker = () => {
+    setBoqPickerSubWorkId(null);
+    setBoqPickerSelected(new Set());
+  };
+  const toggleBoqSelection = (id: string) =>
+    setBoqPickerSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  const importSelectedBoqItems = (subWorkId: string, subWorkName: string) => {
+    const selectedItems = (boqItemsBySubWork.get(subWorkId) ?? []).filter((i) => boqPickerSelected.has(i.id));
+    setRows((r) => [...r, ...selectedItems.map((i) => rowFromBoqItem(i, subWorkId, subWorkName))]);
+    closeBoqPicker();
+  };
 
   const updateDeduction = (i: number, patch: Partial<RunningBillDeductionInput>) => setDeductions((d) => d.map((row, idx) => (idx === i ? { ...row, ...patch } : row)));
   const addDeduction = () => setDeductions((d) => [...d, { type: "OTHER", label: "", amount: 0, remarks: "" }]);
@@ -257,12 +317,51 @@ export default function AddRunningBillForm58() {
                   <div key={group.subWorkId} className="overflow-hidden rounded-lg border border-slate-200">
                     <div className="flex items-center justify-between bg-slate-800 px-3 py-2 text-sm font-semibold text-white">
                       <span>Sub Work No. {groupIndex + 1} : {group.subWorkName}</span>
-                      <button type="button" onClick={() => addNewRow(group.subWorkId, group.subWorkName)} className="flex items-center gap-1 rounded border border-white/40 px-2 py-1 text-xs hover:bg-white/10">
-                        <Plus className="h-3 w-3" /> Add Item
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => openBoqPicker(group.subWorkId)}
+                          disabled={!(boqItemsBySubWork.get(group.subWorkId)?.length)}
+                          title={boqItemsBySubWork.get(group.subWorkId)?.length ? "" : "No BOQ items for this Sub Work"}
+                          className="flex items-center gap-1 rounded border border-white/40 px-2 py-1 text-xs hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          <ListChecks className="h-3 w-3" /> Import From BOQ
+                        </button>
+                        <button type="button" onClick={() => addNewRow(group.subWorkId, group.subWorkName)} className="flex items-center gap-1 rounded border border-white/40 px-2 py-1 text-xs hover:bg-white/10">
+                          <Plus className="h-3 w-3" /> Manual Entry
+                        </button>
+                      </div>
                     </div>
+
+                    {boqPickerSubWorkId === group.subWorkId && (
+                      <div className="border-b border-slate-200 bg-blue-50/60 p-4">
+                        <p className="mb-2 text-sm font-medium text-slate-700">Import From BOQ — {group.subWorkName}</p>
+                        <div className="max-h-64 space-y-1 overflow-y-auto rounded-lg border border-slate-200 bg-white p-2">
+                          {(boqItemsBySubWork.get(group.subWorkId) ?? []).map((boqItem) => (
+                            <label key={boqItem.id} className="flex items-center gap-3 rounded px-2 py-1.5 text-sm hover:bg-slate-50">
+                              <input type="checkbox" checked={boqPickerSelected.has(boqItem.id)} onChange={() => toggleBoqSelection(boqItem.id)} />
+                              <span className="min-w-0 flex-1 truncate">{boqItem.description}</span>
+                              <span className="w-16 shrink-0 text-slate-500">{boqItem.unit}</span>
+                              <span className="w-24 shrink-0 text-right text-slate-500">{inr(boqItem.rate)}</span>
+                            </label>
+                          ))}
+                        </div>
+                        <div className="mt-3 flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => importSelectedBoqItems(group.subWorkId, group.subWorkName)}
+                            disabled={boqPickerSelected.size === 0}
+                            className="rounded-lg bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-50"
+                          >
+                            Import Selected ({boqPickerSelected.size})
+                          </button>
+                          <button type="button" onClick={closeBoqPicker} className="rounded-lg border px-4 py-2 text-sm hover:bg-slate-50">Cancel</button>
+                        </div>
+                      </div>
+                    )}
+
                     {group.rows.length === 0 ? (
-                      <p className="px-4 py-4 text-sm text-slate-400">No items yet in this Sub Work — click "Add Item" to add the first one.</p>
+                      <p className="px-4 py-4 text-sm text-slate-400">No items yet in this Sub Work — use "Import From BOQ" or "Manual Entry" to add the first one.</p>
                     ) : (
                     <div className="overflow-x-auto">
                       <table className="min-w-full text-sm">
@@ -298,21 +397,24 @@ export default function AddRunningBillForm58() {
                                   )}
                                 </td>
                                 <td className="p-1">
-                                  {row.isNew ? (
+                                  {row.isNew && !row.locked ? (
                                     <input value={row.description} onChange={(e) => updateRow(i, { description: e.target.value })} placeholder="Item description" className="w-48 rounded border p-1.5" />
                                   ) : (
-                                    <span className="px-1.5">{row.description}</span>
+                                    <span className="px-1.5">
+                                      {row.description}
+                                      {row.locked && <span className="ml-1.5 rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">BOQ</span>}
+                                    </span>
                                   )}
                                 </td>
                                 <td className="p-1">
-                                  {row.isNew ? (
+                                  {row.isNew && !row.locked ? (
                                     <input value={row.unit} onChange={(e) => updateRow(i, { unit: e.target.value })} placeholder="Unit" className="w-16 rounded border p-1.5" />
                                   ) : (
                                     <span className="px-1.5">{row.unit}</span>
                                   )}
                                 </td>
                                 <td className="p-1 text-right">
-                                  {row.isNew ? (
+                                  {row.isNew && !row.locked ? (
                                     <input type="number" min={0} step="0.01" value={row.rate} onChange={(e) => updateRow(i, { rate: Number(e.target.value) || 0 })} className="w-24 rounded border p-1.5 text-right" />
                                   ) : (
                                     <span className="px-1.5">{inr(row.rate)}</span>

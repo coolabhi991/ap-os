@@ -97,7 +97,23 @@ export default function BankAccountStatement() {
             </div>
             {account.accountType !== "CASH" && <p className="mt-1 text-sm text-slate-500">{account.bankName} • ••••{account.accountNumber.slice(-4)}</p>}
             <p className="mt-2 text-2xl font-bold text-slate-900">₹{Number(account.currentBalance).toLocaleString("en-IN")}</p>
-            <p className="text-xs text-slate-400">{account.transactionCount} transaction{account.transactionCount === 1 ? "" : "s"}</p>
+            <p className="text-xs text-slate-400">Imported Bank Balance — {account.transactionCount} transaction{account.transactionCount === 1 ? "" : "s"}</p>
+            {(Number(account.pendingIncomingTransfers) > 0 || Number(account.pendingOutgoingTransfers) > 0) && (
+              <div className="mt-3 grid grid-cols-3 gap-4 border-t pt-3">
+                <div>
+                  <p className="text-xs text-slate-400">Pending Incoming Transfers</p>
+                  <p className="text-sm font-semibold text-emerald-600">+₹{Number(account.pendingIncomingTransfers).toLocaleString("en-IN")}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-400">Pending Outgoing Transfers</p>
+                  <p className="text-sm font-semibold text-red-600">−₹{Number(account.pendingOutgoingTransfers).toLocaleString("en-IN")}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-400">Operational Balance</p>
+                  <p className="text-sm font-semibold text-slate-900">₹{Number(account.operationalBalance).toLocaleString("en-IN")}</p>
+                </div>
+              </div>
+            )}
           </div>
           <div className="flex gap-2">
             <button onClick={handleExport} disabled={exporting} className="flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm hover:bg-slate-50 disabled:opacity-60">

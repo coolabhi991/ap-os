@@ -1,8 +1,12 @@
+import { PROJECT_SORT_OPTIONS } from "../../services/projects";
+
 interface ProjectFiltersProps {
   search: string;
   onSearchChange: (value: string) => void;
   statusFilter: string;
   onStatusChange: (value: string) => void;
+  sortBy: string;
+  onSortChange: (value: string) => void;
 }
 
 export default function ProjectFilters({
@@ -10,6 +14,8 @@ export default function ProjectFilters({
   onSearchChange,
   statusFilter,
   onStatusChange,
+  sortBy,
+  onSortChange,
 }: ProjectFiltersProps) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -33,6 +39,16 @@ export default function ProjectFilters({
           <option value="ON_HOLD">On Hold</option>
           <option value="COMPLETED">Completed</option>
           <option value="CANCELLED">Cancelled</option>
+        </select>
+
+        <select
+          value={sortBy}
+          onChange={(e) => onSortChange(e.target.value)}
+          className="rounded-lg border border-slate-300 px-4 py-3"
+        >
+          {PROJECT_SORT_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>Sort: {o.label}</option>
+          ))}
         </select>
       </div>
     </div>

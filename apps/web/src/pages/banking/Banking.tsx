@@ -301,7 +301,10 @@ export default function Banking() {
                         <p className="mt-1 text-xs text-slate-400">
                           {(() => {
                             const bal = balances.find((b) => b.id === a.id);
-                            return bal ? `Current Balance: ₹${Number(bal.currentBalance).toLocaleString("en-IN")} (from Bank Statement)` : "";
+                            if (!bal) return "";
+                            const net = Number(bal.pendingIncomingTransfers) - Number(bal.pendingOutgoingTransfers);
+                            const pendingNote = net !== 0 ? ` • Operational Balance: ₹${Number(bal.operationalBalance).toLocaleString("en-IN")} (incl. pending transfers)` : "";
+                            return `Current Balance: ₹${Number(bal.currentBalance).toLocaleString("en-IN")} (from Bank Statement)${pendingNote}`;
                           })()}
                           {" — click for Statement History"}
                         </p>

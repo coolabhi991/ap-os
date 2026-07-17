@@ -13,6 +13,9 @@ export interface BankAccountBalance {
   totalDeposits: string;
   totalWithdrawals: string;
   currentBalance: string;
+  pendingIncomingTransfers: string;
+  pendingOutgoingTransfers: string;
+  operationalBalance: string;
   transactionCount: number;
 }
 

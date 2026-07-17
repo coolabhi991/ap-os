@@ -27,6 +27,7 @@ export const ALLOCATION_TYPES = [
   "PARTNER_INVESTMENT",
   "PARTNER_SETTLEMENT",
   "GST",
+  "TDS_PAYMENT",
   "LOAN",
   "OFFICE_EXPENSE",
   "OTHER",
@@ -58,6 +59,7 @@ export const ALLOCATION_TYPE_LABELS: Record<string, string> = {
   PARTNER_INVESTMENT: "Partner Investment",
   PARTNER_SETTLEMENT: "Partner Settlement",
   GST: "GST",
+  TDS_PAYMENT: "TDS Payment",
   LOAN: "Loan",
   OFFICE_EXPENSE: "Office Expense",
   OTHER: "Other",
@@ -112,6 +114,15 @@ export const LEDGER_BACKED_TYPES: AllocationType[] = [
   ...LOAN_REPAYMENT_TYPES,
 ];
 
+/**
+ * Business Review Note: tag-only types with no other field to hang a classification off get an
+ * OPTIONAL Category (ExpenseCategory scoped to this same allocationType via Settings >
+ * Categories) — a straight pass-through pointer on the allocation itself (categoryId), same
+ * pattern as liabilityId/transferToAccountId above. SITE_EXPENSE is deliberately excluded here —
+ * it already has its own required Category, stored on the Expense row it creates, not here.
+ */
+export const CATEGORIZABLE_TAG_TYPES: AllocationType[] = ["GST", "TDS_PAYMENT", "BANK_CHARGES", "OTHER", "OFFICE_EXPENSE", "LOAN", "INTEREST_INCOME"];
+
 const AMOUNT_TOLERANCE = 0.01;
 
 export interface AllocationRowInput {
@@ -137,6 +148,7 @@ const include = {
   site: { select: { id: true, name: true } },
   employee: { select: { id: true, name: true } },
   transferToAccount: { select: { id: true, nickname: true, bankName: true } },
+  category: { select: { id: true, name: true, allocationType: true } },
   runningBillPayment: { select: { id: true, paymentNumber: true, runningBillId: true, runningBill: { select: { id: true, billNumber: true } } } },
   vendorPayment: { select: { id: true, paymentNumber: true, vendor: { select: { id: true, name: true } }, vendorBill: { select: { id: true, billNumber: true } } } },
   labourPayment: { select: { id: true, labour: { select: { id: true, name: true } } } },
@@ -164,6 +176,8 @@ function toDTO(a: AllocationRow) {
     partyName: a.partyName ?? "",
     notes: a.notes ?? "",
     transferToAccountId: a.transferToAccountId ?? "",
+    categoryId: a.categoryId ?? "",
+    category: a.category,
     transferToAccount: a.transferToAccount,
     runningBillPaymentId: a.runningBillPaymentId ?? "",
     runningBillPayment: a.runningBillPayment
@@ -476,6 +490,14 @@ export async function createAllocations(companyId: string, createdById: string, 
         if (!employee) throw new Error("Employee not found");
       }
 
+      // Optional — Business Review Note. If the user picked a Category, it must belong to this
+      // company and to this exact Transaction Type; otherwise left unset (categorization here is
+      // never required, matching every allocation type's existing "amount + notes is enough" bar).
+      if (CATEGORIZABLE_TAG_TYPES.includes(allocationType) && row.categoryId?.trim()) {
+        const category = await prisma.expenseCategory.findFirst({ where: { id: row.categoryId, companyId, allocationType } });
+        if (!category) throw new Error("Category not found for this Transaction Type");
+      }
+
       const ledgerIds = LEDGER_BACKED_TYPES.includes(allocationType)
         ? await createLedgerRecord(companyId, createdById, txn, row, allocationType)
         : {};
@@ -495,6 +517,7 @@ export async function createAllocations(companyId: string, createdById: string, 
           ...(allocationType === "LIABILITY_DISBURSEMENT" && { liabilityId: row.liabilityId || null }),
           ...(allocationType === "INTERNAL_TRANSFER" && { transferToAccountId: row.transferAccountId || null }),
           ...(EMPLOYEE_TAG_TYPES.includes(allocationType) && { employeeId: row.employeeId || null }),
+          ...(CATEGORIZABLE_TAG_TYPES.includes(allocationType) && { categoryId: row.categoryId || null }),
           ...ledgerIdsWithoutSite,
           createdById,
         },

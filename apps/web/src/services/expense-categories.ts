@@ -4,6 +4,7 @@ export interface ExpenseCategory {
   id: string;
   companyId: string;
   name: string;
+  allocationType: string;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -11,12 +12,13 @@ export interface ExpenseCategory {
 
 export interface ExpenseCategoryFormData {
   name: string;
+  allocationType: string;
   isActive: boolean;
 }
 
-export async function getExpenseCategories(includeInactive = true): Promise<ExpenseCategory[]> {
+export async function getExpenseCategories(includeInactive = true, allocationType?: string): Promise<ExpenseCategory[]> {
   const response = await api.get<{ success: boolean; data: ExpenseCategory[] }>("/expense-categories", {
-    params: { includeInactive },
+    params: { includeInactive, allocationType },
   });
   return response.data.data;
 }

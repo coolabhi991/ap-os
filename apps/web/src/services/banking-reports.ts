@@ -116,6 +116,31 @@ export interface BankChargesReport {
   transactions: BankChargeRow[];
 }
 
+export interface TdsPaymentRow {
+  id: string;
+  bankTransactionId: string;
+  date: string;
+  bankAccountId: string;
+  bankAccount: string;
+  description: string;
+  amount: string;
+  referenceNumber: string;
+  notes: string;
+}
+
+export interface TdsPaymentAccountTotal {
+  bankAccountId: string;
+  bankAccount: string;
+  total: string;
+}
+
+export interface TdsPaymentsReport {
+  total: string;
+  count: number;
+  byBankAccount: TdsPaymentAccountTotal[];
+  transactions: TdsPaymentRow[];
+}
+
 export interface InternalTransferRow {
   id: string;
   date: string;
@@ -182,6 +207,11 @@ export async function getOutstandingSummary(): Promise<OutstandingSummary> {
 
 export async function getBankChargesReport(query?: { fromDate?: string; toDate?: string; companyBankAccountId?: string; search?: string }): Promise<BankChargesReport> {
   const response = await api.get<{ success: boolean; data: BankChargesReport }>("/banking-reports/bank-charges", { params: query });
+  return response.data.data;
+}
+
+export async function getTdsPaymentsReport(query?: { fromDate?: string; toDate?: string; companyBankAccountId?: string; search?: string }): Promise<TdsPaymentsReport> {
+  const response = await api.get<{ success: boolean; data: TdsPaymentsReport }>("/banking-reports/tds-payments", { params: query });
   return response.data.data;
 }
 

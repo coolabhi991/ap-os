@@ -5,7 +5,8 @@ import { Download, FileSpreadsheet, Printer, Mail, MessageCircle, IndianRupee } 
 import Layout from "../../components/layout/Layout";
 import EmailRunningBillModal from "../../components/running-bills/EmailRunningBillModal";
 import RecordPaymentModal from "../../components/running-bills/RecordPaymentModal";
-import DocumentUploadPanel from "../../components/documents/DocumentUploadPanel";
+import RunningBillLifecycle from "../../components/running-bills/RunningBillLifecycle";
+import RunningBillWorkspace from "../../components/running-bills/RunningBillWorkspace";
 import {
   getRunningBill,
   getRunningBillPayments,
@@ -13,26 +14,13 @@ import {
   passRunningBill,
   exportRunningBillPdf,
   exportRunningBillExcel,
-  getRunningBillEmailLogs,
   RB_STATUS_LABELS,
   RB_STATUS_COLORS,
   BILL_TYPE_LABELS,
-  DEDUCTION_TYPE_LABELS,
 } from "../../services/running-bills";
-import type { RunningBill, PaymentRegisterRow, RunningBillEmailLog } from "../../services/running-bills";
-import { getDocumentsByRunningBill, RUNNING_BILL_ATTACHMENT_TYPE_OPTIONS } from "../../services/documents";
+import type { RunningBill, PaymentRegisterRow } from "../../services/running-bills";
 import { formatCurrency as inr } from "../../lib/utils";
-import EmptyTableRow from "../../components/ui/EmptyTableRow";
-
-
-function Field({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <p className="text-sm text-slate-500">{label}</p>
-      <p className="font-semibold">{value || "—"}</p>
-    </div>
-  );
-}
+import LoadingState from "../../components/ui/LoadingState";
 
 export default function ViewRunningBill() {
   const { id } = useParams<{ id: string }>();
@@ -47,7 +35,6 @@ export default function ViewRunningBill() {
   const [exportingExcel, setExportingExcel] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [emailLogs, setEmailLogs] = useState<RunningBillEmailLog[]>([]);
 
   const load = () => {
     if (!id) return;
@@ -57,12 +44,11 @@ export default function ViewRunningBill() {
       .catch(() => setError("Running Bill not found."))
       .finally(() => setLoading(false));
     getRunningBillPayments(id).then(setPayments).catch(() => {});
-    getRunningBillEmailLogs(id).then(setEmailLogs).catch(() => {});
   };
 
   useEffect(load, [id]);
 
-  if (loading) return <Layout><div className="rounded-xl bg-white p-8 text-center text-slate-500 shadow-sm">Loading...</div></Layout>;
+  if (loading) return <Layout><LoadingState label="Loading Running Bill..." /></Layout>;
   if (error || !bill) {
     return (
       <Layout>
@@ -73,26 +59,6 @@ export default function ViewRunningBill() {
       </Layout>
     );
   }
-
-  // Site -> Recapitulation -> Sub Work -> Items hierarchy — grouped for display, never a flat
-  // list, and never an "Unassigned" bucket (every item always belongs to a real Sub Work).
-  const itemGroups = (() => {
-    const order: string[] = [];
-    const byKey = new Map<string, { key: string; subWorkName: string; items: typeof bill.items; current: number; previous: number; upToDate: number }>();
-    for (const item of bill.items) {
-      const key = item.subWorkId || item.subWorkName;
-      if (!byKey.has(key)) {
-        order.push(key);
-        byKey.set(key, { key, subWorkName: item.subWorkName, items: [], current: 0, previous: 0, upToDate: 0 });
-      }
-      const group = byKey.get(key)!;
-      group.items.push(item);
-      group.current += Number(item.currentAmount);
-      group.previous += Number(item.previousAmount);
-      group.upToDate += Number(item.totalAmount);
-    }
-    return order.map((key) => byKey.get(key)!);
-  })();
 
   const handleSubmitBill = async () => {
     if (!window.confirm("Submit this Running Bill? It will leave Draft and can no longer be edited.")) return;
@@ -195,232 +161,21 @@ export default function ViewRunningBill() {
           </div>
         </div>
 
-        {/* Government-style Running Bill document */}
-        <div className="space-y-6 rounded-xl border border-slate-200 bg-white p-8 shadow-sm print:border-0 print:shadow-none">
-          <div className="border-b-2 border-slate-800 pb-4 text-center">
-            <h1 className="text-xl font-bold uppercase tracking-wide text-slate-900">Running Bill — {BILL_TYPE_LABELS[bill.billType] ?? bill.billType}</h1>
-            <p className="text-sm text-slate-500">Client Billing Record</p>
-            <div className="mt-2 flex flex-wrap justify-center gap-6 text-sm">
-              <span><strong>Bill No:</strong> {bill.billNumber}</span>
-              <span><strong>Date:</strong> {bill.billDate}</span>
-              <span className="inline-flex items-center gap-1">
-                <strong>Status:</strong>
-                <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${RB_STATUS_COLORS[bill.status]}`}>{RB_STATUS_LABELS[bill.status] ?? bill.status}</span>
-              </span>
-            </div>
-          </div>
-
-          <div>
-            <h2 className="mb-3 text-base font-bold text-slate-800">General Information</h2>
-            <div className="grid gap-4 md:grid-cols-3">
-              <Field label="Project" value={bill.project?.name ?? ""} />
-              <Field label="Site" value={bill.site} />
-              <Field label="Sub Work" value={bill.subWork?.name ?? ""} />
-              <Field label="Measurement Book" value={bill.measurementBook?.mbNumber ?? ""} />
-              <Field label="Bill Submitted Date" value={bill.billSubmittedDate} />
-            </div>
-            {bill.remarks && <p className="mt-3 text-sm text-slate-600"><strong>Remarks:</strong> {bill.remarks}</p>}
-          </div>
-
-          <div>
-            <h2 className="mb-3 text-base font-bold text-slate-800">Abstract — Site / Recapitulation / Sub Work / Items</h2>
-            <div className="space-y-4">
-              {itemGroups.map((group, groupIndex) => (
-                <div key={group.key} className="overflow-hidden rounded-lg border border-slate-200">
-                  <div className="bg-slate-800 px-3 py-2 text-sm font-semibold text-white">Sub Work No. {groupIndex + 1} : {group.subWorkName}</div>
-                  <div className="overflow-x-auto">
-                    <table className="min-w-full text-sm">
-                      <thead className="bg-slate-100">
-                        <tr>
-                          <th className="px-2 py-2 text-left">Item No.</th>
-                          <th className="px-2 py-2 text-left">Description</th>
-                          <th className="px-2 py-2 text-left">Unit</th>
-                          <th className="px-2 py-2 text-right">Rate</th>
-                          <th className="px-2 py-2 text-right">Curr Qty</th>
-                          <th className="px-2 py-2 text-right">Curr Amt</th>
-                          <th className="px-2 py-2 text-right">Prev Amt</th>
-                          <th className="px-2 py-2 text-right">Up To Date Amt</th>
-                          <th className="px-2 py-2 text-right">Now To Pay</th>
-                          <th className="px-2 py-2 text-left">Remarks</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {group.items.map((item) => (
-                          <tr key={item.id} className="border-t">
-                            <td className="px-2 py-2">{item.boqItemNo}</td>
-                            <td className="px-2 py-2">{item.boqDescription}</td>
-                            <td className="px-2 py-2">{item.unit}</td>
-                            <td className="px-2 py-2 text-right">{inr(item.boqRate)}</td>
-                            <td className="px-2 py-2 text-right font-medium">{Number(item.currentQuantity).toFixed(4)}</td>
-                            <td className="px-2 py-2 text-right font-medium">{inr(item.currentAmount)}</td>
-                            <td className="px-2 py-2 text-right">{inr(item.previousAmount)}</td>
-                            <td className="px-2 py-2 text-right">{inr(item.totalAmount)}</td>
-                            <td className="px-2 py-2 text-right font-medium">{inr(item.nowToPayAmount)}</td>
-                            <td className="px-2 py-2 text-slate-500">{item.remarks || "—"}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                      <tfoot>
-                        <tr className="border-t bg-slate-50 font-bold">
-                          <td className="px-2 py-2" colSpan={5}>Sub Work Total</td>
-                          <td className="px-2 py-2 text-right">{inr(group.current)}</td>
-                          <td className="px-2 py-2 text-right">{inr(group.previous)}</td>
-                          <td className="px-2 py-2 text-right">{inr(group.upToDate)}</td>
-                          <td colSpan={2}></td>
-                        </tr>
-                      </tfoot>
-                    </table>
-                  </div>
-                </div>
-              ))}
-              <div className="flex justify-end rounded-lg border border-slate-300 bg-slate-100 px-4 py-3 text-base font-bold">
-                Grand Total of all Sub Works&nbsp;&nbsp;{inr(bill.currentCertifiedAmount)}
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <h2 className="mb-3 text-base font-bold text-slate-800">Form 58 Calculation Flow</h2>
-            <div className="grid gap-4 rounded-lg border border-slate-200 bg-slate-50 p-6 md:grid-cols-2">
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between"><span className="text-slate-500">Grand Total of Items</span><span className="font-medium">{inr(bill.currentCertifiedAmount)}</span></div>
-                <div className="flex justify-between">
-                  <span className="text-slate-500">Tender Above/Below Adjustment ({Number(bill.tenderAboveBelowPercent) >= 0 ? "+" : ""}{bill.tenderAboveBelowPercent || 0}%)</span>
-                  <span className="font-medium">{inr(bill.tenderAdjustmentAmount)}</span>
-                </div>
-                <div className="flex justify-between border-t pt-2"><span className="text-slate-500">Adjusted Total</span><span className="font-medium">{inr(bill.adjustedTotal)}</span></div>
-                <div className="flex justify-between"><span className="text-slate-500">GST ({bill.gstPercent || 0}%)</span><span className="font-medium">{inr(bill.gstAmount)}</span></div>
-                {Number(bill.gstDifferencePercent) !== 0 && (
-                  <>
-                    <div className="flex justify-between"><span className="text-slate-500">GST Difference ({bill.gstDifferencePercent}%)</span><span className="font-medium">{inr(bill.gstDifferenceAmount)}</span></div>
-                    <div className="flex justify-between"><span className="text-slate-500">Total GST</span><span className="font-medium">{inr(bill.totalGstAmount)}</span></div>
-                  </>
-                )}
-              </div>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between border-t pt-2 md:border-t-0 md:pt-0"><span className="text-slate-500">Gross Bill Amount</span><span className="font-medium">{inr(bill.grossBillAmount)}</span></div>
-                <div className="flex justify-between"><span className="text-slate-500">Round Off</span><span className="font-medium">{inr(bill.roundOff)}</span></div>
-                <div className="flex justify-between border-t pt-2 font-semibold"><span>Final Bill Amount</span><span>{inr(bill.finalBillAmount)}</span></div>
-                <div className="flex justify-between"><span className="text-slate-500">Total Deductions</span><span className="font-medium text-red-600">− {inr(bill.totalDeductions)}</span></div>
-              </div>
-            </div>
-          </div>
-
-          {bill.deductions.length > 0 && (
+        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h2 className="mb-3 text-base font-bold text-slate-800">Deductions</h2>
-              <div className="overflow-hidden rounded-lg border border-slate-200">
-                <table className="min-w-full text-sm">
-                  <thead className="bg-slate-100"><tr><th className="px-4 py-2 text-left">Type</th><th className="px-4 py-2 text-left">Label</th><th className="px-4 py-2 text-right">Amount</th><th className="px-4 py-2 text-left">Remarks</th></tr></thead>
-                  <tbody>
-                    {bill.deductions.map((d) => (
-                      <tr key={d.id} className="border-t">
-                        <td className="px-4 py-2">{DEDUCTION_TYPE_LABELS[d.type] ?? d.type}</td>
-                        <td className="px-4 py-2">{d.label}</td>
-                        <td className="px-4 py-2 text-right">{inr(d.amount)}</td>
-                        <td className="px-4 py-2 text-slate-500">{d.remarks || "—"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <h1 className="text-xl font-bold text-slate-900">Running Bill — {BILL_TYPE_LABELS[bill.billType] ?? bill.billType}</h1>
+              <p className="text-sm text-slate-500">{bill.billNumber} · {bill.project?.name ?? "—"} · {bill.siteRecord?.name ?? "—"}</p>
             </div>
-          )}
-
-          <div className="grid gap-4 rounded-lg border border-slate-200 bg-slate-50 p-6 md:grid-cols-3">
-            <div><p className="text-sm text-slate-500">Net Payable (Submitted)</p><p className="text-lg font-bold">{inr(bill.netPayable)}</p></div>
-            <div><p className="text-sm text-slate-500">Amount Received</p><p className="text-lg font-bold text-emerald-600">{inr(bill.amountReceived)}</p></div>
-            <div><p className="text-sm text-slate-500">Outstanding</p><p className="text-lg font-bold text-amber-600">{inr(bill.outstandingAmount)}</p></div>
-          </div>
-
-          <div className="border-t pt-4 text-xs text-slate-400">
-            Prepared by: {bill.createdBy?.name ?? "—"} &nbsp;|&nbsp; Generated: {new Date().toLocaleString()}
+            <span className={`rounded-full px-3 py-1 text-xs font-medium ${RB_STATUS_COLORS[bill.status] ?? "bg-slate-100 text-slate-700"}`}>
+              {RB_STATUS_LABELS[bill.status] ?? bill.status}
+            </span>
           </div>
         </div>
 
-        {/* Payment Tracking */}
-        <div className="space-y-4 print:hidden">
-          <h2 className="text-xl font-bold text-slate-900">Payments Received</h2>
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-            <table className="min-w-full">
-              <thead className="bg-slate-100">
-                <tr><th className="px-4 py-3 text-left">Payment #</th><th className="px-4 py-3 text-left">Date</th><th className="px-4 py-3 text-right">Amount</th><th className="px-4 py-3 text-left">Mode</th><th className="px-4 py-3 text-left">Reference</th><th className="px-4 py-3 text-left">Bank Account</th><th className="px-4 py-3 text-left">Remarks</th><th className="px-4 py-3 text-left">Source</th></tr>
-              </thead>
-              <tbody>
-                {payments.length === 0 ? (
-                  <EmptyTableRow colSpan={8}>No payments recorded yet.</EmptyTableRow>
-                ) : (
-                  payments.map((p) => (
-                    <tr key={p.id} className="border-t">
-                      <td className="px-4 py-3 font-medium">{p.paymentNumber}</td>
-                      <td className="px-4 py-3">{p.paymentDate}</td>
-                      <td className="px-4 py-3 text-right font-medium text-emerald-600">{inr(p.amount)}</td>
-                      <td className="px-4 py-3">{p.mode}</td>
-                      <td className="px-4 py-3 text-slate-500">{p.referenceNumber || "—"}</td>
-                      <td className="px-4 py-3 text-slate-500">{p.companyBankAccount ? `${p.companyBankAccount.bankName} (${p.companyBankAccount.accountNumber})` : "—"}</td>
-                      <td className="px-4 py-3 text-slate-500">{p.remarks || "—"}</td>
-                      <td className="px-4 py-3">
-                        {p.sourceBankTransaction ? (
-                          <button
-                            type="button"
-                            onClick={() => navigate(`/banking/accounts/${p.sourceBankTransaction!.companyBankAccountId}`)}
-                            className="text-blue-600 hover:underline"
-                          >
-                            Open Bank Transaction
-                          </button>
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <RunningBillLifecycle status={bill.status} />
 
-        {/* Documents */}
-        <div className="print:hidden">
-          <DocumentUploadPanel
-            title="Documents & Attachments"
-            documentTypeOptions={RUNNING_BILL_ATTACHMENT_TYPE_OPTIONS}
-            fetchDocuments={() => getDocumentsByRunningBill(bill.id)}
-            createParams={{ projectId: bill.projectId, runningBillId: bill.id }}
-          />
-        </div>
-
-        {/* Email history */}
-        <div className="space-y-4 print:hidden">
-          <h2 className="text-xl font-bold text-slate-900">Email History</h2>
-          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-            <table className="min-w-full">
-              <thead className="bg-slate-100">
-                <tr><th className="px-4 py-3 text-left">Sent At</th><th className="px-4 py-3 text-left">Recipients</th><th className="px-4 py-3 text-left">Excel Attached</th><th className="px-4 py-3 text-left">Status</th></tr>
-              </thead>
-              <tbody>
-                {emailLogs.length === 0 ? (
-                  <EmptyTableRow colSpan={4}>No emails sent yet.</EmptyTableRow>
-                ) : (
-                  emailLogs.map((log) => (
-                    <tr key={log.id} className="border-t">
-                      <td className="px-4 py-3">{new Date(log.sentAt).toLocaleString()}</td>
-                      <td className="px-4 py-3">{log.recipients.map((r) => r.label || r.email).join(", ")}</td>
-                      <td className="px-4 py-3">{log.includedExcel ? "Yes" : "No"}</td>
-                      <td className="px-4 py-3">
-                        {log.status === "SENT" ? (
-                          <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-700">Sent</span>
-                        ) : (
-                          <span className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-medium text-red-700" title={log.errorMessage}>Failed</span>
-                        )}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+        <RunningBillWorkspace bill={bill} payments={payments} onRecordPayment={() => setShowPaymentModal(true)} />
       </div>
 
       {showEmailModal && (

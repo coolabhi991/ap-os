@@ -15,6 +15,7 @@ import {
   LOAN_REPAYMENT_TYPES,
   LOAN_TYPE_TO_LIABILITY_TYPE,
   LEDGER_BACKED_TYPES,
+  CATEGORIZABLE_TAG_TYPES,
 } from "../../services/transaction-allocations";
 import type { AllocationRowInput, TransactionAllocation } from "../../services/transaction-allocations";
 import { getEmployees } from "../../services/employees";
@@ -391,7 +392,17 @@ export default function AllocateTransactionModal({ transaction, onClose, onSaved
                         <label className="mb-1 block text-xs font-medium">Category *</label>
                         <select value={row.categoryId ?? ""} onChange={(e) => updateRow(row.key, { categoryId: e.target.value })} className="w-full rounded-lg border p-2 text-sm">
                           <option value="">Select Category</option>
-                          {categories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                          {categories.filter((c) => c.allocationType === row.allocationType).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                        </select>
+                      </div>
+                    )}
+
+                    {CATEGORIZABLE_TAG_TYPES.includes(row.allocationType) && (
+                      <div>
+                        <label className="mb-1 block text-xs font-medium">Category</label>
+                        <select value={row.categoryId ?? ""} onChange={(e) => updateRow(row.key, { categoryId: e.target.value })} className="w-full rounded-lg border p-2 text-sm">
+                          <option value="">Select Category (optional)</option>
+                          {categories.filter((c) => c.allocationType === row.allocationType).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                         </select>
                       </div>
                     )}
@@ -505,6 +516,7 @@ export default function AllocateTransactionModal({ transaction, onClose, onSaved
                       "SITE_EXPENSE",
                       "LIABILITY_DISBURSEMENT",
                       "INTERNAL_TRANSFER",
+                      "TDS_PAYMENT",
                       ...LOAN_REPAYMENT_TYPES,
                       ...PARTNER_SCOPED_TYPES,
                       ...EMPLOYEE_SCOPED_TYPES,

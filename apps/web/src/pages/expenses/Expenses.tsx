@@ -36,7 +36,7 @@ export default function Expenses() {
   useEffect(() => {
     getProjects({ limit: 100 }).then((r) => setProjects(r.data)).catch(() => {});
     getVendors({ limit: 100 }).then((r) => setVendors(r.data)).catch(() => {});
-    getExpenseCategories(false).then(setCategories).catch(() => {});
+    getExpenseCategories(false, "SITE_EXPENSE").then(setCategories).catch(() => {});
   }, []);
 
   const query = {

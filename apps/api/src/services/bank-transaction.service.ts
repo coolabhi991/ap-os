@@ -119,6 +119,71 @@ function toDTO(t: BankTransactionRow) {
   };
 }
 
+/**
+ * Pending Internal Transfers (Business Review Note) — when an Internal Transfer is allocated on
+ * the source account but the destination account's statement hasn't been imported/allocated yet,
+ * no fake BankTransaction is ever created on the destination side. Instead this computes, purely
+ * from the existing INTERNAL_TRANSFER allocations, how much of each declared transfer has NOT yet
+ * been confirmed by a matching allocation on the destination account.
+ *
+ * For every ordered account pair (X, Y): "X sent to Y" is the sum of INTERNAL_TRANSFER allocations
+ * on X's own withdrawal transactions tagged transferToAccountId=Y. "Y received from X" is the sum
+ * of INTERNAL_TRANSFER allocations on Y's own deposit transactions tagged transferToAccountId=X —
+ * this only exists once Y's statement has actually been imported and allocated (the existing
+ * workflow, reused as-is, never modified). Pending[X->Y] = max(0, sent - received). The moment Y's
+ * side is imported and allocated, "received" grows and the pending amount shrinks automatically —
+ * no separate state to update, nothing to reconcile by hand, and it can never double-count because
+ * it is computed fresh from the allocation table on every call, never stored.
+ */
+async function computePendingInternalTransfers(companyId: string) {
+  const rows = await prisma.transactionAllocation.findMany({
+    where: { companyId, allocationType: "INTERNAL_TRANSFER", transferToAccountId: { not: null } },
+    select: {
+      amount: true,
+      transferToAccountId: true,
+      bankTransaction: { select: { companyBankAccountId: true, deposit: true, withdrawal: true } },
+    },
+  });
+
+  // sent[X][Y] = X declares having sent this much to Y (X's own withdrawal, tagged to Y)
+  const sent = new Map<string, Map<string, number>>();
+  // received[Y][X] = Y declares having received this much from X (Y's own deposit, tagged to X) — the matched/imported leg
+  const received = new Map<string, Map<string, number>>();
+
+  const add = (table: Map<string, Map<string, number>>, from: string, to: string, amount: number) => {
+    if (!table.has(from)) table.set(from, new Map());
+    const inner = table.get(from)!;
+    inner.set(to, (inner.get(to) ?? 0) + amount);
+  };
+
+  for (const r of rows) {
+    const ownAccountId = r.bankTransaction.companyBankAccountId;
+    const otherAccountId = r.transferToAccountId as string;
+    const amount = Number(r.amount);
+    if (Number(r.bankTransaction.withdrawal) > 0) {
+      add(sent, ownAccountId, otherAccountId, amount);
+    } else if (Number(r.bankTransaction.deposit) > 0) {
+      add(received, ownAccountId, otherAccountId, amount);
+    }
+  }
+
+  const pendingIncoming = new Map<string, number>();
+  const pendingOutgoing = new Map<string, number>();
+
+  for (const [x, toMap] of sent) {
+    for (const [y, sentAmount] of toMap) {
+      const receivedAmount = received.get(y)?.get(x) ?? 0;
+      const pending = Math.max(0, sentAmount - receivedAmount);
+      if (pending > 0.01) {
+        pendingOutgoing.set(x, (pendingOutgoing.get(x) ?? 0) + pending);
+        pendingIncoming.set(y, (pendingIncoming.get(y) ?? 0) + pending);
+      }
+    }
+  }
+
+  return { pendingIncoming, pendingOutgoing };
+}
+
 export async function listBankAccountsWithBalances(companyId: string) {
   const accounts = await prisma.companyBankAccount.findMany({ where: { companyId }, orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }] });
 
@@ -131,7 +196,7 @@ export async function listBankAccountsWithBalances(companyId: string) {
     await prisma.transactionAllocation.findMany({ where: { companyId, expenseId: { not: null } }, select: { expenseId: true } })
   ).map((a) => a.expenseId as string);
 
-  const [sums, directExpenseSums] = await Promise.all([
+  const [sums, directExpenseSums, pendingTransfers] = await Promise.all([
     prisma.bankTransaction.groupBy({
       by: ["companyBankAccountId"],
       where: { companyId, isActive: true },
@@ -146,6 +211,7 @@ export async function listBankAccountsWithBalances(companyId: string) {
       where: { companyId, isDeleted: false, companyBankAccountId: { not: null }, id: { notIn: allocatedExpenseIds } },
       _sum: { amount: true },
     }),
+    computePendingInternalTransfers(companyId),
   ]);
   const sumsByAccount = new Map(sums.map((s) => [s.companyBankAccountId, s]));
   const directExpensesByAccount = new Map(directExpenseSums.map((s) => [s.companyBankAccountId as string, Number(s._sum.amount ?? 0)]));
@@ -155,7 +221,13 @@ export async function listBankAccountsWithBalances(companyId: string) {
     const totalDeposits = Number(s?._sum.deposit ?? 0);
     const totalWithdrawals = Number(s?._sum.withdrawal ?? 0);
     const directExpenses = directExpensesByAccount.get(a.id) ?? 0;
+    // Imported Bank Balance — unchanged from before this feature, still solely from real,
+    // imported/entered BankTransaction rows (+ direct Cash/Bank expenses). Never includes any
+    // pending transfer amount, so accounting accuracy here is untouched.
     const currentBalance = Number(a.openingBalance) + totalDeposits - totalWithdrawals - directExpenses;
+    const pendingIncoming = pendingTransfers.pendingIncoming.get(a.id) ?? 0;
+    const pendingOutgoing = pendingTransfers.pendingOutgoing.get(a.id) ?? 0;
+    const operationalBalance = currentBalance + pendingIncoming - pendingOutgoing;
     return {
       id: a.id,
       nickname: a.nickname ?? "",
@@ -169,6 +241,9 @@ export async function listBankAccountsWithBalances(companyId: string) {
       totalDeposits: totalDeposits.toFixed(2),
       totalWithdrawals: totalWithdrawals.toFixed(2),
       currentBalance: currentBalance.toFixed(2),
+      pendingIncomingTransfers: pendingIncoming.toFixed(2),
+      pendingOutgoingTransfers: pendingOutgoing.toFixed(2),
+      operationalBalance: operationalBalance.toFixed(2),
       transactionCount: s?._count._all ?? 0,
     };
   });

@@ -326,6 +326,77 @@ export async function getBankChargesReport(companyId: string, query: { fromDate?
 }
 
 /**
+ * TDS Payments Report — a lump-sum TDS transfer to the CA, with no contractor-wise breakup known
+ * at payment time (that only emerges months later via Form 26AS). Exact same shape as
+ * getBankChargesReport above (TDS_PAYMENT is tag-only, no dedicated ledger table, no Vendor/Site/
+ * Project/Bill required) — deliberately not merged with it since TDS Payments must remain its own
+ * single source of truth (Banking > Reports > TDS Payments only), never mixed into Bank Charges,
+ * Site Expenses, Vendor Payments, or any other register.
+ */
+export async function getTdsPaymentsReport(companyId: string, query: { fromDate?: string; toDate?: string; companyBankAccountId?: string; search?: string }) {
+  const { fromDate, toDate, companyBankAccountId, search } = query;
+
+  const rows = await prisma.transactionAllocation.findMany({
+    where: {
+      companyId,
+      allocationType: "TDS_PAYMENT",
+      bankTransaction: {
+        ...(companyBankAccountId && { companyBankAccountId }),
+        ...(search?.trim() && { description: { contains: search.trim(), mode: "insensitive" } }),
+        ...((fromDate || toDate) && {
+          transactionDate: {
+            ...(fromDate ? { gte: new Date(fromDate) } : {}),
+            ...(toDate ? { lte: new Date(toDate) } : {}),
+          },
+        }),
+      },
+    },
+    include: {
+      bankTransaction: {
+        select: {
+          id: true,
+          transactionDate: true,
+          description: true,
+          referenceNumber: true,
+          companyBankAccount: { select: { id: true, nickname: true, bankName: true } },
+        },
+      },
+    },
+    orderBy: { bankTransaction: { transactionDate: "desc" } },
+  });
+
+  const total = rows.reduce((s, r) => s + Number(r.amount), 0);
+
+  const byAccount = new Map<string, { bankAccountId: string; bankAccount: string; total: number }>();
+  for (const r of rows) {
+    const bankAccountId = r.bankTransaction.companyBankAccount?.id ?? "";
+    const bankAccount = r.bankTransaction.companyBankAccount?.nickname || r.bankTransaction.companyBankAccount?.bankName || "Unknown Account";
+    const entry = byAccount.get(bankAccountId) ?? { bankAccountId, bankAccount, total: 0 };
+    entry.total += Number(r.amount);
+    byAccount.set(bankAccountId, entry);
+  }
+
+  return {
+    total: total.toFixed(2),
+    count: rows.length,
+    byBankAccount: Array.from(byAccount.values())
+      .sort((a, b) => b.total - a.total)
+      .map((a) => ({ bankAccountId: a.bankAccountId, bankAccount: a.bankAccount, total: a.total.toFixed(2) })),
+    transactions: rows.map((r) => ({
+      id: r.id,
+      bankTransactionId: r.bankTransaction.id,
+      date: r.bankTransaction.transactionDate.toISOString().slice(0, 10),
+      bankAccountId: r.bankTransaction.companyBankAccount?.id ?? "",
+      bankAccount: r.bankTransaction.companyBankAccount?.nickname || r.bankTransaction.companyBankAccount?.bankName || "",
+      description: r.bankTransaction.description ?? "",
+      amount: r.amount.toString(),
+      referenceNumber: r.bankTransaction.referenceNumber ?? "",
+      notes: r.notes ?? "",
+    })),
+  };
+}
+
+/**
  * Internal Transfer Register — every INTERNAL_TRANSFER allocation, one row per side (the source
  * BankTransaction it was allocated on, plus the Transfer To Account it was tagged against).
  * Read-only rollup over TransactionAllocation, same pattern as getBankChargesReport — no separate

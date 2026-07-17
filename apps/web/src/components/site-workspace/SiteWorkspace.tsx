@@ -4,6 +4,7 @@ import OverviewTab from "./tabs/OverviewTab";
 import WorkOrderDetailsTab from "./tabs/WorkOrderDetailsTab";
 import RecapitulationTab from "./tabs/RecapitulationTab";
 import FinancialTab from "./tabs/FinancialTab";
+import BOQTab from "./tabs/BOQTab";
 import DPRTab from "./tabs/DPRTab";
 import RunningBillsTab from "./tabs/RunningBillsTab";
 import LabourTab from "./tabs/LabourTab";
@@ -17,6 +18,7 @@ const TABS = [
   { key: "work-order-details", label: "Work Order Details" },
   { key: "recapitulation", label: "Recapitulation" },
   { key: "financial", label: "Financial" },
+  { key: "boq", label: "BOQ" },
   { key: "dpr", label: "DPR History" },
   { key: "running-bills", label: "Running Bills" },
   { key: "labour", label: "Labour" },
@@ -52,6 +54,7 @@ export default function SiteWorkspace({ site, onSiteUpdated }: { site: Site; onS
         {tab === "work-order-details" && <WorkOrderDetailsTab site={site} onSiteUpdated={onSiteUpdated} />}
         {tab === "recapitulation" && <RecapitulationTab site={site} />}
         {tab === "financial" && <FinancialTab site={site} />}
+        {tab === "boq" && <BOQTab site={site} />}
         {tab === "dpr" && <DPRTab site={site} />}
         {tab === "running-bills" && <RunningBillsTab site={site} />}
         {tab === "labour" && <LabourTab site={site} />}

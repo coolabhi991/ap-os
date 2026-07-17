@@ -13,6 +13,7 @@ import {
   getPayablesReport,
   getOutstandingSummary,
   getBankChargesReport,
+  getTdsPaymentsReport,
   getInternalTransferReport,
   exportReceivablesCSV,
   exportPayablesCSV,
@@ -34,6 +35,7 @@ import type {
   PayableRow,
   OutstandingSummary,
   BankChargesReport,
+  TdsPaymentsReport,
   InternalTransferReport,
 } from "../../services/banking-reports";
 import { getBankAccountsWithBalances, ALLOCATION_STATUS_LABELS, ALLOCATION_STATUS_COLORS } from "../../services/bank-transactions";
@@ -42,7 +44,7 @@ import { getProjects } from "../../services/projects";
 import { formatCurrency as inr } from "../../lib/utils";
 import EmptyTableRow from "../../components/ui/EmptyTableRow";
 
-type ReportTab = "bank-book" | "cash-book" | "reconciliation" | "cash-flow" | "receivables" | "payables" | "outstanding-summary" | "bank-charges" | "internal-transfers";
+type ReportTab = "bank-book" | "cash-book" | "reconciliation" | "cash-flow" | "receivables" | "payables" | "outstanding-summary" | "bank-charges" | "tds-payments" | "internal-transfers";
 
 const TABS: { key: ReportTab; label: string }[] = [
   { key: "bank-book", label: "Bank Book" },
@@ -53,6 +55,7 @@ const TABS: { key: ReportTab; label: string }[] = [
   { key: "payables", label: "Payable Report" },
   { key: "outstanding-summary", label: "Outstanding Summary" },
   { key: "bank-charges", label: "Bank Charges" },
+  { key: "tds-payments", label: "TDS Payments" },
   { key: "internal-transfers", label: "Internal Transfers" },
 ];
 
@@ -80,6 +83,9 @@ export default function BankingReports() {
   const [bankCharges, setBankCharges] = useState<BankChargesReport | null>(null);
   const [bankChargeAccountId, setBankChargeAccountId] = useState("");
   const [bankChargeSearch, setBankChargeSearch] = useState("");
+  const [tdsPayments, setTdsPayments] = useState<TdsPaymentsReport | null>(null);
+  const [tdsAccountId, setTdsAccountId] = useState("");
+  const [tdsSearch, setTdsSearch] = useState("");
   const [internalTransfers, setInternalTransfers] = useState<InternalTransferReport | null>(null);
 
   useEffect(() => {
@@ -135,6 +141,17 @@ export default function BankingReports() {
       .then(setBankCharges)
       .catch(() => {});
   }, [fromDate, toDate, bankChargeAccountId, bankChargeSearch]);
+
+  useEffect(() => {
+    getTdsPaymentsReport({
+      fromDate: fromDate || undefined,
+      toDate: toDate || undefined,
+      companyBankAccountId: tdsAccountId || undefined,
+      search: tdsSearch || undefined,
+    })
+      .then(setTdsPayments)
+      .catch(() => {});
+  }, [fromDate, toDate, tdsAccountId, tdsSearch]);
 
   return (
     <Layout>
@@ -551,6 +568,87 @@ export default function BankingReports() {
                             <td className="px-4 py-2">{t.description || "—"}</td>
                             <td className="px-4 py-2 text-slate-500">{t.referenceNumber || "—"}</td>
                             <td className="px-4 py-2 text-right font-medium">{inr(t.amount)}</td>
+                            <td className="px-4 py-2">
+                              <button
+                                type="button"
+                                onClick={() => navigate(`/banking/accounts/${t.bankAccountId}`)}
+                                className="text-blue-600 hover:underline"
+                              >
+                                Open Bank Transaction
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {tab === "tds-payments" && tdsPayments && (
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-center gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <select value={tdsAccountId} onChange={(e) => setTdsAccountId(e.target.value)} className="rounded-lg border p-2.5 text-sm">
+                    <option value="">All Bank Accounts</option>
+                    {accounts.map((a) => <option key={a.id} value={a.id}>{a.nickname || a.bankName}</option>)}
+                  </select>
+                  <input
+                    type="text"
+                    placeholder="Search by original narration..."
+                    value={tdsSearch}
+                    onChange={(e) => setTdsSearch(e.target.value)}
+                    className="min-w-[220px] flex-1 rounded-lg border p-2.5 text-sm"
+                  />
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm md:col-span-1">
+                    <p className="text-sm text-slate-500">Total TDS Paid ({tdsPayments.count})</p>
+                    <p className="mt-1 text-2xl font-bold">{inr(tdsPayments.total)}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm md:col-span-2">
+                    <p className="mb-2 text-sm text-slate-500">Bank-wise Total</p>
+                    {tdsPayments.byBankAccount.length === 0 ? (
+                      <p className="text-sm text-slate-400">No TDS payments recorded in this period.</p>
+                    ) : (
+                      <div className="space-y-1">
+                        {tdsPayments.byBankAccount.map((a) => (
+                          <div key={a.bankAccountId} className="flex items-center justify-between text-sm">
+                            <span className="text-slate-600">{a.bankAccount}</span>
+                            <span className="font-medium">{inr(a.total)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
+                  <table className="min-w-full text-sm">
+                    <thead className="bg-slate-100">
+                      <tr>
+                        <th className="px-4 py-2 text-left">Date</th>
+                        <th className="px-4 py-2 text-left">Bank Account</th>
+                        <th className="px-4 py-2 text-left">Original Bank Narration</th>
+                        <th className="px-4 py-2 text-left">Reference</th>
+                        <th className="px-4 py-2 text-right">Amount</th>
+                        <th className="px-4 py-2 text-left">Notes</th>
+                        <th className="px-4 py-2 text-left">Source</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {tdsPayments.transactions.length === 0 ? (
+                        <EmptyTableRow colSpan={7}>No TDS payments recorded in this period.</EmptyTableRow>
+                      ) : (
+                        tdsPayments.transactions.map((t) => (
+                          <tr key={t.id} className="border-t">
+                            <td className="px-4 py-2">{t.date}</td>
+                            <td className="px-4 py-2">{t.bankAccount || "—"}</td>
+                            <td className="px-4 py-2">{t.description || "—"}</td>
+                            <td className="px-4 py-2 text-slate-500">{t.referenceNumber || "—"}</td>
+                            <td className="px-4 py-2 text-right font-medium">{inr(t.amount)}</td>
+                            <td className="px-4 py-2 text-slate-500">{t.notes || "—"}</td>
                             <td className="px-4 py-2">
                               <button
                                 type="button"

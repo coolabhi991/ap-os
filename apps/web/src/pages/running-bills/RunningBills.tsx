@@ -6,9 +6,19 @@ import Layout from "../../components/layout/Layout";
 import { getRunningBills, deleteRunningBill, exportRunningBillRegisterCSV, RB_STATUS_OPTIONS, RB_STATUS_LABELS, RB_STATUS_COLORS, BILL_TYPE_LABELS } from "../../services/running-bills";
 import type { RunningBill } from "../../services/running-bills";
 import { getProjects } from "../../services/projects";
+import { getAllSites } from "../../services/sites";
+import type { Site } from "../../services/sites";
 import LoadingState from "../../components/ui/LoadingState";
 import EmptyTableRow from "../../components/ui/EmptyTableRow";
 import { formatCurrency } from "../../lib/utils";
+
+const SORT_OPTIONS = [
+  { value: "billDate:desc", label: "Bill Date (Newest)" },
+  { value: "billDate:asc", label: "Bill Date (Oldest)" },
+  { value: "billNumber:asc", label: "Bill Number (A-Z)" },
+  { value: "netPayable:desc", label: "Net Payable (High-Low)" },
+  { value: "outstandingAmount:desc", label: "Outstanding (High-Low)" },
+];
 
 export default function RunningBills() {
   const navigate = useNavigate();
@@ -16,9 +26,12 @@ export default function RunningBills() {
   const [bills, setBills] = useState<RunningBill[]>([]);
   const [total, setTotal] = useState(0);
   const [projects, setProjects] = useState<{ id: string; name: string }[]>([]);
+  const [sites, setSites] = useState<Site[]>([]);
   const [search, setSearch] = useState("");
   const [projectFilter, setProjectFilter] = useState("");
+  const [siteFilter, setSiteFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [sort, setSort] = useState("billDate:desc");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [loading, setLoading] = useState(true);
@@ -27,18 +40,25 @@ export default function RunningBills() {
 
   useEffect(() => {
     getProjects({ limit: 100 }).then((r) => setProjects(r.data)).catch(() => {});
+    getAllSites().then(setSites).catch(() => {});
   }, []);
+
+  const sitesForProject = projectFilter ? sites.filter((s) => s.projectId === projectFilter) : sites;
 
   const load = async () => {
     try {
       setLoading(true);
       setError(null);
+      const [sortBy, sortOrder] = sort.split(":") as [string, "asc" | "desc"];
       const result = await getRunningBills({
         search: search || undefined,
         projectId: projectFilter || undefined,
+        siteId: siteFilter || undefined,
         status: statusFilter || undefined,
         fromDate: fromDate || undefined,
         toDate: toDate || undefined,
+        sortBy,
+        sortOrder,
         page: 1,
         limit: 50,
       });
@@ -54,7 +74,7 @@ export default function RunningBills() {
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, projectFilter, statusFilter, fromDate, toDate]);
+  }, [search, projectFilter, siteFilter, statusFilter, sort, fromDate, toDate]);
 
   const handleDelete = async (id: string) => {
     if (!window.confirm("Delete this Draft RA Bill? This cannot be undone.")) return;
@@ -104,13 +124,24 @@ export default function RunningBills() {
               placeholder="Search bill #, remarks, project..."
               className="min-w-[220px] flex-1 rounded-lg border p-3 outline-none focus:border-blue-500"
             />
-            <select value={projectFilter} onChange={(e) => setProjectFilter(e.target.value)} className="rounded-lg border p-3 outline-none focus:border-blue-500">
+            <select
+              value={projectFilter}
+              onChange={(e) => { setProjectFilter(e.target.value); setSiteFilter(""); }}
+              className="rounded-lg border p-3 outline-none focus:border-blue-500"
+            >
               <option value="">All Projects</option>
               {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+            <select value={siteFilter} onChange={(e) => setSiteFilter(e.target.value)} className="rounded-lg border p-3 outline-none focus:border-blue-500">
+              <option value="">All Sites</option>
+              {sitesForProject.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
             <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className="rounded-lg border p-3 outline-none focus:border-blue-500">
               <option value="">All Statuses</option>
               {RB_STATUS_OPTIONS.map((s) => <option key={s} value={s}>{RB_STATUS_LABELS[s]}</option>)}
+            </select>
+            <select value={sort} onChange={(e) => setSort(e.target.value)} className="rounded-lg border p-3 outline-none focus:border-blue-500">
+              {SORT_OPTIONS.map((o) => <option key={o.value} value={o.value}>Sort: {o.label}</option>)}
             </select>
             <div className="flex items-center gap-2">
               <label className="text-sm text-slate-500">From</label>

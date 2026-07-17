@@ -132,6 +132,9 @@ import Partnership from "./pages/partnership/Partnership";
 /* Finance */
 import Finance from "./pages/finance/Finance";
 
+/* Settings */
+import Categories from "./pages/settings/Categories";
+
 /* Reports */
 import Reports from "./pages/reports/Reports";
 import VendorReports from "./pages/reports/VendorReports";
@@ -273,6 +276,9 @@ export default function App() {
 
       {/* Finance */}
       <Route path="/finance" element={<Finance />} />
+
+      {/* Settings */}
+      <Route path="/settings/categories" element={<Categories />} />
 
       {/* Reports */}
       <Route path="/reports" element={<Reports />} />

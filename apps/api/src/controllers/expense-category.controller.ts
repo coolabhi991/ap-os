@@ -13,7 +13,8 @@ export const getExpenseCategories = async (req: AuthRequest, res: Response) => {
   try {
     const companyId = req.user!.companyId;
     const includeInactive = req.query.includeInactive !== "false";
-    const categories = await listExpenseCategories(companyId, includeInactive);
+    const allocationType = req.query.allocationType as string | undefined;
+    const categories = await listExpenseCategories(companyId, includeInactive, allocationType);
     res.status(200).json({ success: true, data: categories });
   } catch (error) {
     res.status(500).json({ success: false, message: error instanceof Error ? error.message : "Failed to load expense categories" });

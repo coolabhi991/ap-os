@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { Sparkles, Send, Trash2 } from "lucide-react";
 
 import Layout from "../../components/layout/Layout";
@@ -21,6 +22,7 @@ function nextId() {
 }
 
 export default function ApAi() {
+  const location = useLocation();
   const [turns, setTurns] = useState<Turn[]>([]);
   const [input, setInput] = useState("");
   const [asking, setAsking] = useState(false);
@@ -59,6 +61,16 @@ export default function ApAi() {
       setAsking(false);
     }
   };
+
+  useEffect(() => {
+    const initialQuery = (location.state as { initialQuery?: string } | null)?.initialQuery;
+    if (initialQuery) {
+      window.history.replaceState({}, "");
+      const timer = setTimeout(() => submit(initialQuery), 0);
+      return () => clearTimeout(timer);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

@@ -16,6 +16,7 @@ export default function Projects() {
   const [projects, setProjects] = useState<ProjectDashboardRow[]>([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [sortBy, setSortBy] = useState("name");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,16 +37,20 @@ export default function Projects() {
     load();
   }, []);
 
-  // The dashboard endpoint returns every Project with its full Site table in one call — search
-  // and status filtering happen client-side rather than adding a second round trip.
+  // The dashboard endpoint returns every Project with its full Site table in one call — search,
+  // status filtering, and sort all happen client-side rather than adding a second round trip.
   const filteredProjects = useMemo(() => {
     const term = search.trim().toLowerCase();
-    return projects.filter((p) => {
+    const filtered = projects.filter((p) => {
       if (statusFilter && p.status !== statusFilter) return false;
       if (!term) return true;
       return p.name.toLowerCase().includes(term) || p.code.toLowerCase().includes(term) || (p.client?.name.toLowerCase().includes(term) ?? false);
     });
-  }, [projects, search, statusFilter]);
+    const sorted = [...filtered];
+    if (sortBy === "name") sorted.sort((a, b) => a.name.localeCompare(b.name));
+    else sorted.sort((a, b) => Number(b[sortBy as keyof ProjectDashboardRow]) - Number(a[sortBy as keyof ProjectDashboardRow]));
+    return sorted;
+  }, [projects, search, statusFilter, sortBy]);
 
   const handleDelete = async (id: string) => {
     const confirmed = window.confirm("Are you sure you want to delete this project?");
@@ -81,6 +86,8 @@ export default function Projects() {
           onSearchChange={setSearch}
           statusFilter={statusFilter}
           onStatusChange={setStatusFilter}
+          sortBy={sortBy}
+          onSortChange={setSortBy}
         />
 
         {loading && (

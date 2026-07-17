@@ -247,6 +247,9 @@ enum AllocationType {
   PARTNER_INVESTMENT
   PARTNER_SETTLEMENT
   GST
+  // Lump-sum TDS handed to the CA with no contractor-wise breakup known at payment time
+  // (that only emerges months later via Form 26AS) — tag-only, same shape as BANK_CHARGES.
+  TDS_PAYMENT
   LOAN
   OFFICE_EXPENSE
   OTHER
@@ -405,6 +408,7 @@ model Company {
   bankStatementImports  BankStatementImport[]
   bankStatementAuditLogs BankStatementAuditLog[]
   siteBillItems         SiteBillItem[]
+  siteBoqItems          SiteBoqItem[]
   liabilityRepayments   LiabilityRepayment[]
   recapitulationItems   RecapitulationItem[]
   measurementItemFieldAudits MeasurementItemFieldAudit[]
@@ -494,6 +498,7 @@ model User {
   bankStatementImportsCreated BankStatementImport[] @relation("BankStatementImportCreatedBy")
   bankStatementAuditLogsPerformed BankStatementAuditLog[] @relation("BankStatementAuditPerformedBy")
   siteBillItemsCreated       SiteBillItem[]        @relation("SiteBillItemCreatedBy")
+  siteBoqItemsCreated        SiteBoqItem[]         @relation("SiteBoqItemCreatedBy")
   transactionAllocationsCreated TransactionAllocation[]
   partnerInvestmentsCreated  PartnerInvestment[]
   partnerSettlementsCreated  PartnerSettlement[]
@@ -657,6 +662,7 @@ model Site {
   transactionAllocations TransactionAllocation[]
   vendorBills          VendorBill[]
   billItems            SiteBillItem[]
+  boqItems             SiteBoqItem[]
   tenderPercentChangeLogs SiteTenderPercentChangeLog[]
   workOrderExtensions  WorkOrderExtension[]
 
@@ -913,6 +919,7 @@ model SubWork {
   recapitulationItems  RecapitulationItem[]
   measurementBookItems MeasurementBookItem[]
   siteBillItems        SiteBillItem[]
+  boqItems             SiteBoqItem[]
 
   @@index([companyId])
   @@index([projectId])
@@ -1298,19 +1305,29 @@ model StockLedgerEntry {
 /**
  * Company-scoped, admin-manageable expense category list (not a hardcoded enum, so new categories can be added without a deploy).
  */
+/**
+ * The general Category master (Settings -> Categories). Originally Expense-only; extended with
+ * allocationType so a Category now belongs to exactly one AllocationType (Business Review Note).
+ * Existing rows default to SITE_EXPENSE — preserves every current Expense category unchanged.
+ * The special-category lookup (getSpecialCategoryIds: "Machinery"/"Fuel"/"Miscellaneous") matches
+ * by name only, scoped to companyId, so it is unaffected by this addition.
+ */
 model ExpenseCategory {
-  id        String   @id @default(cuid())
-  companyId String
-  company   Company  @relation(fields: [companyId], references: [id])
-  name      String
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id             String         @id @default(cuid())
+  companyId      String
+  company        Company        @relation(fields: [companyId], references: [id])
+  name           String
+  allocationType AllocationType @default(SITE_EXPENSE)
+  isActive       Boolean        @default(true)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
 
-  expenses Expense[]
+  expenses    Expense[]
+  allocations TransactionAllocation[]
 
-  @@unique([companyId, name])
+  @@unique([companyId, allocationType, name])
   @@index([companyId])
+  @@index([allocationType])
 }
 
 /**
@@ -1887,6 +1904,39 @@ model SiteBillItem {
 }
 
 /**
+ * BOQ (Bill of Quantities) — an OPTIONAL, Sub Work-wise contract item catalog, separate from
+ * SiteBillItem (the "as-billed" roster Form 58 actually carries forward bill to bill). A BOQ
+ * item exists purely to speed up Form 58 data entry: "Import From BOQ" copies its
+ * description/unit/rate into a new (unsaved) Form 58 row, which is then submitted through the
+ * exact same "new item" path as manual entry — no FK to RunningBillItem/SiteBillItem, no effect
+ * on Form 58 calculations, deductions, or the Running Bill lifecycle. A Site with zero BOQ items
+ * behaves exactly as before this model existed.
+ */
+model SiteBoqItem {
+  id               String   @id @default(cuid())
+  companyId        String
+  company          Company  @relation(fields: [companyId], references: [id])
+  siteId           String
+  site             Site     @relation(fields: [siteId], references: [id])
+  subWorkId        String
+  subWork          SubWork  @relation(fields: [subWorkId], references: [id])
+  description      String
+  unit             String
+  contractQuantity Decimal  @default(0) @db.Decimal(14, 4)
+  rate             Decimal  @default(0) @db.Decimal(14, 2)
+  remarks          String?
+  sortOrder        Int      @default(0)
+  createdById      String
+  createdBy        User     @relation("SiteBoqItemCreatedBy", fields: [createdById], references: [id])
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([companyId])
+  @@index([siteId])
+  @@index([subWorkId])
+}
+
+/**
  * Named (Security Deposit/GST/Labour Cess/Royalty/TDS/Mobilization Recovery) or custom (OTHER + label) deduction row — unlimited per bill.
  */
 model RunningBillDeduction {
@@ -2378,6 +2428,14 @@ model TransactionAllocation {
   transferToAccountId String?
   transferToAccount   CompanyBankAccount? @relation(fields: [transferToAccountId], references: [id])
 
+  // Optional classification (Business Review Note) for allocation types that have no other
+  // dedicated field to hang a category off — GST/TDS_PAYMENT/BANK_CHARGES/OTHER/OFFICE_EXPENSE/
+  // LOAN/INTEREST_INCOME. SITE_EXPENSE keeps using Expense.categoryId (unchanged); this field is
+  // never populated for SITE_EXPENSE. Same straight-pass-through-pointer pattern as liabilityId/
+  // transferToAccountId above — no dedicated ledger row.
+  categoryId String?
+  category   ExpenseCategory? @relation(fields: [categoryId], references: [id])
+
   createdById String
   createdBy   User     @relation(fields: [createdById], references: [id])
   createdAt   DateTime @default(now())
@@ -2389,6 +2447,7 @@ model TransactionAllocation {
   @@index([liabilityId])
   @@index([employeeId])
   @@index([transferToAccountId])
+  @@index([categoryId])
 }
 
 enum EmployeeStatus {

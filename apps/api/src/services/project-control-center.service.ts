@@ -2,6 +2,9 @@ import prisma from "../config/prisma.js";
 import { Prisma } from "@prisma/client";
 import { getSubWorkById, sumBudgetHeads } from "./sub-work.service.js";
 import type { BudgetHeads } from "./sub-work.service.js";
+import { getProjectById } from "./project.service.js";
+import { listSites } from "./site.service.js";
+import { getSiteBudgetVsActualReport } from "./site-control-center.service.js";
 
 export type CostHeadKey = "material" | "labour" | "machinery" | "fuel" | "vendorBills" | "siteExpenses" | "other";
 
@@ -487,4 +490,181 @@ export async function exportCostBySubWorkToCSV(projectId: string, companyId: str
   );
 
   return [headers.join(","), ...csvRows].join("\n");
+}
+
+/**
+ * Project Workspace (Phase 2) — Payment Received / Balance Receivable, summed straight off
+ * every non-Draft Running Bill raised against this Project (RunningBill.projectId is a direct
+ * field, no need to join through Site). Same formula already used by getProjectExecutiveDashboard
+ * and dashboard.service.ts's Project Overview table — never recomputed differently.
+ */
+export async function getProjectReceivables(projectId: string, companyId: string) {
+  await verifyProjectOwnership(projectId, companyId);
+  const agg = await prisma.runningBill.aggregate({
+    where: { companyId, projectId, status: { not: "DRAFT" } },
+    _sum: { amountReceived: true, outstandingAmount: true },
+    _count: { _all: true },
+  });
+  return {
+    paymentReceived: (Number(agg._sum.amountReceived) || 0).toFixed(2),
+    balanceReceivable: (Number(agg._sum.outstandingAmount) || 0).toFixed(2),
+    billsSubmitted: agg._count._all,
+  };
+}
+
+/**
+ * Project Workspace Overview tab. Work Order No./Date, Department and Expected Completion have
+ * no Project-level column in the schema — they live on Site (relocated there from the removed
+ * ProjectContractInfo model, see schema.prisma's Site model comment) — so this reads them off the
+ * Project's earliest-created Site as the "primary" one. Honest for the common one-Site-per-Project
+ * case; a multi-Site Project's Sites tab still shows every Site's own values individually.
+ */
+export async function getProjectOverviewSummary(projectId: string, companyId: string) {
+  const [project, sitesResult, bva, receivables] = await Promise.all([
+    getProjectById(projectId, companyId),
+    listSites(companyId, { projectId, page: 1, limit: 100, sortBy: "createdAt", sortOrder: "asc" }),
+    getBudgetVsActualReport(projectId, companyId),
+    getProjectReceivables(projectId, companyId),
+  ]);
+  const primarySite = sitesResult.data[0] ?? null;
+
+  return {
+    id: project.id,
+    name: project.name,
+    code: project.code,
+    status: project.status,
+    client: project.client,
+    agreementValue: project.contractValue.toString(),
+    department: primarySite?.department ?? null,
+    workOrderNumber: primarySite?.workOrderNumber ?? null,
+    workOrderDate: primarySite?.workOrderDate ?? null,
+    expectedCompletion: primarySite?.completionDate ?? null,
+    paymentReceived: receivables.paymentReceived,
+    balanceReceivable: receivables.balanceReceivable,
+    physicalProgress: bva.physicalProgress,
+    financialProgress: bva.financialProgress,
+    siteCount: sitesResult.total,
+  };
+}
+
+/** Project Workspace Sites tab — every Site's own Physical/Financial Progress, reusing site-control-center.service.ts's per-Site report (same acceptable small-N loop already used by dashboard.service.ts's Project Overview table). */
+export async function getProjectSitesOverview(projectId: string, companyId: string) {
+  await verifyProjectOwnership(projectId, companyId);
+  const sitesResult = await listSites(companyId, { projectId, page: 1, limit: 100, sortBy: "name", sortOrder: "asc" });
+  return Promise.all(
+    sitesResult.data.map(async (s) => {
+      const siteBva = await getSiteBudgetVsActualReport(s.id, companyId);
+      return {
+        id: s.id,
+        name: s.name,
+        siteCode: s.siteCode,
+        status: s.status,
+        engineer: s.engineer,
+        expectedCompletion: s.completionDate,
+        physicalProgress: siteBva.physicalProgress,
+        financialProgress: siteBva.financialProgress,
+      };
+    })
+  );
+}
+
+/** Project Workspace Finance tab — composes the existing cost-summary report with the Running Bill receivable position and the Vendor Bill payable position already computed by getProjectOverview. Nothing here is recomputed a second way. */
+export async function getProjectFinanceSummary(projectId: string, companyId: string) {
+  const [costSummary, receivables, overview] = await Promise.all([
+    getProjectCostSummaryReport(projectId, companyId),
+    getProjectReceivables(projectId, companyId),
+    getProjectOverview(projectId, companyId),
+  ]);
+  return {
+    ...costSummary,
+    paymentReceived: receivables.paymentReceived,
+    balanceReceivable: receivables.balanceReceivable,
+    billsSubmitted: receivables.billsSubmitted,
+    pendingVendorBills: overview.pendingVendorBills,
+    pendingPayments: overview.pendingPayments,
+  };
+}
+
+export type ProjectTimelineEventType =
+  | "PROJECT_CREATED"
+  | "SITE_ADDED"
+  | "EXPENSE_ADDED"
+  | "RUNNING_BILL_SUBMITTED"
+  | "PAYMENT_RECEIVED"
+  | "DOCUMENT_UPLOADED";
+
+export interface ProjectTimelineEvent {
+  id: string;
+  type: ProjectTimelineEventType;
+  label: string;
+  date: string;
+  link?: string;
+}
+
+const TIMELINE_EVENT_LIMIT = 200;
+
+/**
+ * Project Workspace Timeline tab — a read-only, synthesized chronological feed. No dedicated
+ * Timeline/ActivityLog model exists in the schema; this merges the createdAt/date fields every
+ * relevant record already carries (Project, Site, Expense, RunningBill, RunningBillPayment,
+ * Document), same pattern as getSiteMoneyFlow (site-control-center.service.ts).
+ */
+export async function getProjectTimeline(projectId: string, companyId: string): Promise<ProjectTimelineEvent[]> {
+  const project = await verifyProjectOwnership(projectId, companyId);
+
+  const [sites, expenses, bills, payments, documents] = await Promise.all([
+    prisma.site.findMany({ where: { companyId, projectId }, select: { id: true, name: true, createdAt: true } }),
+    prisma.expense.findMany({
+      where: { companyId, projectId },
+      select: { id: true, description: true, amount: true, createdAt: true },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    }),
+    prisma.runningBill.findMany({
+      where: { companyId, projectId, submittedAt: { not: null } },
+      select: { id: true, billNumber: true, submittedAt: true },
+      orderBy: { submittedAt: "desc" },
+      take: 50,
+    }),
+    prisma.runningBillPayment.findMany({
+      where: { companyId, projectId },
+      select: { id: true, paymentNumber: true, amount: true, createdAt: true, runningBillId: true },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    }),
+    prisma.document.findMany({
+      where: { companyId, projectId },
+      select: { id: true, documentType: true, fileName: true, uploadedAt: true },
+      orderBy: { uploadedAt: "desc" },
+      take: 50,
+    }),
+  ]);
+
+  const events: ProjectTimelineEvent[] = [
+    { id: `project-${project.id}`, type: "PROJECT_CREATED", label: `Project "${project.name}" created`, date: project.createdAt.toISOString() },
+    ...sites.map((s) => ({ id: `site-${s.id}`, type: "SITE_ADDED" as const, label: `Site "${s.name}" added`, date: s.createdAt.toISOString(), link: `/sites/${s.id}` })),
+    ...expenses.map((e) => ({
+      id: `expense-${e.id}`,
+      type: "EXPENSE_ADDED" as const,
+      label: `Expense recorded${e.description ? ` — ${e.description}` : ""} (₹${Number(e.amount).toLocaleString("en-IN")})`,
+      date: e.createdAt.toISOString(),
+    })),
+    ...bills.map((b) => ({ id: `bill-${b.id}`, type: "RUNNING_BILL_SUBMITTED" as const, label: `Running Bill ${b.billNumber} submitted`, date: b.submittedAt!.toISOString(), link: `/running-bills/${b.id}` })),
+    ...payments.map((p) => ({
+      id: `payment-${p.id}`,
+      type: "PAYMENT_RECEIVED" as const,
+      label: `Payment received — ₹${Number(p.amount).toLocaleString("en-IN")} (${p.paymentNumber})`,
+      date: p.createdAt.toISOString(),
+      link: `/running-bills/${p.runningBillId}`,
+    })),
+    ...documents.map((d) => ({
+      id: `doc-${d.id}`,
+      type: "DOCUMENT_UPLOADED" as const,
+      label: `Document uploaded — ${d.fileName || d.documentType}`,
+      date: d.uploadedAt.toISOString(),
+    })),
+  ];
+
+  events.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  return events.slice(0, TIMELINE_EVENT_LIMIT);
 }

@@ -104,7 +104,7 @@ const menus = [
   },
   {
     name: "Settings",
-    path: "#",
+    path: "/settings/categories",
     icon: Settings,
   },
 ];

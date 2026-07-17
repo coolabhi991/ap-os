@@ -11,7 +11,11 @@ import {
 import type { ExpenseCategory, ExpenseCategoryFormData } from "../../services/expense-categories";
 import EmptyTableRow from "../../components/ui/EmptyTableRow";
 
-const emptyForm: ExpenseCategoryFormData = { name: "", isActive: true };
+// This page manages Site Expense categories specifically — kept unchanged from before Categories
+// became a general, Transaction-Type-scoped master (Business Review Note). The broader master
+// (all Transaction Types) lives at Settings > Categories.
+const SITE_EXPENSE_TYPE = "SITE_EXPENSE";
+const emptyForm: ExpenseCategoryFormData = { name: "", allocationType: SITE_EXPENSE_TYPE, isActive: true };
 
 export default function ExpenseCategories() {
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
@@ -27,7 +31,7 @@ export default function ExpenseCategories() {
     try {
       setLoading(true);
       setError(null);
-      setCategories(await getExpenseCategories(true));
+      setCategories(await getExpenseCategories(true, SITE_EXPENSE_TYPE));
     } catch {
       setError("Failed to load expense categories.");
     } finally {
@@ -48,7 +52,7 @@ export default function ExpenseCategories() {
 
   const startEdit = (category: ExpenseCategory) => {
     setEditingId(category.id);
-    setForm({ name: category.name, isActive: category.isActive });
+    setForm({ name: category.name, allocationType: SITE_EXPENSE_TYPE, isActive: category.isActive });
     setFormError(null);
     setShowForm(true);
   };
